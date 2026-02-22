@@ -1,4 +1,4 @@
-param appName string = 'PEC83'
+param appName string = 'PEC84'
 param location string = 'Brazil South'
 param appServicePlanId string = '/subscriptions/51242591-9d16-401e-91da-fd5b6083c135/resourceGroups/rg-pec-rodrigo/providers/Microsoft.Web/serverfarms/sp-rodrigo-pec'
 param storageAccountName string = toLower('st${uniqueString(resourceGroup().id, appName)}')
@@ -102,3 +102,4 @@ resource webAppScm 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2024-
 
 output storageAccountName string = storage.name
 output storageContainerName string = storageContainerName
+output webAppHost string = '${appName}.azurewebsites.net'
