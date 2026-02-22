@@ -132,7 +132,7 @@ export default function Welcome({ units = [], flash = {} }) {
                                         animationDelay: '0.12s',
                                     }}
                                 >
-                                    PÃO & CAFÉ.
+                                    PÃO & CAFÉ PREMIUM.
                                 </h1>
                                 <p
                                     className="reveal-up mt-4 text-base text-slate-600 sm:text-lg"
