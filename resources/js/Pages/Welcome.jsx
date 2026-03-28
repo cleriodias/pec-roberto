@@ -140,7 +140,7 @@ export default function Welcome({ units = [], flash = {} }) {
                                         animationDelay: '0.12s',
                                     }}
                                 >
-                                    {'P\u00c3O & CAF\u00c9.'}
+                                    {'P\u00c3O & CAF\u00c9 PREMIUM.'}
                                 </h1>
                                 <p
                                     className="reveal-up mt-4 text-base text-stone-300 sm:text-lg"
@@ -357,7 +357,7 @@ export default function Welcome({ units = [], flash = {} }) {
                     <footer className="border-t border-white/10 bg-black/20 backdrop-blur">
                         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-6 py-6 text-sm text-stone-400 sm:flex-row">
                             <p>
-                                @ {currentYear} {appName}. Pao & Cafe. Todos os direitos reservados.
+                                @ {currentYear} {appName}. Pao & Cafe PREMIUM. Todos os direitos reservados.
                             </p>
                             <p className="text-xs uppercase tracking-[0.2em] text-rose-300">
                                 Bem-vindo
