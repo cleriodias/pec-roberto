@@ -28,7 +28,7 @@ class BoletoController extends Controller
         $boletos = null;
 
         if ($this->isMaster($user)) {
-            $boletos = Boleto::with(['user:id,name', 'unit:tb2_id,tb2_nome'])
+            $boletos = Boleto::with(['user:id,name', 'paidBy:id,name', 'unit:tb2_id,tb2_nome'])
                 ->forUnit($activeUnitId)
                 ->withPaidStatus($filters['paid'])
                 ->when($filters['start_date'], function ($query) use ($filters) {

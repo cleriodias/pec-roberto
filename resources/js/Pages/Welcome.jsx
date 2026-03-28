@@ -123,7 +123,7 @@ export default function Welcome({ units = [], flash = {} }) {
                                     className="reveal-up inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700 shadow-sm"
                                     style={{ animationDelay: '0.05s' }}
                                 >
-                                    .:PADARIA:.
+                                    PADARIA
                                 </span>
                                 <h1
                                     className="reveal-up mt-5 text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl"
@@ -132,7 +132,7 @@ export default function Welcome({ units = [], flash = {} }) {
                                         animationDelay: '0.12s',
                                     }}
                                 >
-                                    PÃO & CAFÉ PREMIUM.
+                                    PÃO & CAFÉ.
                                 </h1>
                                 <p
                                     className="reveal-up mt-4 text-base text-slate-600 sm:text-lg"

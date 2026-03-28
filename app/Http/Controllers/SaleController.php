@@ -122,6 +122,7 @@ class SaleController extends Controller
             'items' => ['array'],
             'items.*.product_id' => ['required_with:items', 'integer', 'exists:tb1_produto,tb1_id'],
             'items.*.quantity' => ['required_with:items', 'integer', 'min:1', 'max:1000'],
+            'items.*.barcode' => ['nullable', 'string', 'max:64'],
             'tipo_pago' => [
                 'required',
                 'string',
@@ -187,7 +188,33 @@ class SaleController extends Controller
         foreach (($validated['items'] ?? []) as $item) {
             $productId = (int) $item['product_id'];
             $quantity = (int) $item['quantity'];
-            $groupedItems[$productId] = ($groupedItems[$productId] ?? 0) + $quantity;
+            $barcode = trim((string) ($item['barcode'] ?? ''));
+            $weightedBarcode = $barcode !== '' ? $this->parseWeightedBarcode($barcode) : null;
+
+            if ($barcode !== '' && $weightedBarcode === null) {
+                throw ValidationException::withMessages([
+                    'items' => 'Codigo de barras da balanca invalido.',
+                ]);
+            }
+
+            if ($weightedBarcode !== null && $weightedBarcode['product_id'] !== $productId) {
+                throw ValidationException::withMessages([
+                    'items' => 'O codigo de barras da balanca nao corresponde ao produto informado.',
+                ]);
+            }
+
+            $unitPrice = $weightedBarcode['unit_price'] ?? null;
+            $itemKey = $this->buildSaleItemKey($productId, $unitPrice);
+
+            if (! isset($groupedItems[$itemKey])) {
+                $groupedItems[$itemKey] = [
+                    'product_id' => $productId,
+                    'quantity' => 0,
+                    'unit_price' => $unitPrice,
+                ];
+            }
+
+            $groupedItems[$itemKey]['quantity'] += $quantity;
         }
 
         $dateTime = Carbon::now();
@@ -225,7 +252,10 @@ class SaleController extends Controller
             }
 
             $comandaPayload = $comandaItems
-                ->groupBy('tb1_id')
+                ->groupBy(fn ($item) => $this->buildSaleItemKey(
+                    (int) $item->tb1_id,
+                    (float) $item->valor_unitario,
+                ))
                 ->map(function ($group) {
                     $first = $group->first();
                     $quantity = $group->sum('quantidade');
@@ -238,20 +268,23 @@ class SaleController extends Controller
                         'quantity' => $quantity,
                         'subtotal' => $quantity * $unitPrice,
                     ];
-                })
-                ->keyBy('product_id');
+                });
 
             $finalItemsMap = $comandaPayload->map(fn ($item) => $item)->all();
 
             if (! empty($groupedItems)) {
                 $products = Produto::query()
-                    ->whereIn('tb1_id', array_keys($groupedItems))
+                    ->whereIn('tb1_id', array_values(array_unique(array_map(
+                        fn (array $item) => $item['product_id'],
+                        $groupedItems
+                    ))))
                     ->get(['tb1_id', 'tb1_nome', 'tb1_vlr_venda', 'tb1_vr_credit'])
                     ->keyBy('tb1_id');
 
-                foreach ($groupedItems as $productId => $requestedQuantity) {
-                    $requestedQuantity = (int) $requestedQuantity;
-                    $existingItem = $comandaPayload->get($productId);
+                foreach ($groupedItems as $itemKey => $requestedItem) {
+                    $productId = (int) $requestedItem['product_id'];
+                    $requestedQuantity = (int) $requestedItem['quantity'];
+                    $existingItem = $comandaPayload->get($itemKey);
                     $existingQuantity = $existingItem ? (int) $existingItem['quantity'] : 0;
 
                     if ($requestedQuantity < $existingQuantity) {
@@ -272,8 +305,8 @@ class SaleController extends Controller
                                 'subtotal' => round($unitPrice * $extraQuantity, 2),
                             ];
 
-                            $finalItemsMap[$productId]['quantity'] = $requestedQuantity;
-                            $finalItemsMap[$productId]['subtotal'] = round($unitPrice * $requestedQuantity, 2);
+                            $finalItemsMap[$itemKey]['quantity'] = $requestedQuantity;
+                            $finalItemsMap[$itemKey]['subtotal'] = round($unitPrice * $requestedQuantity, 2);
                         }
                     } else {
                         $product = $products->get($productId);
@@ -282,9 +315,11 @@ class SaleController extends Controller
                             continue;
                         }
 
-                        $unitPrice = (float) $product->tb1_vlr_venda;
+                        $unitPrice = $requestedItem['unit_price'] !== null
+                            ? (float) $requestedItem['unit_price']
+                            : (float) $product->tb1_vlr_venda;
                         $total = round($unitPrice * $requestedQuantity, 2);
-                        $finalItemsMap[$productId] = [
+                        $finalItemsMap[$itemKey] = [
                             'product_id' => $product->tb1_id,
                             'product_name' => $product->tb1_nome,
                             'unit_price' => $unitPrice,
@@ -325,7 +360,9 @@ class SaleController extends Controller
                 ]);
             }
 
-            foreach ($groupedItems as $productId => $quantity) {
+            foreach ($groupedItems as $groupedItem) {
+                $productId = (int) $groupedItem['product_id'];
+                $quantity = (int) $groupedItem['quantity'];
                 $product = Produto::select('tb1_id', 'tb1_nome', 'tb1_vlr_venda', 'tb1_vr_credit')->findOrFail($productId);
 
                 if ($requiresVrEligible && ! $product->tb1_vr_credit) {
@@ -333,7 +370,9 @@ class SaleController extends Controller
                         'items' => sprintf('O produto %s nAo estA? liberado para VR CrA(c)dito.', $product->tb1_nome),
                     ]);
                 }
-                $unitPrice = (float) $product->tb1_vlr_venda;
+                $unitPrice = $groupedItem['unit_price'] !== null
+                    ? (float) $groupedItem['unit_price']
+                    : (float) $product->tb1_vlr_venda;
                 $total = round($unitPrice * $quantity, 2);
 
                 $itemsPayload[] = [
@@ -663,14 +702,20 @@ class SaleController extends Controller
             : collect();
 
         return $items
-            ->groupBy('tb1_id')
+            ->groupBy(fn ($item) => $this->buildSaleItemKey(
+                (int) $item->tb1_id,
+                (float) $item->valor_unitario,
+            ))
             ->map(function ($group) use ($lancUsers) {
                 $first = $group->first();
                 $quantity = $group->sum('quantidade');
                 $price = (float) $first->valor_unitario;
+                $lineId = $this->buildSaleItemKey((int) $first->tb1_id, $price);
 
                 return [
+                    'line_id' => $lineId,
                     'id' => $first->tb1_id,
+                    'product_id' => $first->tb1_id,
                     'name' => $first->produto_nome,
                     'price' => $price,
                     'quantity' => $quantity,
@@ -680,5 +725,39 @@ class SaleController extends Controller
             })
             ->values()
             ->all();
+    }
+
+    private function buildSaleItemKey(int $productId, ?float $unitPrice = null): string
+    {
+        $normalizedPrice = number_format((float) ($unitPrice ?? 0), 2, '.', '');
+
+        return sprintf('product-%d-price-%s', $productId, $normalizedPrice);
+    }
+
+    private function parseWeightedBarcode(?string $barcode): ?array
+    {
+        $barcode = trim((string) $barcode);
+
+        if (
+            $barcode === '' ||
+            ! preg_match('/^\d{13}$/', $barcode) ||
+            substr($barcode, 0, 1) !== '2'
+        ) {
+            return null;
+        }
+
+        $productId = (int) substr($barcode, 1, 4);
+        $encodedValue = (int) substr($barcode, 7, 5);
+        $unitPrice = round($encodedValue / 100, 2);
+
+        if ($productId <= 0) {
+            return null;
+        }
+
+        return [
+            'barcode' => $barcode,
+            'product_id' => $productId,
+            'unit_price' => $unitPrice,
+        ];
     }
 }

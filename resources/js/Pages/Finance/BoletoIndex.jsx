@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import AlertMessage from '@/Components/Alert/AlertMessage';
+import Modal from '@/Components/Modal';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 
 const formatCurrency = (value) =>
@@ -18,6 +20,16 @@ const formatDate = (value) => {
     return date.toLocaleDateString('pt-BR');
 };
 
+const formatDateTime = (value) => {
+    const date = value ? new Date(value) : null;
+
+    if (!date || Number.isNaN(date.getTime())) {
+        return '--/--/---- --:--';
+    }
+
+    return date.toLocaleString('pt-BR');
+};
+
 export default function BoletoIndex({ activeUnit = null, filters = {}, boletos = null, canManageList }) {
     const { flash } = usePage().props;
     const today = new Date().toISOString().slice(0, 10);
@@ -34,6 +46,9 @@ export default function BoletoIndex({ activeUnit = null, filters = {}, boletos =
         end_date: filters.end_date ?? '',
         paid: filters.paid ?? 'all',
     });
+
+    const [selectedBoleto, setSelectedBoleto] = useState(null);
+    const [showDetails, setShowDetails] = useState(false);
 
     const handleSubmit = (event) => {
         event.preventDefault();
@@ -73,6 +88,16 @@ export default function BoletoIndex({ activeUnit = null, filters = {}, boletos =
             </p>
         </div>
     );
+
+    const openDetails = (boleto) => {
+        setSelectedBoleto(boleto);
+        setShowDetails(true);
+    };
+
+    const closeDetails = () => {
+        setShowDetails(false);
+        setSelectedBoleto(null);
+    };
 
     return (
         <AuthenticatedLayout header={headerContent}>
@@ -281,6 +306,14 @@ export default function BoletoIndex({ activeUnit = null, filters = {}, boletos =
                                                         {boleto.unit?.tb2_nome ?? '--'}
                                                     </td>
                                                     <td className="px-3 py-2 text-center">
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => openDetails(boleto)}
+                                                                className="rounded-lg border border-sky-300 px-3 py-1 text-xs font-semibold text-sky-700 transition hover:bg-sky-50 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-sky-500/60 dark:text-sky-200 dark:hover:bg-sky-900/30"
+                                                            >
+                                                                Detalhes
+                                                            </button>
                                                         {!boleto.is_paid && (
                                                             <button
                                                                 type="button"
@@ -290,6 +323,7 @@ export default function BoletoIndex({ activeUnit = null, filters = {}, boletos =
                                                                 Dar baixa
                                                             </button>
                                                         )}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -338,6 +372,115 @@ export default function BoletoIndex({ activeUnit = null, filters = {}, boletos =
                     )}
                 </div>
             </div>
+
+            {selectedBoleto && (
+                <Modal show={showDetails} onClose={closeDetails} maxWidth="xl" tone="light">
+                    <div className="bg-white p-6 text-gray-900 dark:bg-gray-900 dark:text-gray-50">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <p className="text-xs uppercase tracking-wide text-indigo-600 dark:text-indigo-300">
+                                    Boleto
+                                </p>
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-50">
+                                    {selectedBoleto.description}
+                                </h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-300">
+                                    #{selectedBoleto.id}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeDetails}
+                                className="rounded-full border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                            >
+                                Fechar
+                            </button>
+                        </div>
+
+                        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/60">
+                                <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                                    Valor
+                                </p>
+                                <p className="text-lg font-bold text-gray-900 dark:text-gray-50">
+                                    {formatCurrency(selectedBoleto.amount)}
+                                </p>
+                            </div>
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/60">
+                                <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                                    Vencimento
+                                </p>
+                                <p className="text-lg font-semibold text-gray-900 dark:text-gray-50">
+                                    {formatDate(selectedBoleto.due_date)}
+                                </p>
+                            </div>
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/60">
+                                <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                                    Status
+                                </p>
+                                <p className={`text-sm font-semibold ${selectedBoleto.is_paid ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                                    {selectedBoleto.is_paid ? 'Pago' : 'Pendente'}
+                                </p>
+                            </div>
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/60">
+                                <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                                    Unidade
+                                </p>
+                                <p className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+                                    {selectedBoleto.unit?.tb2_nome ?? '--'}
+                                </p>
+                            </div>
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/60">
+                                <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                                    Criado por
+                                </p>
+                                <p className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+                                    {selectedBoleto.user?.name ?? '--'}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {formatDateTime(selectedBoleto.created_at)}
+                                </p>
+                            </div>
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/60">
+                                <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                                    Pagamento
+                                </p>
+                                {selectedBoleto.is_paid ? (
+                                    <>
+                                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+                                            {(selectedBoleto.paid_by && typeof selectedBoleto.paid_by === 'object' ? selectedBoleto.paid_by?.name : null) ?? 'N/I'}
+                                        </p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                                            {formatDateTime(selectedBoleto.paid_at)}
+                                        </p>
+                                    </>
+                                ) : (
+                                    <p className="text-sm text-gray-600 dark:text-gray-300">Nao pago</p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                            <div className="rounded-xl border border-dashed border-gray-200 bg-white/60 p-4 dark:border-gray-800 dark:bg-gray-800/40">
+                                <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                                    Codigo de barras
+                                </p>
+                                <p className="mt-2 select-all break-all text-sm text-gray-900 dark:text-gray-100">
+                                    {selectedBoleto.barcode}
+                                </p>
+                            </div>
+                            <div className="rounded-xl border border-dashed border-gray-200 bg-white/60 p-4 dark:border-gray-800 dark:bg-gray-800/40">
+                                <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                                    Linha digitavel
+                                </p>
+                                <p className="mt-2 select-all break-all text-sm text-gray-900 dark:text-gray-100">
+                                    {selectedBoleto.digitable_line}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </AuthenticatedLayout>
     );
 }

@@ -34,32 +34,6 @@ export default function Terminal() {
     const comandaRef = useRef(null);
     const searchRef = useRef(null);
 
-    const getJsonHeaders = (includeBody = false) => ({
-        Accept: 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-        ...(includeBody ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken } : {}),
-    });
-
-    const getResponseErrorMessage = async (response, fallbackMessage) => {
-        const contentType = response.headers.get('content-type') ?? '';
-
-        if (contentType.includes('application/json')) {
-            const data = await response.json().catch(() => ({}));
-            const firstValidationError = Object.values(data?.errors ?? {})?.flat?.()[0];
-
-            return data?.message ?? firstValidationError ?? fallbackMessage;
-        }
-
-        const text = await response.text().catch(() => '');
-        const normalized = text.trim();
-
-        if (normalized && !normalized.startsWith('<')) {
-            return normalized;
-        }
-
-        return fallbackMessage;
-    };
-
     useEffect(() => {
         if (step === 1 && accessRef.current) {
             accessRef.current.focus();
@@ -86,12 +60,16 @@ export default function Terminal() {
         try {
             const response = await fetch(route('lanchonete.terminal.access'), {
                 method: 'POST',
-                headers: getJsonHeaders(true),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken,
+                },
                 body: JSON.stringify({ cod_acesso: accessCode.trim() }),
             });
 
             if (!response.ok) {
-                setAccessError(await getResponseErrorMessage(response, 'Codigo invalido.'));
+                const data = await response.json().catch(() => ({}));
+                setAccessError(data?.message ?? 'Codigo invalido.');
                 setAccessUser(null);
                 return;
             }
@@ -119,12 +97,11 @@ export default function Terminal() {
         }
         setComandaError('');
         setComandaLoading(true);
-        fetch(route('sales.comandas.items', { codigo }), {
-            headers: getJsonHeaders(),
-        })
+        fetch(route('sales.comandas.items', { codigo }))
             .then(async (resp) => {
                 if (!resp.ok) {
-                    setComandaError(await getResponseErrorMessage(resp, 'Falha ao carregar comanda.'));
+                    const data = await resp.json().catch(() => ({}));
+                    setComandaError(data?.message ?? 'Falha ao carregar comanda.');
                     setComandaItems([]);
                     return;
                 }
@@ -157,9 +134,7 @@ export default function Terminal() {
 
     const syncComandaItems = async (codigo) => {
         try {
-            const resp = await fetch(route('sales.comandas.items', { codigo }), {
-                headers: getJsonHeaders(),
-            });
+            const resp = await fetch(route('sales.comandas.items', { codigo }));
             if (!resp.ok) throw new Error();
             const data = await resp.json();
             setComandaItems(data?.items ?? []);
@@ -179,7 +154,10 @@ export default function Terminal() {
         try {
             const resp = await fetch(route('sales.comandas.add-item', { codigo: comanda }), {
                 method: 'POST',
-                headers: getJsonHeaders(true),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken,
+                },
                 body: JSON.stringify({
                     product_id: id,
                     quantity: 1,
@@ -188,7 +166,8 @@ export default function Terminal() {
             });
 
             if (!resp.ok) {
-                setSearchError(await getResponseErrorMessage(resp, 'Falha ao adicionar item.'));
+                const data = await resp.json().catch(() => ({}));
+                setSearchError(data?.message ?? 'Falha ao adicionar item.');
                 return;
             }
 
@@ -208,7 +187,7 @@ export default function Terminal() {
         setSearchLoading(true);
         setSearchError('');
         fetch(route('products.search', { q: term }), {
-            headers: getJsonHeaders(),
+            headers: { Accept: 'application/json' },
         })
             .then((resp) => {
                 if (!resp.ok) throw new Error();
@@ -246,7 +225,7 @@ export default function Terminal() {
         searchDebounce.current = setTimeout(() => {
             setSearchLoading(true);
             fetch(route('products.search', { q: term }), {
-                headers: getJsonHeaders(),
+                headers: { Accept: 'application/json' },
             })
                 .then((resp) => {
                     if (!resp.ok) throw new Error();
@@ -276,12 +255,16 @@ export default function Terminal() {
                 route('sales.comandas.update-item', { codigo: comanda, productId: id }),
                 {
                     method: 'PUT',
-                    headers: getJsonHeaders(true),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken,
+                    },
                     body: JSON.stringify({ quantity, access_user_id: accessUser?.id ?? auth?.user?.id }),
                 },
             );
             if (!resp.ok) {
-                setSearchError(await getResponseErrorMessage(resp, 'Falha ao atualizar item.'));
+                const data = await resp.json().catch(() => ({}));
+                setSearchError(data?.message ?? 'Falha ao atualizar item.');
                 return;
             }
             const data = await resp.json();
