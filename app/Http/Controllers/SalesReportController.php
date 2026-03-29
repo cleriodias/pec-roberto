@@ -28,6 +28,21 @@ class SalesReportController extends Controller
         'faturar' => ['label' => 'Faturar', 'color' => '#0f172a'],
     ];
 
+    private const UNIT_CHART_COLORS = [
+        '#2563eb',
+        '#16a34a',
+        '#f97316',
+        '#7c3aed',
+        '#dc2626',
+        '#0891b2',
+        '#ca8a04',
+        '#db2777',
+        '#4f46e5',
+        '#0f766e',
+        '#9333ea',
+        '#ea580c',
+    ];
+
     public function index(Request $request): Response
     {
         $this->ensureManager($request);
@@ -1177,100 +1192,42 @@ class SalesReportController extends Controller
         $user = $request->user();
         $availableUnits = $this->availableUnits($user);
 
-        $requestedUnitId = $request->query('unit_id');
-        $filterUnitId = $requestedUnitId !== null && $requestedUnitId !== ''
-            ? (int) $requestedUnitId
-            : null;
+        $defaultStart = Carbon::today()->startOfMonth();
+        $defaultEnd = Carbon::today()->endOfDay();
+        $start = $this->parseFlexibleReportDate($request->query('start_date'), $defaultStart)->startOfDay();
+        $end = $this->parseFlexibleReportDate($request->query('end_date'), $defaultEnd)->endOfDay();
 
-        if ($filterUnitId && !$availableUnits->contains(fn ($unit) => $unit['id'] === $filterUnitId)) {
-            $filterUnitId = null;
+        if ($end->lt($start)) {
+            $end = $start->copy()->endOfDay();
         }
 
-        $monthParam = $request->query('month');
-        $yearParam = $request->query('year');
-        $referenceMonth = Carbon::now()->startOfMonth();
-
-        if ($monthParam) {
-            $referenceMonth = $this->parseDate($monthParam, 'Y-m', $referenceMonth);
-        } elseif ($yearParam && is_numeric($yearParam)) {
-            $referenceMonth = $referenceMonth->copy()->year((int) $yearParam);
-        }
-
-        $start = $referenceMonth->copy()->startOfMonth();
-        $end = $referenceMonth->copy()->endOfMonth();
-
-        $payments = $this->fetchPayments($start, $end, $filterUnitId);
-        $totalSales = (float) $payments->sum('valor_total');
-        $globalValeTotals = $this->valeBreakdown($start, $end, null);
-        $globalStandardVale = $globalValeTotals['vale'];
-        $globalMealVale = $globalValeTotals['refeicao'];
-
-        $valeTotals = $this->valeBreakdown($start, $end, $filterUnitId);
-        $standardVale = $valeTotals['vale'];
-        $mealVale = $valeTotals['refeicao'];
-        $supplierExpensesQuery = Expense::whereBetween('expense_date', [$start->toDateString(), $end->toDateString()]);
-        if ($filterUnitId !== null) {
-            $supplierExpensesQuery->where('unit_id', $filterUnitId);
-        } else {
-            $supplierExpensesQuery->whereNotNull('unit_id');
-        }
-        $supplierExpenses = (float) $supplierExpensesQuery->sum('amount');
-        $netSales = max(0, $totalSales - $standardVale - $mealVale - $supplierExpenses);
-
-        $totalPayrollGlobal = (float) User::sum('salario');
-        $totalAdvancesGlobal = (float) SalaryAdvance::whereBetween('advance_date', [$start->toDateString(), $end->toDateString()])
-            ->sum('amount');
-        $netPayrollGlobal = max(0, $totalPayrollGlobal - $globalStandardVale - $globalMealVale - $totalAdvancesGlobal);
-
-        $selectedUnit = $filterUnitId
-            ? $availableUnits->firstWhere('id', $filterUnitId)
-            : [
-                'id' => null,
-                'name' => 'Todas as unidades',
-            ];
-
-        $selectedYear = $start->year;
-        $currentYear = Carbon::now()->year;
-        $yearOptions = collect([$currentYear - 1, $currentYear])
-            ->map(fn (int $year) => [
-                'value' => (string) $year,
-                'label' => (string) $year,
-            ])
-            ->values();
-
-        $monthOptions = collect(range(1, 12))
-            ->map(function (int $month) use ($selectedYear) {
-                $carbon = Carbon::createFromDate($selectedYear, $month, 1);
-
-                return [
-                    'value' => $carbon->format('Y-m'),
-                    'label' => mb_strtoupper($carbon->translatedFormat('M')),
-                ];
-            })
-            ->values();
+        $paymentType = $this->normalizeControlPaymentType($request->query('payment_type'));
+        $stores = $this->buildControlStoreTotals($start, $end, $availableUnits, $paymentType);
+        $grandTotal = round((float) $stores->sum('total'), 2);
+        $storesWithSales = $stores->filter(fn (array $store) => $store['total'] > 0)->count();
+        $topStore = $stores->first(fn (array $store) => $store['total'] > 0);
+        $averagePerStore = $storesWithSales > 0 ? round($grandTotal / $storesWithSales, 2) : 0.0;
 
         return Inertia::render('Reports/ControlPanel', [
-            'unit' => $selectedUnit,
-            'filterUnits' => $availableUnits->values(),
-            'selectedUnitId' => $filterUnitId,
-            'selectedYear' => (string) $selectedYear,
-            'selectedMonth' => $start->format('Y-m'),
-            'monthOptions' => $monthOptions,
-            'yearOptions' => $yearOptions,
             'period' => [
-                'start' => $start->toDateString(),
-                'end' => $end->toDateString(),
+                'start' => $start->format('d/m/y'),
+                'end' => $end->format('d/m/y'),
                 'label' => $start->translatedFormat('d/m/Y') . ' - ' . $end->translatedFormat('d/m/Y'),
             ],
-            'metrics' => [
-                'total_sales' => round($totalSales, 2),
-                'total_vale' => round($standardVale, 2),
-                'total_refeicao' => round($mealVale, 2),
-                'supplier_expenses' => round($supplierExpenses, 2),
-                'net_sales' => round($netSales, 2),
-                'total_advances' => round($totalAdvancesGlobal, 2),
-                'total_payroll' => round($totalPayrollGlobal, 2),
-                'net_payroll' => round($netPayrollGlobal, 2),
+            'paymentType' => $paymentType,
+            'paymentOptions' => [
+                ['value' => 'all', 'label' => 'Tudo (Dinheiro e Cartao)'],
+                ['value' => 'dinheiro', 'label' => 'Dinheiro'],
+                ['value' => 'cartao', 'label' => 'Cartao'],
+                ['value' => 'vale', 'label' => 'Vale'],
+                ['value' => 'refeicao', 'label' => 'Refeicao'],
+            ],
+            'stores' => $stores,
+            'summary' => [
+                'grand_total' => $grandTotal,
+                'stores_with_sales' => $storesWithSales,
+                'average_per_store' => $averagePerStore,
+                'top_store' => $topStore,
             ],
         ]);
     }
@@ -1530,6 +1487,124 @@ class SalesReportController extends Controller
         $amount = max((float) $payment->valor_total, 0);
 
         return $amount > 0 ? [$type => $amount] : [];
+    }
+
+    private function parseFlexibleReportDate(?string $value, Carbon $fallback): Carbon
+    {
+        if (!$value) {
+            return $fallback->copy();
+        }
+
+        foreach (['d/m/y', 'd/m/Y', 'Y-m-d'] as $format) {
+            try {
+                return Carbon::createFromFormat($format, $value);
+            } catch (InvalidFormatException $exception) {
+                continue;
+            }
+        }
+
+        return $fallback->copy();
+    }
+
+    private function normalizeControlPaymentType(?string $value): string
+    {
+        $allowed = ['all', 'dinheiro', 'cartao', 'vale', 'refeicao'];
+
+        return in_array($value, $allowed, true) ? $value : 'all';
+    }
+
+    private function buildControlStoreTotals(
+        Carbon $start,
+        Carbon $end,
+        Collection $availableUnits,
+        string $paymentType,
+    ): Collection {
+        $unitIds = $availableUnits->pluck('id')->filter()->values();
+
+        if ($unitIds->isEmpty()) {
+            return collect();
+        }
+
+        $totalsByUnit = $unitIds->mapWithKeys(fn (int $unitId) => [$unitId => 0.0])->all();
+
+        if (in_array($paymentType, ['vale', 'refeicao'], true)) {
+            $rows = Venda::query()
+                ->where('tipo_pago', $paymentType)
+                ->whereBetween('data_hora', [$start, $end])
+                ->whereIn('id_unidade', $unitIds)
+                ->selectRaw('id_unidade, SUM(valor_total) as total')
+                ->groupBy('id_unidade')
+                ->get();
+
+            foreach ($rows as $row) {
+                $unitId = (int) $row->id_unidade;
+                $totalsByUnit[$unitId] = round((float) $row->total, 2);
+            }
+        } else {
+            $payments = VendaPagamento::query()
+                ->whereBetween('created_at', [$start, $end])
+                ->whereHas('vendas', function ($query) use ($unitIds) {
+                    $query->whereIn('id_unidade', $unitIds);
+                })
+                ->with(['vendas' => function ($query) use ($unitIds) {
+                    $query->select('tb3_id', 'tb4_id', 'id_unidade')
+                        ->whereIn('id_unidade', $unitIds)
+                        ->orderBy('tb3_id');
+                }])
+                ->get([
+                    'tb4_id',
+                    'valor_total',
+                    'tipo_pagamento',
+                    'valor_pago',
+                    'troco',
+                    'dois_pgto',
+                    'created_at',
+                ]);
+
+            foreach ($payments as $payment) {
+                $unitId = (int) optional($payment->vendas->first())->id_unidade;
+
+                if ($unitId <= 0 || !array_key_exists($unitId, $totalsByUnit)) {
+                    continue;
+                }
+
+                $breakdown = $this->breakdownPayment($payment);
+                $amount = match ($paymentType) {
+                    'dinheiro' => (float) ($breakdown['dinheiro'] ?? 0),
+                    'cartao' => (float) ($breakdown['maquina'] ?? 0),
+                    default => (float) ($breakdown['dinheiro'] ?? 0) + (float) ($breakdown['maquina'] ?? 0),
+                };
+
+                $totalsByUnit[$unitId] += $amount;
+            }
+        }
+
+        $rows = $availableUnits
+            ->map(function (array $unit) use ($totalsByUnit) {
+                $unitId = (int) $unit['id'];
+
+                return [
+                    'id' => $unitId,
+                    'name' => $unit['name'],
+                    'total' => round((float) ($totalsByUnit[$unitId] ?? 0), 2),
+                ];
+            })
+            ->sortByDesc('total')
+            ->values();
+
+        $grandTotal = (float) $rows->sum('total');
+
+        return $rows
+            ->values()
+            ->map(function (array $row, int $index) use ($grandTotal) {
+                $row['color'] = self::UNIT_CHART_COLORS[$index % count(self::UNIT_CHART_COLORS)];
+                $row['percentage'] = $grandTotal > 0
+                    ? round(((float) $row['total'] / $grandTotal) * 100, 2)
+                    : 0.0;
+
+                return $row;
+            })
+            ->values();
     }
 
     private function resolveDateRange(Request $request): array
