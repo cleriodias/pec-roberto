@@ -22,15 +22,18 @@ use App\Http\Controllers\UnitSwitchController;
 use App\Http\Controllers\UserController;
 use App\Models\Unidade;
 use Illuminate\Foundation\Application;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', function () {
+Route::get('/', function (Request $request) {
+    $requestedUnitId = (int) $request->query('l', 0);
     return Inertia::render('Welcome', [
         'canLogin' => Route::has('login'),
         'canRegister' => Route::has('register'),
         'laravelVersion' => Application::VERSION,
         'phpVersion' => PHP_VERSION,
+        'selectedUnitId' => $requestedUnitId > 0 ? $requestedUnitId : null,
         'units' => Unidade::orderBy('tb2_nome')->get([
             'tb2_id',
             'tb2_nome',
@@ -44,7 +47,6 @@ Route::get('/', function () {
 
 Route::post('/newsletter', [NewsletterSubscriptionController::class, 'store'])
     ->name('newsletter.store');
-
 
 Route::get('/dashboard', function () {
     return Inertia::render('Dashboard');
@@ -163,6 +165,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/reports/fornecedores', [SalesReportController::class, 'fornecedores'])->name('reports.fornecedores');
     Route::get('/reports/gastos', [SalesReportController::class, 'gastos'])->name('reports.gastos');
     Route::get('/reports/descarte', [SalesReportController::class, 'descarte'])->name('reports.descarte');
+    Route::get('/reports/hoje', [SalesReportController::class, 'hoje'])->name('reports.hoje');
     Route::get('/reports/cash-closure', [SalesReportController::class, 'cashClosure'])->name('reports.cash.closure');
     Route::get('/reports/cash-discrepancies', [SalesReportController::class, 'cashDiscrepancies'])->name('reports.cash.discrepancies');
     Route::get('/reports/control', [SalesReportController::class, 'control'])->name('reports.control');

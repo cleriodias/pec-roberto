@@ -34,6 +34,7 @@ const DEFAULT_MENU_KEYS = [
     'supplier_disputes',
     'reports_gastos',
     'reports_descarte',
+    'reports_hoje',
     'discard',
     'switch_unit',
     'switch_role',
@@ -72,6 +73,8 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
     const canSwitchRole = user && isMasterOriginal;
     const hasLanchoneteRoute =
         typeof route === 'function' && route().has && route().has('lanchonete.terminal');
+    const hasHojeRoute =
+        typeof route === 'function' && route().has && route().has('reports.hoje');
 
     const [showingNavigationDropdown, setShowingNavigationDropdown] =
         useState(false);
@@ -158,7 +161,11 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
         items
             .map((item, idx) => ({
                 ...item,
-                order: orderMap[item.key] ?? 1000 + idx,
+                order:
+                    orderMap[item.key] ??
+                    (item.key === 'reports_hoje' && orderMap.discard !== undefined
+                        ? orderMap.discard - 0.5
+                        : 1000 + idx),
             }))
             .sort((a, b) => a.order - b.order);
 
@@ -307,6 +314,15 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                 node: (
                     <Dropdown.Link href={route('settings.config')}>
                         <MenuLabel icon="bi bi-gear" text="Farrammentas" />
+                    </Dropdown.Link>
+                ),
+            },
+            {
+                key: 'reports_hoje',
+                visible: isCashier && hasHojeRoute && hasMenuAccess('reports_hoje'),
+                node: (
+                    <Dropdown.Link href={route('reports.hoje')}>
+                        <MenuLabel icon="bi bi-receipt-cutoff" text="Hoje" />
                     </Dropdown.Link>
                 ),
             },

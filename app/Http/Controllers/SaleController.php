@@ -18,11 +18,7 @@ class SaleController extends Controller
 {
     public function openComandas(Request $request): JsonResponse
     {
-        $unit = $request->session()->get('active_unit');
-        $unitId = is_array($unit)
-            ? ($unit['id'] ?? $unit['tb2_id'] ?? null)
-            : (is_object($unit) ? ($unit->id ?? $unit->tb2_id ?? null) : null);
-        $unitId = $unitId ?? ($request->user()?->tb2_id);
+        $unitId = $this->resolveActiveUnitId($request);
 
         $baseQuery = Venda::query()
             ->whereNotNull('id_comanda')
@@ -77,9 +73,9 @@ class SaleController extends Controller
         ]);
     }
 
-    public function comandaItems(int $codigo): JsonResponse
+    public function comandaItems(Request $request, int $codigo): JsonResponse
     {
-        $items = $this->getComandaItems($codigo);
+        $items = $this->getComandaItems($codigo, $this->resolveActiveUnitId($request));
 
         return response()->json(['items' => $items]);
     }
@@ -95,10 +91,7 @@ class SaleController extends Controller
             ]);
         }
 
-        $unitId = is_array($unit)
-            ? ($unit['id'] ?? $unit['tb2_id'] ?? null)
-            : (is_object($unit) ? ($unit->id ?? $unit->tb2_id ?? null) : null);
-        $unitId = $unitId ?? ($user?->tb2_id);
+        $unitId = $this->resolveActiveUnitId($request);
         $unitName = is_array($unit)
             ? ($unit['name'] ?? $unit['tb2_nome'] ?? null)
             : (is_object($unit) ? ($unit->name ?? $unit->tb2_nome ?? null) : null);
@@ -237,6 +230,7 @@ class SaleController extends Controller
         if ($comandaCodigo) {
             $comandaItems = Venda::query()
                 ->where('id_comanda', $comandaCodigo)
+                ->where('id_unidade', $unitId)
                 ->where('status', 0)
                 ->get([
                     'tb1_id',
@@ -444,6 +438,7 @@ class SaleController extends Controller
         if ($comandaCodigo) {
             Venda::query()
                 ->where('id_comanda', $comandaCodigo)
+                ->where('id_unidade', $unitId)
                 ->where('status', 0)
                 ->update([
                     'tb4_id' => $payment->tb4_id,
@@ -521,12 +516,7 @@ class SaleController extends Controller
 
     public function addComandaItem(Request $request, int $codigo): JsonResponse
     {
-        $user = $request->user();
-        $unit = $request->session()->get('active_unit');
-        $unitId = is_array($unit)
-            ? ($unit['id'] ?? $unit['tb2_id'] ?? null)
-            : (is_object($unit) ? ($unit->id ?? $unit->tb2_id ?? null) : null);
-        $unitId = $unitId ?? ($user?->tb2_id);
+        $unitId = $this->resolveActiveUnitId($request);
 
         $validated = $request->validate([
             'product_id' => ['required', 'integer', 'exists:tb1_produto,tb1_id'],
@@ -546,6 +536,7 @@ class SaleController extends Controller
         // Upsert para manter um registro por produto/comanda em aberto.
         $existing = Venda::query()
             ->where('id_comanda', $codigo)
+            ->where('id_unidade', $unitId)
             ->where('tb1_id', $product->tb1_id)
             ->where('status', 0)
             ->first();
@@ -578,7 +569,7 @@ class SaleController extends Controller
             ]);
         }
 
-        $items = $this->getComandaItems($codigo);
+        $items = $this->getComandaItems($codigo, $unitId);
 
         return response()->json([
             'items' => $items,
@@ -587,6 +578,7 @@ class SaleController extends Controller
 
     public function updateComandaItem(Request $request, int $codigo, int $productId): JsonResponse
     {
+        $unitId = $this->resolveActiveUnitId($request);
         $validated = $request->validate([
             'quantity' => ['required', 'integer', 'min:0', 'max:1000'],
             'access_user_id' => ['nullable', 'integer', 'exists:users,id'],
@@ -594,6 +586,7 @@ class SaleController extends Controller
 
         $record = Venda::query()
             ->where('id_comanda', $codigo)
+            ->where('id_unidade', $unitId)
             ->where('tb1_id', $productId)
             ->where('status', 0)
             ->first();
@@ -614,7 +607,7 @@ class SaleController extends Controller
             ]);
         }
 
-        $items = $this->getComandaItems($codigo);
+        $items = $this->getComandaItems($codigo, $unitId);
 
         return response()->json(['items' => $items]);
     }
@@ -685,11 +678,14 @@ class SaleController extends Controller
         return $hasClosure ? null : $lastSaleDay;
     }
 
-    private function getComandaItems(int $codigo): array
+    private function getComandaItems(int $codigo, ?int $unitId = null): array
     {
         $items = Venda::query()
             ->where('id_comanda', $codigo)
             ->where('status', 0)
+            ->when($unitId, function ($query) use ($unitId) {
+                $query->where('id_unidade', $unitId);
+            })
             ->get(['tb1_id', 'produto_nome', 'valor_unitario', 'quantidade', 'id_lanc']);
 
         if ($items->isEmpty()) {
@@ -725,6 +721,18 @@ class SaleController extends Controller
             })
             ->values()
             ->all();
+    }
+
+    private function resolveActiveUnitId(Request $request): ?int
+    {
+        $unit = $request->session()->get('active_unit');
+        $unitId = is_array($unit)
+            ? ($unit['id'] ?? $unit['tb2_id'] ?? null)
+            : (is_object($unit) ? ($unit->id ?? $unit->tb2_id ?? null) : null);
+
+        $unitId = $unitId ?? ($request->user()?->tb2_id);
+
+        return $unitId ? (int) $unitId : null;
     }
 
     private function buildSaleItemKey(int $productId, ?float $unitPrice = null): string

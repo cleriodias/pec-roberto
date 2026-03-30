@@ -1605,6 +1605,17 @@ export default function Dashboard() {
                                                         </tr>
                                                     ))}
                                                 </tbody>
+                                                <tfoot className="border-t border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/30">
+                                                    <tr>
+                                                        <td className="px-3 py-3"></td>
+                                                        <td className="px-3 py-3 text-center text-base font-bold text-gray-800 dark:text-gray-100">
+                                                            {totalItems}
+                                                        </td>
+                                                        <td className="px-3 py-3"></td>
+                                                        <td className="px-3 py-3"></td>
+                                                        <td className="px-3 py-3"></td>
+                                                    </tr>
+                                                </tfoot>
                                             </table>
                                         </div>
                                     )}

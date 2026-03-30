@@ -20,12 +20,20 @@ class AuthenticatedSessionController extends Controller
     /**
      * Display the login view.
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
+        $requestedUnitId = (int) $request->query('l', 0);
+        $unitsQuery = Unidade::orderBy('tb2_nome');
+
+        if ($requestedUnitId > 0) {
+            $unitsQuery->where('tb2_id', $requestedUnitId);
+        }
+
         return Inertia::render('Auth/Login', [
             'canResetPassword' => Route::has('password.request'),
             'status' => session('status'),
-            'units' => Unidade::orderBy('tb2_nome')->get(['tb2_id', 'tb2_nome']),
+            'selectedUnitId' => $requestedUnitId > 0 ? $requestedUnitId : null,
+            'units' => $unitsQuery->get(['tb2_id', 'tb2_nome']),
         ]);
     }
 

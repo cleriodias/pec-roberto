@@ -447,6 +447,114 @@ class SalesReportController extends Controller
         ]);
     }
 
+    public function hoje(Request $request): Response
+    {
+        $this->ensureCashier($request);
+
+        $unitId = $this->resolveUnitId($request);
+        $unit = Unidade::find($unitId, ['tb2_id', 'tb2_nome', 'tb2_endereco', 'tb2_cnpj']);
+        $start = Carbon::today()->startOfDay();
+        $end = Carbon::today()->endOfDay();
+
+        $records = VendaPagamento::query()
+            ->with([
+                'vendas' => function ($query) use ($unitId) {
+                    $query
+                        ->with(['caixa:id,name', 'valeUser:id,name'])
+                        ->where('id_unidade', $unitId)
+                        ->orderBy('tb3_id')
+                        ->select([
+                            'tb3_id',
+                            'tb4_id',
+                            'tb1_id',
+                            'produto_nome',
+                            'valor_unitario',
+                            'quantidade',
+                            'valor_total',
+                            'data_hora',
+                            'id_comanda',
+                            'id_user_caixa',
+                            'id_user_vale',
+                            'tipo_pago',
+                            'id_unidade',
+                        ]);
+                },
+            ])
+            ->whereBetween('created_at', [$start, $end])
+            ->when($unitId > 0, function ($query) use ($unitId) {
+                $query->whereHas('vendas', function ($subQuery) use ($unitId) {
+                    $subQuery->where('id_unidade', $unitId);
+                });
+            })
+            ->orderByDesc('tb4_id')
+            ->get([
+                'tb4_id',
+                'valor_total',
+                'tipo_pagamento',
+                'valor_pago',
+                'troco',
+                'dois_pgto',
+                'created_at',
+            ])
+            ->map(function (VendaPagamento $payment) use ($unit) {
+                $sales = $payment->vendas->values();
+                $firstSale = $sales->first();
+                $saleDateTime = $firstSale?->data_hora ?? $payment->created_at;
+
+                return [
+                    'id' => $payment->tb4_id,
+                    'date' => $saleDateTime?->format('d/m/Y'),
+                    'time' => $saleDateTime?->format('H:i'),
+                    'total' => round((float) $payment->valor_total, 2),
+                    'receipt' => [
+                        'id' => $payment->tb4_id,
+                        'total' => round((float) $payment->valor_total, 2),
+                        'date_time' => $saleDateTime?->toIso8601String(),
+                        'tipo_pago' => $payment->tipo_pagamento,
+                        'cashier_name' => $firstSale?->caixa?->name ?? '---',
+                        'unit_name' => $unit?->tb2_nome ?? ('Unidade #' . $firstSale?->id_unidade),
+                        'unit_address' => $unit?->tb2_endereco,
+                        'unit_cnpj' => $unit?->tb2_cnpj,
+                        'vale_user_name' => $firstSale?->valeUser?->name,
+                        'vale_type' => in_array($payment->tipo_pagamento, ['vale', 'refeicao'], true)
+                            ? $payment->tipo_pagamento
+                            : null,
+                        'payment' => [
+                            'id' => $payment->tb4_id,
+                            'valor_total' => round((float) $payment->valor_total, 2),
+                            'valor_pago' => $payment->valor_pago !== null ? round((float) $payment->valor_pago, 2) : null,
+                            'troco' => $payment->troco !== null ? round((float) $payment->troco, 2) : null,
+                            'dois_pgto' => $payment->dois_pgto !== null ? round((float) $payment->dois_pgto, 2) : null,
+                            'tipo_pagamento' => $payment->tipo_pagamento,
+                        ],
+                        'items' => $sales
+                            ->map(function (Venda $sale) {
+                                return [
+                                    'id' => $sale->tb3_id,
+                                    'product_id' => $sale->tb1_id,
+                                    'product_name' => $sale->produto_nome,
+                                    'quantity' => (int) $sale->quantidade,
+                                    'unit_price' => round((float) $sale->valor_unitario, 2),
+                                    'subtotal' => round((float) $sale->valor_total, 2),
+                                    'comanda' => $sale->id_comanda,
+                                ];
+                            })
+                            ->values(),
+                    ],
+                ];
+            })
+            ->values();
+
+        return Inertia::render('Reports/Hoje', [
+            'records' => $records,
+            'reportDate' => $start->format('d/m/Y'),
+            'unit' => [
+                'id' => $unit?->tb2_id ?? $unitId,
+                'name' => $unit?->tb2_nome ?? '---',
+            ],
+        ]);
+    }
+
     public function today(Request $request): Response
     {
         $this->ensureManager($request);
@@ -1237,6 +1345,15 @@ class SalesReportController extends Controller
         $user = $request->user();
 
         if (!$user || !in_array((int) $user->funcao, [0, 1], true)) {
+            abort(403);
+        }
+    }
+
+    private function ensureCashier(Request $request): void
+    {
+        $user = $request->user();
+
+        if (! $user || (int) $user->funcao !== 3) {
             abort(403);
         }
     }

@@ -55,6 +55,7 @@ const SECTIONS = [
             { label: 'Disputa de Vendas', icon: 'bi-hammer', href: routeTo('settings.sales-disputes') },
             { label: 'Disputas Fornecedor', icon: 'bi-hammer', href: routeTo('supplier.disputes') },
             { label: 'Adiantamentos', icon: 'bi-wallet2', href: routeTo('salary-advances.index') },
+            { label: 'Hoje', icon: 'bi-receipt-cutoff', href: routeTo('reports.hoje') },
             { label: 'Descarte', icon: 'bi-recycle', href: routeTo('products.discard') },
             { label: 'Perfil', icon: 'bi-person-circle', href: routeTo('profile.edit') },
         ],
