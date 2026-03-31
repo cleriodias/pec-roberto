@@ -14,6 +14,7 @@ class Produto extends Model
     protected $primaryKey = 'tb1_id';
 
     protected $fillable = [
+        'tb1_id',
         'tb1_nome',
         'tb1_vlr_custo',
         'tb1_vlr_venda',
@@ -33,4 +34,3 @@ class Produto extends Model
         'tb1_vr_credit' => 'boolean',
     ];
 }
-

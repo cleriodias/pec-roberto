@@ -1,4 +1,5 @@
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
+import { getBrazilTodayInputValue } from "@/Utils/date";
 import { Head, router } from "@inertiajs/react";
 import { useMemo, useState } from "react";
 
@@ -13,7 +14,7 @@ export default function SalaryAdvanceCreate({ users, activeUnit = null }) {
         user_id: 0,
         user_name: "",
         amount: "",
-        advance_date: new Date().toISOString().substring(0, 10),
+        advance_date: getBrazilTodayInputValue(),
         reason: "",
     });
 

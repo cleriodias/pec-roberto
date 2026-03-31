@@ -101,7 +101,7 @@ class BoletoController extends Controller
 
         $boleto->update([
             'is_paid' => true,
-            'paid_at' => Carbon::now(),
+            'paid_at' => now(),
             'paid_by' => $user->id,
         ]);
 

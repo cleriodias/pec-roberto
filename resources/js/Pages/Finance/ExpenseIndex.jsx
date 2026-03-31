@@ -1,5 +1,6 @@
 import AlertMessage from '@/Components/Alert/AlertMessage';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { formatBrazilDate, getBrazilTodayInputValue } from '@/Utils/date';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 
 const formatCurrency = (value) =>
@@ -9,19 +10,17 @@ const formatCurrency = (value) =>
     });
 
 const formatDate = (value) => {
-    const date = value ? new Date(value) : null;
-
-    if (!date || Number.isNaN(date.getTime())) {
+    if (!value) {
         return '--/--/----';
     }
 
-    return date.toLocaleDateString('pt-BR');
+    return formatBrazilDate(value);
 };
 
 export default function ExpenseIndex({ suppliers = [], expenses = [], activeUnit = null }) {
     const { flash } = usePage().props;
     const defaultSupplier = suppliers.length ? String(suppliers[0].id) : '';
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getBrazilTodayInputValue();
     const hasActiveUnit = Boolean(activeUnit?.id);
     const { data, setData, post, processing, errors, reset } = useForm({
         supplier_id: defaultSupplier,

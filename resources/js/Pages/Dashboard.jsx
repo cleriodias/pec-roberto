@@ -1,5 +1,6 @@
 ﻿import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, usePage, router } from '@inertiajs/react';
+import { formatBrazilDate, formatBrazilDateTime } from '@/Utils/date';
 import axios from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -80,21 +81,14 @@ const formatCurrency = (value) => {
     });
 };
 
-const formatDateTime = (value) => {
-    const date = value ? new Date(value) : new Date();
-
-    return date.toLocaleString('pt-BR', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    });
-};
+const formatDateTime = (value) => formatBrazilDateTime(value ?? new Date());
 
 const formatDate = (value) => {
     if (!value) {
         return '--';
     }
 
-    return new Date(value).toLocaleDateString('pt-BR');
+    return formatBrazilDate(value);
 };
 
 const isBarcodeTerm = (value) => {
@@ -944,6 +938,7 @@ export default function Dashboard() {
                 product_id: item.productId,
                 quantity: item.quantity,
                 barcode: item.barcode ?? null,
+                unit_price: item.price,
             }));
         } else {
             payload.items = items.map((item) => ({

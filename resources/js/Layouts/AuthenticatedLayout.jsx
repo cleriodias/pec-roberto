@@ -37,7 +37,6 @@ const DEFAULT_MENU_KEYS = [
     'reports_hoje',
     'discard',
     'switch_unit',
-    'switch_role',
     'salary_advances',
     'expenses',
     'notices',
@@ -51,7 +50,6 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
     const activeUnitName = pageProps.auth.unit?.name ?? 'Dashboard';
     const effectiveRole = user ? Number(user.funcao) : null;
     const originalRole = user ? Number(user.funcao_original ?? user.funcao) : null;
-    const isMasterOriginal = originalRole === 0;
     const roleLabels = {
         0: 'MASTER',
         1: 'GERENTE',
@@ -64,13 +62,12 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
     const isCashier = user && effectiveRole === 3;
     const isLanchonete = user && effectiveRole === 4;
     const isMaster = user && effectiveRole === 0;
-    const canSeeUsers = user && ([0, 1].includes(effectiveRole) || isMasterOriginal);
+    const canSeeUsers = user && [0, 1].includes(effectiveRole);
     const canSeeUnits = canSeeUsers;
     const canSeeReports = canSeeUnits;
     const canSeeExpenses = user && (canSeeReports || effectiveRole === 3);
-    const canAccessBoletos = user && ([0, 3].includes(effectiveRole) || isMasterOriginal);
-    const canSwitchUnit = user && [0, 1].includes(originalRole);
-    const canSwitchRole = user && isMasterOriginal;
+    const canAccessBoletos = user && [0, 3].includes(effectiveRole);
+    const canSwitchUnit = user && [0, 1, 2, 3].includes(originalRole);
     const hasLanchoneteRoute =
         typeof route === 'function' && route().has && route().has('lanchonete.terminal');
     const hasHojeRoute =
@@ -133,9 +130,6 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
         const defaultAllow = new Set(DEFAULT_MENU_KEYS);
 
         return (key) => {
-            if (isMasterOriginal) {
-                return true;
-            }
             if (!menuAccessConfig || effectiveRole === null) {
                 return defaultAllow.has(key);
             }
@@ -233,7 +227,7 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
             },
             {
                 key: 'reports_control',
-                visible: canSeeReports && hasMenuAccess('reports_control'),
+                visible: user && [0, 1].includes(effectiveRole) && hasMenuAccess('reports_control'),
                 node: (
                     <NavLink
                         href={route('reports.control')}
@@ -310,7 +304,7 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
             },
             {
                 key: 'settings',
-                visible: isMasterOriginal && hasMenuAccess('settings'),
+                visible: isMaster && hasMenuAccess('settings'),
                 node: (
                     <Dropdown.Link href={route('settings.config')}>
                         <MenuLabel icon="bi bi-gear" text="Farrammentas" />
@@ -376,7 +370,7 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                                     className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-100 dark:border-gray-600 dark:text-gray-100"
                                 >
                                     <i className="bi bi-arrow-left-right" aria-hidden="true"></i>
-                                    Trocar unidade
+                                    Trocar
                                 </Link>
                             )}
                             <div className="relative ms-3">
@@ -498,7 +492,7 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                                         href={route('reports.switch-unit')}
                                         active={route().current('reports.switch-unit')}
                                     >
-                                        Trocar unidade
+                                        Trocar
                                     </ResponsiveNavLink>
                                 )}
                                 <ResponsiveNavLink

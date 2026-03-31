@@ -8,6 +8,7 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
     const defaultStatus = statusOptions[0]?.value ?? 1;
 
     const { data, setData, post, processing, errors } = useForm({
+        tb1_id: "",
         tb1_nome: "",
         tb1_vlr_custo: "",
         tb1_vlr_venda: "",
@@ -16,6 +17,8 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
         tb1_status: defaultStatus,
         tb1_vr_credit: false,
     });
+
+    const isBalanceProduct = Number(data.tb1_tipo) === 1;
 
     const handleSubmit = (event) => {
         event.preventDefault();
@@ -96,21 +99,6 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
                                 </div>
                             </div>
 
-                            <div className="mb-4">
-                                <label htmlFor="tb1_codbar" className="block text-sm font-medium text-gray-700">
-                                    Código de barras
-                                </label>
-                                <input
-                                    id="tb1_codbar"
-                                    type="text"
-                                    placeholder="0000000000000"
-                                    value={data.tb1_codbar}
-                                    onChange={(e) => setData("tb1_codbar", e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                />
-                                {errors.tb1_codbar && <span className="text-red-600">{errors.tb1_codbar}</span>}
-                            </div>
-
                             <div className="mb-4 grid gap-4 sm:grid-cols-2">
                                 <div>
                                     <label htmlFor="tb1_tipo" className="block text-sm font-medium text-gray-700">
@@ -150,8 +138,45 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
                                 </div>
                             </div>
 
+                            {isBalanceProduct ? (
+                                <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4">
+                                    <label htmlFor="tb1_id" className="block text-sm font-medium text-gray-700">
+                                        ID do produto
+                                    </label>
+                                    <input
+                                        id="tb1_id"
+                                        type="number"
+                                        min="1"
+                                        placeholder="Informe o tb1_id"
+                                        value={data.tb1_id}
+                                        onChange={(e) => setData("tb1_id", e.target.value)}
+                                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
+                                    />
+                                    <p className="mt-2 text-xs text-amber-800">
+                                        Produto de balanca nao usa codigo de barras. Informe o tb1_id manualmente.
+                                        Se o ID ja existir, o cadastro sera bloqueado e os dados atuais serao exibidos.
+                                    </p>
+                                    {errors.tb1_id && <span className="text-red-600">{errors.tb1_id}</span>}
+                                </div>
+                            ) : (
+                                <div className="mb-4">
+                                    <label htmlFor="tb1_codbar" className="block text-sm font-medium text-gray-700">
+                                        Codigo de barras
+                                    </label>
+                                    <input
+                                        id="tb1_codbar"
+                                        type="text"
+                                        placeholder="0000000000000"
+                                        value={data.tb1_codbar}
+                                        onChange={(e) => setData("tb1_codbar", e.target.value)}
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                    />
+                                    {errors.tb1_codbar && <span className="text-red-600">{errors.tb1_codbar}</span>}
+                                </div>
+                            )}
+
                             <div className="mb-6">
-                                <span className="text-sm font-medium text-gray-700">Disponível para VR Crédito</span>
+                                <span className="text-sm font-medium text-gray-700">Disponivel para VR Credito</span>
                                 <label className="mt-2 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-200">
                                     <input
                                         type="checkbox"
@@ -159,7 +184,7 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
                                         onChange={(event) => setData("tb1_vr_credit", event.target.checked)}
                                         className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                     />
-                                    Permitir que este produto seja pago com VR Crédito.
+                                    Permitir que este produto seja pago com VR Credito.
                                 </label>
                                 {errors.tb1_vr_credit && (
                                     <span className="text-red-600">{errors.tb1_vr_credit}</span>

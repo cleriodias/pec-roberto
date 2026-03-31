@@ -27,14 +27,12 @@ class UserController extends Controller
 
             $routeName = $request->route()?->getName();
             $funcao = (int) $user->funcao;
-            $funcaoOriginal = $user->funcao_original;
-            $isMasterOriginal = (int) ($funcaoOriginal ?? $user->funcao) === 0;
 
             if ($funcao === 3 && $routeName === 'users.search') {
                 return $next($request);
             }
 
-            if ($isMasterOriginal || in_array($funcao, [0, 1], true)) {
+            if (in_array($funcao, [0, 1], true)) {
                 return $next($request);
             }
 
@@ -298,8 +296,8 @@ class UserController extends Controller
         }
 
         $safeTerm = str_replace(['%', '_'], ['\\%', '\\_'], $term);
-        $monthStart = Carbon::now()->startOfMonth();
-        $monthEnd = Carbon::now()->endOfMonth();
+        $monthStart = now()->startOfMonth();
+        $monthEnd = now()->endOfMonth();
 
         $users = User::query()
             ->where('name', 'like', '%' . $safeTerm . '%')
@@ -362,7 +360,7 @@ class UserController extends Controller
         return $sales
             ->groupBy(fn ($sale) => optional($sale->data_hora)->format('Y-m') ?? 'sem-data')
             ->map(function ($group, $period) {
-                $referenceDate = optional($group->first()->data_hora) ?: Carbon::now();
+                $referenceDate = optional($group->first()->data_hora) ?: now();
 
                 return [
                     'period' => $period,
@@ -391,7 +389,7 @@ class UserController extends Controller
         return $advances
             ->groupBy(fn ($advance) => optional($advance->advance_date)->format('Y-m') ?? 'sem-data')
             ->map(function ($group, $period) {
-                $referenceDate = optional($group->first()->advance_date) ?: Carbon::now();
+                $referenceDate = optional($group->first()->advance_date) ?: now();
 
                 return [
                     'period' => $period,

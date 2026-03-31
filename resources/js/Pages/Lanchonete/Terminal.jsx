@@ -316,11 +316,11 @@ export default function Terminal() {
                             Produtos
                         </Link>
                         <Link
-                            href={route('reports.switch-role')}
+                            href={route('reports.switch-unit')}
                             className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-100"
                         >
                             <i className="bi bi-arrow-left-right" aria-hidden="true"></i>
-                            Trocar funcao
+                            Trocar
                         </Link>
                         <div className="hidden sm:flex flex-col items-end">
                             <span className="text-sm font-semibold text-gray-800">

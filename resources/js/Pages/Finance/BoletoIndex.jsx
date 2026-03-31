@@ -2,6 +2,7 @@ import { useState } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import AlertMessage from '@/Components/Alert/AlertMessage';
 import Modal from '@/Components/Modal';
+import { formatBrazilDate, formatBrazilDateTime, getBrazilTodayInputValue } from '@/Utils/date';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 
 const formatCurrency = (value) =>
@@ -11,28 +12,24 @@ const formatCurrency = (value) =>
     });
 
 const formatDate = (value) => {
-    const date = value ? new Date(value) : null;
-
-    if (!date || Number.isNaN(date.getTime())) {
+    if (!value) {
         return '--/--/----';
     }
 
-    return date.toLocaleDateString('pt-BR');
+    return formatBrazilDate(value);
 };
 
 const formatDateTime = (value) => {
-    const date = value ? new Date(value) : null;
-
-    if (!date || Number.isNaN(date.getTime())) {
+    if (!value) {
         return '--/--/---- --:--';
     }
 
-    return date.toLocaleString('pt-BR');
+    return formatBrazilDateTime(value);
 };
 
 export default function BoletoIndex({ activeUnit = null, filters = {}, boletos = null, canManageList }) {
     const { flash } = usePage().props;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getBrazilTodayInputValue();
     const { data, setData, post, processing, errors, reset } = useForm({
         description: '',
         amount: '',

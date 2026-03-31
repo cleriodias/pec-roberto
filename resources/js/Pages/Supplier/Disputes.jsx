@@ -1,4 +1,5 @@
 import AlertMessage from '@/Components/Alert/AlertMessage';
+import { formatBrazilDate } from '@/Utils/date';
 import { Head, router, usePage } from '@inertiajs/react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 
@@ -12,11 +13,7 @@ const formatDate = (value) => {
     if (!value) {
         return '--/--/----';
     }
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return '--/--/----';
-    }
-    return date.toLocaleDateString('pt-BR');
+    return formatBrazilDate(value);
 };
 
 export default function Disputes({ supplier, bids = [] }) {

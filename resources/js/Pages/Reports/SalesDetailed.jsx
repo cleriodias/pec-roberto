@@ -1,4 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { formatBrazilDateTime } from '@/Utils/date';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -13,10 +14,7 @@ const formatDateTime = (value) => {
         return '--';
     }
 
-    return new Date(value).toLocaleString('pt-BR', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    });
+    return formatBrazilDateTime(value);
 };
 
 export default function SalesDetailed({

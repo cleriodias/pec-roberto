@@ -29,14 +29,9 @@ export default function Config({ auth }) {
             href: route('units.index'),
         },
         {
-            label: 'Trocar unidade',
+            label: 'Trocar',
             icon: 'bi-arrow-left-right',
             href: route('reports.switch-unit'),
-        },
-        {
-            label: 'Trocar funcao',
-            icon: 'bi-people',
-            href: route('reports.switch-role'),
         },
         {
             label: 'Permissoes de Menu',

@@ -1,5 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import InputError from '@/Components/InputError';
+import { formatBrazilDate, formatBrazilDateTime } from '@/Utils/date';
 import { Head, useForm } from '@inertiajs/react';
 
 const formatCurrency = (value) =>
@@ -13,10 +14,7 @@ const formatDateTime = (value) => {
         return '--';
     }
 
-    return new Date(value).toLocaleString('pt-BR', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    });
+    return formatBrazilDateTime(value);
 };
 
 const formatDate = (value) => {
@@ -24,7 +22,7 @@ const formatDate = (value) => {
         return '--';
     }
 
-    return new Date(value).toLocaleDateString('pt-BR');
+    return formatBrazilDate(value);
 };
 
 export default function CashierClose({ activeUnit, todayClosure, lastClosure, pendingClosureDate }) {

@@ -1,5 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import InputError from '@/Components/InputError';
+import { formatBrazilDateTime } from '@/Utils/date';
 import { Head, useForm } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -11,10 +12,7 @@ const formatDate = (value) => {
         return '--';
     }
 
-    return new Date(value).toLocaleString('pt-BR', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    });
+    return formatBrazilDateTime(value);
 };
 
 export default function ProductDiscard({ recentDiscards = [] }) {

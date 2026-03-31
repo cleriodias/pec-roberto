@@ -15,6 +15,8 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
         tb1_vr_credit: Boolean(product.tb1_vr_credit),
     });
 
+    const isBalanceProduct = Number(data.tb1_tipo) === 1;
+
     const handleSubmit = (event) => {
         event.preventDefault();
         put(route("products.update", { product: data.tb1_id }));
@@ -94,21 +96,6 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
                                 </div>
                             </div>
 
-                            <div className="mb-4">
-                                <label htmlFor="tb1_codbar" className="block text-sm font-medium text-gray-700">
-                                    Código de barras
-                                </label>
-                                <input
-                                    id="tb1_codbar"
-                                    type="text"
-                                    placeholder="0000000000000"
-                                    value={data.tb1_codbar}
-                                    onChange={(e) => setData("tb1_codbar", e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                />
-                                {errors.tb1_codbar && <span className="text-red-600">{errors.tb1_codbar}</span>}
-                            </div>
-
                             <div className="mb-4 grid gap-4 sm:grid-cols-2">
                                 <div>
                                     <label htmlFor="tb1_tipo" className="block text-sm font-medium text-gray-700">
@@ -148,8 +135,42 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
                                 </div>
                             </div>
 
+                            {isBalanceProduct ? (
+                                <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4">
+                                    <label htmlFor="tb1_id" className="block text-sm font-medium text-gray-700">
+                                        ID do produto
+                                    </label>
+                                    <input
+                                        id="tb1_id"
+                                        type="number"
+                                        value={data.tb1_id}
+                                        readOnly
+                                        className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2 shadow-sm sm:text-sm"
+                                    />
+                                    <p className="mt-2 text-xs text-amber-800">
+                                        Produto de balanca nao usa codigo de barras e o tb1_id nao pode ser alterado.
+                                    </p>
+                                    {errors.tb1_id && <span className="text-red-600">{errors.tb1_id}</span>}
+                                </div>
+                            ) : (
+                                <div className="mb-4">
+                                    <label htmlFor="tb1_codbar" className="block text-sm font-medium text-gray-700">
+                                        Codigo de barras
+                                    </label>
+                                    <input
+                                        id="tb1_codbar"
+                                        type="text"
+                                        placeholder="0000000000000"
+                                        value={data.tb1_codbar}
+                                        onChange={(e) => setData("tb1_codbar", e.target.value)}
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                    />
+                                    {errors.tb1_codbar && <span className="text-red-600">{errors.tb1_codbar}</span>}
+                                </div>
+                            )}
+
                             <div className="mb-6">
-                                <span className="text-sm font-medium text-gray-700">Disponível para VR Crédito</span>
+                                <span className="text-sm font-medium text-gray-700">Disponivel para VR Credito</span>
                                 <label className="mt-2 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-200">
                                     <input
                                         type="checkbox"
@@ -157,7 +178,7 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
                                         onChange={(event) => setData("tb1_vr_credit", event.target.checked)}
                                         className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                     />
-                                    Permitir que este produto seja pago com VR Crédito.
+                                    Permitir que este produto seja pago com VR Credito.
                                 </label>
                                 {errors.tb1_vr_credit && (
                                     <span className="text-red-600">{errors.tb1_vr_credit}</span>

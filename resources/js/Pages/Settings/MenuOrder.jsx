@@ -28,7 +28,6 @@ const MENU_KEYS = [
     'reports_hoje',
     'discard',
     'switch_unit',
-    'switch_role',
     'settings',
     'lanchonete_terminal',
 ];
@@ -58,8 +57,7 @@ const LABELS = {
     reports_hoje: 'Hoje',
     salary_advances: 'Adiantamento',
     discard: 'Descarte',
-    switch_unit: 'Trocar Unidade',
-    switch_role: 'Trocar Funcao',
+    switch_unit: 'Trocar',
     settings: 'Farrammentas',
     lanchonete_terminal: 'Terminal Lanchonete',
 };

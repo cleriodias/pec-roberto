@@ -20,9 +20,8 @@ class NoticeController extends Controller
     private function ensureAuthorized(Request $request): void
     {
         $user = $request->user();
-        $roleOriginal = (int) ($user?->funcao_original ?? $user?->funcao);
 
-        if (! $user || $roleOriginal !== 0) {
+        if (! $user || (int) $user->funcao !== 0) {
             abort(403, 'Acesso negado.');
         }
     }

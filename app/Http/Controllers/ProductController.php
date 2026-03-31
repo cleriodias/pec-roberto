@@ -7,15 +7,16 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ProductController extends Controller
 {
     private const TYPE_LABELS = [
-        0 => 'Indústria',
-        1 => 'Balança',
-        2 => 'Serviço',
+        0 => 'Industria',
+        1 => 'Balanca',
+        2 => 'Servico',
     ];
 
     private const STATUS_LABELS = [
@@ -111,6 +112,7 @@ class ProductController extends Controller
     {
         $data = $this->validateProduct($request);
         $data['tb1_vr_credit'] = (bool) ($data['tb1_vr_credit'] ?? false);
+        $data = $this->prepareProductData($data);
 
         $product = Produto::create($data);
 
@@ -130,6 +132,7 @@ class ProductController extends Controller
     {
         $data = $this->validateProduct($request, $product);
         $data['tb1_vr_credit'] = (bool) ($data['tb1_vr_credit'] ?? false);
+        $data = $this->prepareProductData($data, $product);
 
         $product->update($data);
 
@@ -185,7 +188,7 @@ class ProductController extends Controller
 
         $isNumeric = ctype_digit($term);
 
-        if (mb_strlen($term) < 3 && !$isNumeric) {
+        if (mb_strlen($term) < 3 && ! $isNumeric) {
             return response()->json([]);
         }
 
@@ -234,13 +237,20 @@ class ProductController extends Controller
 
     private function validateProduct(Request $request, ?Produto $product = null): array
     {
-        return $request->validate(
+        $data = $request->validate(
             [
+                'tb1_id' => [
+                    Rule::requiredIf(fn () => (int) $request->input('tb1_tipo') === 1 && $product === null),
+                    'nullable',
+                    'integer',
+                    'min:1',
+                ],
                 'tb1_nome' => 'required|string|max:45',
                 'tb1_vlr_custo' => 'required|numeric|min:0',
                 'tb1_vlr_venda' => 'required|numeric|min:0|gte:tb1_vlr_custo',
                 'tb1_codbar' => [
-                    'required',
+                    Rule::requiredIf(fn () => (int) $request->input('tb1_tipo') !== 1),
+                    'nullable',
                     'string',
                     'max:64',
                     Rule::unique('tb1_produto', 'tb1_codbar')->ignore($product?->tb1_id, 'tb1_id'),
@@ -261,27 +271,50 @@ class ProductController extends Controller
                 ],
             ],
             [
+                'tb1_id.required' => 'Informe o ID do produto de balanca.',
+                'tb1_id.integer' => 'O ID do produto deve ser numerico.',
+                'tb1_id.min' => 'O ID do produto deve ser maior que zero.',
                 'tb1_nome.required' => 'Informe o nome do produto.',
-                'tb1_nome.max' => 'O nome não pode exceder :max caracteres.',
+                'tb1_nome.max' => 'O nome nao pode exceder :max caracteres.',
                 'tb1_vlr_custo.required' => 'Informe o valor de custo.',
-                'tb1_vlr_custo.numeric' => 'O valor de custo deve ser numérico.',
+                'tb1_vlr_custo.numeric' => 'O valor de custo deve ser numerico.',
                 'tb1_vlr_custo.min' => 'O valor de custo deve ser maior ou igual a zero.',
                 'tb1_vlr_venda.required' => 'Informe o valor de venda.',
-                'tb1_vlr_venda.numeric' => 'O valor de venda deve ser numérico.',
+                'tb1_vlr_venda.numeric' => 'O valor de venda deve ser numerico.',
                 'tb1_vlr_venda.min' => 'O valor de venda deve ser maior ou igual a zero.',
                 'tb1_vlr_venda.gte' => 'O valor de venda deve ser maior que o valor de custo.',
-                'tb1_codbar.required' => 'Informe o código de barras.',
-                'tb1_codbar.max' => 'O código de barras deve ter no máximo :max caracteres.',
-                'tb1_codbar.unique' => 'Este código de barras já está cadastrado.',
+                'tb1_codbar.required' => 'Informe o codigo de barras.',
+                'tb1_codbar.max' => 'O codigo de barras deve ter no maximo :max caracteres.',
+                'tb1_codbar.unique' => 'Este codigo de barras ja esta cadastrado.',
                 'tb1_tipo.required' => 'Selecione o tipo do produto.',
-                'tb1_tipo.integer' => 'Tipo de produto inválido.',
-                'tb1_tipo.in' => 'Tipo de produto não reconhecido.',
+                'tb1_tipo.integer' => 'Tipo de produto invalido.',
+                'tb1_tipo.in' => 'Tipo de produto nao reconhecido.',
                 'tb1_status.required' => 'Selecione o status do produto.',
-                'tb1_status.integer' => 'Status inválido.',
-                'tb1_status.in' => 'Status não reconhecido.',
-                'tb1_vr_credit.boolean' => 'Valor inválido para VR Crédito.',
+                'tb1_status.integer' => 'Status invalido.',
+                'tb1_status.in' => 'Status nao reconhecido.',
+                'tb1_vr_credit.boolean' => 'Valor invalido para VR Credito.',
             ]
         );
+
+        $requestedId = isset($data['tb1_id']) ? (int) $data['tb1_id'] : null;
+
+        if ($product && $requestedId !== null && $requestedId !== (int) $product->tb1_id) {
+            throw ValidationException::withMessages([
+                'tb1_id' => 'Nao e permitido alterar o ID de um produto ja cadastrado.',
+            ]);
+        }
+
+        if ($product === null && (int) ($data['tb1_tipo'] ?? 0) === 1 && $requestedId !== null) {
+            $existingProduct = Produto::query()->find($requestedId);
+
+            if ($existingProduct) {
+                throw ValidationException::withMessages([
+                    'tb1_id' => $this->existingProductMessage($existingProduct),
+                ]);
+            }
+        }
+
+        return $data;
     }
 
     private function formOptions(): array
@@ -295,5 +328,37 @@ class ProductController extends Controller
             'typeOptions' => $format(self::TYPE_LABELS),
             'statusOptions' => $format(self::STATUS_LABELS),
         ];
+    }
+
+    private function prepareProductData(array $data, ?Produto $product = null): array
+    {
+        $type = (int) ($data['tb1_tipo'] ?? $product?->tb1_tipo ?? 0);
+
+        if ($type === 1) {
+            $data['tb1_codbar'] = '';
+        } else {
+            unset($data['tb1_id']);
+            $data['tb1_codbar'] = trim((string) ($data['tb1_codbar'] ?? ''));
+        }
+
+        if ($product) {
+            unset($data['tb1_id']);
+        }
+
+        return $data;
+    }
+
+    private function existingProductMessage(Produto $product): string
+    {
+        $type = self::TYPE_LABELS[(int) $product->tb1_tipo] ?? '---';
+        $status = self::STATUS_LABELS[(int) $product->tb1_status] ?? '---';
+
+        return sprintf(
+            'O ID %d ja esta cadastrado. Nome: %s | Tipo: %s | Status: %s.',
+            $product->tb1_id,
+            $product->tb1_nome,
+            $type,
+            $status
+        );
     }
 }

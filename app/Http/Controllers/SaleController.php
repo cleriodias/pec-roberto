@@ -116,6 +116,7 @@ class SaleController extends Controller
             'items.*.product_id' => ['required_with:items', 'integer', 'exists:tb1_produto,tb1_id'],
             'items.*.quantity' => ['required_with:items', 'integer', 'min:1', 'max:1000'],
             'items.*.barcode' => ['nullable', 'string', 'max:64'],
+            'items.*.unit_price' => ['nullable', 'numeric', 'min:0'],
             'tipo_pago' => [
                 'required',
                 'string',
@@ -183,6 +184,9 @@ class SaleController extends Controller
             $quantity = (int) $item['quantity'];
             $barcode = trim((string) ($item['barcode'] ?? ''));
             $weightedBarcode = $barcode !== '' ? $this->parseWeightedBarcode($barcode) : null;
+            $explicitUnitPrice = $comandaCodigo !== null && array_key_exists('unit_price', $item)
+                ? round((float) $item['unit_price'], 2)
+                : null;
 
             if ($barcode !== '' && $weightedBarcode === null) {
                 throw ValidationException::withMessages([
@@ -196,7 +200,7 @@ class SaleController extends Controller
                 ]);
             }
 
-            $unitPrice = $weightedBarcode['unit_price'] ?? null;
+            $unitPrice = $weightedBarcode['unit_price'] ?? $explicitUnitPrice;
             $itemKey = $this->buildSaleItemKey($productId, $unitPrice);
 
             if (! isset($groupedItems[$itemKey])) {
@@ -210,7 +214,7 @@ class SaleController extends Controller
             $groupedItems[$itemKey]['quantity'] += $quantity;
         }
 
-        $dateTime = Carbon::now();
+        $dateTime = now();
         $monthStart = $dateTime->copy()->startOfMonth();
         $monthEnd = $dateTime->copy()->endOfMonth();
         $isPaid = in_array($finalPaymentType, ['maquina', 'dinheiro'], true);
@@ -331,7 +335,7 @@ class SaleController extends Controller
                 }
             }
 
-            $itemsPayload = array_values($finalItemsMap);
+            $itemsPayload = $this->collapseSaleItems(array_values($finalItemsMap));
 
             if ($requiresVrEligible) {
                 $eligibility = Produto::query()
@@ -377,6 +381,8 @@ class SaleController extends Controller
                     'subtotal' => $total,
                 ];
             }
+
+            $itemsPayload = $this->collapseSaleItems($itemsPayload);
         }
 
         $totalValue = collect($itemsPayload)->sum('subtotal');
@@ -546,7 +552,7 @@ class SaleController extends Controller
             $existing->update([
                 'quantidade' => $newQuantity,
                 'valor_total' => round($price * $newQuantity, 2),
-                'data_hora' => Carbon::now(),
+                'data_hora' => now(),
                 'id_lanc' => $validated['access_user_id'],
                 'id_user_caixa' => null,
             ]);
@@ -558,7 +564,7 @@ class SaleController extends Controller
                 'valor_unitario' => $price,
                 'quantidade' => $quantity,
                 'valor_total' => $total,
-                'data_hora' => Carbon::now(),
+                'data_hora' => now(),
                 'id_user_caixa' => null,
                 'id_user_vale' => null,
                 'id_lanc' => $validated['access_user_id'],
@@ -601,7 +607,7 @@ class SaleController extends Controller
             $record->update([
                 'quantidade' => $validated['quantity'],
                 'valor_total' => round($record->valor_unitario * $validated['quantity'], 2),
-                'data_hora' => Carbon::now(),
+                'data_hora' => now(),
                 'id_lanc' => $validated['access_user_id'] ?? $record->id_lanc,
                 'id_user_caixa' => null,
             ]);
@@ -740,6 +746,35 @@ class SaleController extends Controller
         $normalizedPrice = number_format((float) ($unitPrice ?? 0), 2, '.', '');
 
         return sprintf('product-%d-price-%s', $productId, $normalizedPrice);
+    }
+
+    private function collapseSaleItems(array $items): array
+    {
+        $collapsed = [];
+
+        foreach ($items as $item) {
+            $productId = (int) ($item['product_id'] ?? 0);
+            $unitPrice = round((float) ($item['unit_price'] ?? 0), 2);
+            $itemKey = $this->buildSaleItemKey($productId, $unitPrice);
+
+            if (! isset($collapsed[$itemKey])) {
+                $collapsed[$itemKey] = [
+                    'product_id' => $productId,
+                    'product_name' => $item['product_name'] ?? '',
+                    'unit_price' => $unitPrice,
+                    'quantity' => 0,
+                    'subtotal' => 0.0,
+                ];
+            }
+
+            $collapsed[$itemKey]['quantity'] += (int) ($item['quantity'] ?? 0);
+            $collapsed[$itemKey]['subtotal'] = round(
+                $collapsed[$itemKey]['quantity'] * $unitPrice,
+                2
+            );
+        }
+
+        return array_values($collapsed);
     }
 
     private function parseWeightedBarcode(?string $barcode): ?array

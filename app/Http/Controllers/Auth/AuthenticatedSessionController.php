@@ -91,6 +91,8 @@ class AuthenticatedSessionController extends Controller
             $user->forceFill(['funcao_original' => $user->funcao])->save();
         }
 
+        $request->session()->put('active_role', (int) ($user->funcao_original ?? $user->funcao));
+
         return redirect()->intended(route('dashboard', absolute: false));
     }
 

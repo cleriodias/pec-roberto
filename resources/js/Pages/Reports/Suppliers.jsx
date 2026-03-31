@@ -1,4 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { formatBrazilDateTime } from '@/Utils/date';
 import { Head, useForm } from '@inertiajs/react';
 
 const formatDateTime = (value) => {
@@ -6,10 +7,7 @@ const formatDateTime = (value) => {
         return '--';
     }
 
-    return new Date(value).toLocaleString('pt-BR', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    });
+    return formatBrazilDateTime(value);
 };
 
 export default function SuppliersReport({

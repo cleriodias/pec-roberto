@@ -1,6 +1,7 @@
 import AlertMessage from '@/Components/Alert/AlertMessage';
 import SuccessButton from '@/Components/Button/SuccessButton';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { formatBrazilDate } from '@/Utils/date';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { Fragment, useMemo } from 'react';
 
@@ -14,11 +15,7 @@ const formatDate = (value) => {
     if (!value) {
         return '--/--/----';
     }
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return '--/--/----';
-    }
-    return date.toLocaleDateString('pt-BR');
+    return formatBrazilDate(value);
 };
 
 export default function DisputaVendas({ auth, suppliers = [], disputes = [] }) {

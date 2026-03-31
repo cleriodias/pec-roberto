@@ -1,5 +1,6 @@
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { formatBrazilDate, formatBrazilDateTime } from '@/Utils/date';
 import { Head, useForm } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 
@@ -30,7 +31,7 @@ const formatDate = (value) => {
         return '--';
     }
 
-    return new Date(`${value}T00:00:00`).toLocaleDateString('pt-BR');
+    return formatBrazilDate(value);
 };
 
 const formatDateTime = (value) => {
@@ -38,10 +39,7 @@ const formatDateTime = (value) => {
         return '--';
     }
 
-    return new Date(value).toLocaleString('pt-BR', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    });
+    return formatBrazilDateTime(value);
 };
 
 const differenceTone = (value) => {

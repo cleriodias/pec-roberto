@@ -1,5 +1,15 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { formatBrazilDateTime } from '@/Utils/date';
 import { Head, useForm } from '@inertiajs/react';
+import { useState } from 'react';
+
+const PAYMENT_LABELS = {
+    dinheiro: 'Dinheiro',
+    maquina: 'Maquina',
+    vale: 'Vale',
+    refeicao: 'Refeicao',
+    faturar: 'Faturar',
+};
 
 const formatCurrency = (value) =>
     Number(value ?? 0).toLocaleString('pt-BR', {
@@ -12,10 +22,86 @@ const formatDateTime = (value) => {
         return '--';
     }
 
-    return new Date(value).toLocaleString('pt-BR', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    });
+    return formatBrazilDateTime(value);
+};
+
+const buildReceiptHtml = (receipt) => {
+    const unitInfoHtml = `
+        ${receipt.unit_address ? `<p>Endereco: ${receipt.unit_address}</p>` : ''}
+        ${receipt.unit_cnpj ? `<p>CNPJ: ${receipt.unit_cnpj}</p>` : ''}
+    `;
+
+    const itemsHtml = (receipt.items || [])
+        .map(
+            (item) => `
+                <div class="items-row">
+                    <span>${item.quantity}x ${item.product_name}</span>
+                    <span>${formatCurrency(item.unit_price)}</span>
+                </div>
+                <div class="items-row items-row-subtotal">
+                    <span>Subtotal</span>
+                    <span>${formatCurrency(item.subtotal)}</span>
+                </div>
+            `,
+        )
+        .join('');
+
+    const paymentHtml = receipt.payment
+        ? `
+                ${
+                    receipt.payment.valor_pago !== null
+                        ? `<p>Pago em dinheiro: ${formatCurrency(receipt.payment.valor_pago)}</p>`
+                        : ''
+                }
+                <p>Troco: ${formatCurrency(receipt.payment.troco ?? 0)}</p>
+                ${
+                    Number(receipt.payment.dois_pgto ?? 0) > 0
+                        ? `<p>Cartao (compl.): ${formatCurrency(receipt.payment.dois_pgto)}</p>`
+                        : ''
+                }
+            `
+        : '';
+
+    return `
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <meta charset="utf-8" />
+                <title>Cupom #${receipt.id}</title>
+                <style>
+                    * { font-family: 'Courier New', monospace; box-sizing: border-box; }
+                    body { width: 80mm; margin: 0 auto; padding: 12px; }
+                    h1 { text-align: center; font-size: 16px; margin: 0 0 10px 0; }
+                    p { font-size: 12px; margin: 4px 0; }
+                    .divider { border-top: 1px dashed #000; margin: 10px 0; }
+                    .items-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px; }
+                    .items-row-subtotal { font-style: italic; }
+                    .total { font-size: 14px; font-weight: bold; text-align: right; margin-top: 10px; }
+                </style>
+            </head>
+            <body>
+                <h1>${receipt.unit_name || 'Cupom'}</h1>
+                ${unitInfoHtml}
+                <p>Cupom: #${receipt.id}</p>
+                <p>Caixa: ${receipt.cashier_name || '---'}</p>
+                ${
+                    receipt.vale_user_name
+                        ? `<p>Vale: ${receipt.vale_user_name}${
+                              receipt.vale_type === 'refeicao' ? ' (Refeicao)' : ''
+                          }</p>`
+                        : ''
+                }
+                <p>Data: ${formatDateTime(receipt.date_time)}</p>
+                <div class="divider"></div>
+                ${itemsHtml}
+                <div class="divider"></div>
+                <p>Pagamento: ${PAYMENT_LABELS[receipt.tipo_pago] ?? receipt.tipo_pago}</p>
+                ${paymentHtml}
+                <div class="total">Total: ${formatCurrency(receipt.total)}</div>
+                <p style="text-align:center;margin-top:12px;">Obrigado pela preferencia</p>
+            </body>
+        </html>
+    `;
 };
 
 export default function ValeReport({
@@ -34,6 +120,8 @@ export default function ValeReport({
                 ? String(selectedUnitId)
                 : 'all',
     });
+    const [selectedReceipt, setSelectedReceipt] = useState(null);
+    const [printError, setPrintError] = useState('');
 
     const handleSubmit = (event) => {
         event.preventDefault();
@@ -44,6 +132,24 @@ export default function ValeReport({
             data,
         });
     };
+
+    const handlePrint = (receipt) => {
+        setPrintError('');
+
+        const printWindow = window.open('', '_blank', 'width=400,height=600');
+
+        if (!printWindow) {
+            setPrintError('Permita pop-ups para imprimir o cupom.');
+            return;
+        }
+
+        printWindow.document.write(buildReceiptHtml(receipt));
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+        printWindow.close();
+    };
+
     const totalAmount = rows.reduce((sum, row) => sum + (Number(row.total) || 0), 0);
 
     return (
@@ -63,6 +169,12 @@ export default function ValeReport({
 
             <div className="py-8">
                 <div className="mx-auto max-w-6xl space-y-6 px-4 sm:px-6 lg:px-8">
+                    {printError && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+                            {printError}
+                        </div>
+                    )}
+
                     <form
                         onSubmit={handleSubmit}
                         className="rounded-2xl bg-white p-4 shadow dark:bg-gray-800"
@@ -147,16 +259,16 @@ export default function ValeReport({
                                     <thead className="bg-gray-100 dark:bg-gray-900/60">
                                         <tr>
                                             <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                                                ID tb4
+                                            </th>
+                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
                                                 Data/Hora
                                             </th>
                                             <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
                                                 Comanda
                                             </th>
                                             <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
-                                                Produto
-                                            </th>
-                                            <th className="px-3 py-2 text-center font-medium text-gray-600 dark:text-gray-300">
-                                                Qtde
+                                                Itens
                                             </th>
                                             <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
                                                 Total
@@ -170,22 +282,25 @@ export default function ValeReport({
                                             <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
                                                 Usuario Vale
                                             </th>
+                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                Cupom
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                                         {rows.map((row) => (
                                             <tr key={row.id}>
+                                                <td className="px-3 py-2 font-semibold text-gray-800 dark:text-gray-100">
+                                                    #{row.id}
+                                                </td>
                                                 <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
-                                                    {formatDateTime(row.sold_at)}
+                                                    {formatDateTime(row.date_time)}
                                                 </td>
                                                 <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
                                                     {row.comanda ?? '--'}
                                                 </td>
                                                 <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
-                                                    {row.product}
-                                                </td>
-                                                <td className="px-3 py-2 text-center text-gray-700 dark:text-gray-200">
-                                                    {row.quantity}
+                                                    <p className="font-medium">{row.items_count} item(ns)</p>
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-gray-100">
                                                     {formatCurrency(row.total)}
@@ -199,6 +314,15 @@ export default function ValeReport({
                                                 <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
                                                     {row.vale_user ?? '--'}
                                                 </td>
+                                                <td className="px-3 py-2 text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedReceipt(row.receipt)}
+                                                        className="rounded-xl bg-indigo-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-indigo-700"
+                                                    >
+                                                        Abrir cupom
+                                                    </button>
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -208,6 +332,99 @@ export default function ValeReport({
                     </div>
                 </div>
             </div>
+
+            {selectedReceipt && (
+                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4 py-6">
+                    <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                                    Cupom #{selectedReceipt.id}
+                                </h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-300">
+                                    {formatDateTime(selectedReceipt.date_time)}
+                                </p>
+                                <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                                    Loja: {selectedReceipt.unit_name ?? '---'}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedReceipt(null)}
+                                className="text-sm font-semibold text-gray-500 hover:text-gray-800 dark:text-gray-300 dark:hover:text-white"
+                            >
+                                Fechar
+                            </button>
+                        </div>
+
+                        <div className="mt-4 space-y-2 text-sm text-gray-700 dark:text-gray-200">
+                            <p>
+                                <span className="font-medium">Pagamento:</span>{' '}
+                                {PAYMENT_LABELS[selectedReceipt.tipo_pago] ?? selectedReceipt.tipo_pago}
+                            </p>
+                            <p>
+                                <span className="font-medium">Caixa:</span> {selectedReceipt.cashier_name}
+                            </p>
+                            {selectedReceipt.vale_user_name && (
+                                <p>
+                                    <span className="font-medium">Cliente Vale:</span> {selectedReceipt.vale_user_name}
+                                </p>
+                            )}
+                            <p className="text-lg font-bold text-indigo-600">
+                                Total: {formatCurrency(selectedReceipt.total)}
+                            </p>
+                        </div>
+
+                        <div className="mt-6 rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                                Itens
+                            </h4>
+                            <div className="mt-3 space-y-3 text-sm">
+                                {(selectedReceipt.items || []).map((item) => (
+                                    <div
+                                        key={item.id}
+                                        className="flex items-center justify-between rounded-xl bg-white/80 px-3 py-2 shadow-sm dark:bg-gray-800/70"
+                                    >
+                                        <div>
+                                            <p className="font-medium text-gray-900 dark:text-gray-100">
+                                                {item.quantity}x {item.product_name}
+                                            </p>
+                                            <p className="text-xs text-gray-500 dark:text-gray-300">
+                                                {formatCurrency(item.unit_price)} cada
+                                            </p>
+                                            {item.comanda && (
+                                                <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                                                    Comanda: {item.comanda}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <p className="font-semibold text-gray-900 dark:text-gray-100">
+                                            {formatCurrency(item.subtotal)}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setSelectedReceipt(null)}
+                                className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                            >
+                                Fechar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handlePrint(selectedReceipt)}
+                                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-700"
+                            >
+                                Imprimir
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </AuthenticatedLayout>
     );
 }

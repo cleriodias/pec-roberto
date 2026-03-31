@@ -1,5 +1,6 @@
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { formatBrazilDateTime } from '@/Utils/date';
 import { Head, Link, router } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -28,10 +29,7 @@ const formatDateTime = (value) => {
         return '--';
     }
 
-    return new Date(value).toLocaleString('pt-BR', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    });
+    return formatBrazilDateTime(value);
 };
 
 const differenceTone = (value) => {

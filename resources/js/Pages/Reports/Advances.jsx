@@ -1,4 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { formatBrazilDate } from '@/Utils/date';
 import { Head, useForm } from '@inertiajs/react';
 
 const formatCurrency = (value) =>
@@ -12,7 +13,7 @@ const formatDate = (value) => {
         return '--';
     }
 
-    return new Date(`${value}T00:00:00`).toLocaleDateString('pt-BR');
+    return formatBrazilDate(value);
 };
 
 export default function AdvancesReport({

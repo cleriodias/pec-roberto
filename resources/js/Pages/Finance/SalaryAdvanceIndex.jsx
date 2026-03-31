@@ -1,4 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { formatBrazilDate } from '@/Utils/date';
 import { Head, router } from '@inertiajs/react';
 import { useMemo } from 'react';
 
@@ -9,13 +10,11 @@ const formatCurrency = (value) =>
     });
 
 const formatDate = (value) => {
-    const date = value ? new Date(value) : null;
-
-    if (!date || Number.isNaN(date.getTime())) {
+    if (!value) {
         return '--/--/----';
     }
 
-    return date.toLocaleDateString('pt-BR');
+    return formatBrazilDate(value);
 };
 
 export default function SalaryAdvanceIndex({ advances, filters = {}, units = [] }) {

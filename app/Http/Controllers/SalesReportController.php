@@ -152,38 +152,100 @@ class SalesReportController extends Controller
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
         [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
 
-        $rows = Venda::query()
-            ->with(['unidade:tb2_id,tb2_nome', 'caixa:id,name', 'valeUser:id,name'])
-            ->where('tipo_pago', 'vale')
-            ->when($filterUnitId, function ($query) use ($filterUnitId) {
-                $query->where('id_unidade', $filterUnitId);
-            })
-            ->whereBetween('data_hora', [$start, $end])
-            ->orderByDesc('data_hora')
-            ->get([
-                'tb3_id',
-                'id_comanda',
-                'produto_nome',
-                'valor_unitario',
-                'quantidade',
-                'valor_total',
-                'data_hora',
-                'id_unidade',
-                'id_user_caixa',
-                'id_user_vale',
+        $rows = VendaPagamento::query()
+            ->with([
+                'vendas' => function ($query) use ($filterUnitId) {
+                    $query
+                        ->with(['unidade:tb2_id,tb2_nome,tb2_endereco,tb2_cnpj', 'caixa:id,name', 'valeUser:id,name'])
+                        ->when($filterUnitId, function ($salesQuery) use ($filterUnitId) {
+                            $salesQuery->where('id_unidade', $filterUnitId);
+                        })
+                        ->orderBy('tb3_id')
+                        ->select([
+                            'tb3_id',
+                            'tb4_id',
+                            'tb1_id',
+                            'produto_nome',
+                            'valor_unitario',
+                            'quantidade',
+                            'valor_total',
+                            'data_hora',
+                            'id_comanda',
+                            'id_unidade',
+                            'id_user_caixa',
+                            'id_user_vale',
+                        ]);
+                },
             ])
-            ->map(function (Venda $row) {
+            ->where('tipo_pagamento', 'vale')
+            ->when($filterUnitId, function ($query) use ($filterUnitId) {
+                $query->whereHas('vendas', function ($subQuery) use ($filterUnitId) {
+                    $subQuery->where('id_unidade', $filterUnitId);
+                });
+            })
+            ->whereBetween('created_at', [$start, $end])
+            ->orderByDesc('tb4_id')
+            ->get([
+                'valor_total',
+                'tb4_id',
+                'tipo_pagamento',
+                'valor_pago',
+                'troco',
+                'dois_pgto',
+                'created_at',
+            ])
+            ->map(function (VendaPagamento $payment) {
+                $sales = $payment->vendas->values();
+                $firstSale = $sales->first();
+                $saleDateTime = $firstSale?->data_hora ?? $payment->created_at;
+
                 return [
-                    'id' => $row->tb3_id,
-                    'comanda' => $row->id_comanda,
-                    'product' => $row->produto_nome,
-                    'quantity' => (int) $row->quantidade,
-                    'unit_price' => (float) $row->valor_unitario,
-                    'total' => round((float) $row->valor_total, 2),
-                    'sold_at' => $row->data_hora ? $row->data_hora->toIso8601String() : null,
-                    'unit_name' => $row->unidade?->tb2_nome ?? '---',
-                    'cashier' => $row->caixa?->name ?? null,
-                    'vale_user' => $row->valeUser?->name ?? null,
+                    'id' => $payment->tb4_id,
+                    'date_time' => $saleDateTime?->toIso8601String(),
+                    'comanda' => $sales->pluck('id_comanda')->filter()->unique()->implode(', '),
+                    'items_count' => (int) $sales->sum('quantidade'),
+                    'items_label' => $sales
+                        ->map(function (Venda $sale) {
+                            return trim(sprintf('%sx %s', (int) $sale->quantidade, $sale->produto_nome));
+                        })
+                        ->implode(', '),
+                    'total' => round((float) $payment->valor_total, 2),
+                    'unit_name' => $firstSale?->unidade?->tb2_nome ?? '---',
+                    'cashier' => $firstSale?->caixa?->name ?? null,
+                    'vale_user' => $firstSale?->valeUser?->name ?? null,
+                    'receipt' => [
+                        'id' => $payment->tb4_id,
+                        'total' => round((float) $payment->valor_total, 2),
+                        'date_time' => $saleDateTime?->toIso8601String(),
+                        'tipo_pago' => $payment->tipo_pagamento,
+                        'cashier_name' => $firstSale?->caixa?->name ?? '---',
+                        'unit_name' => $firstSale?->unidade?->tb2_nome ?? '---',
+                        'unit_address' => $firstSale?->unidade?->tb2_endereco,
+                        'unit_cnpj' => $firstSale?->unidade?->tb2_cnpj,
+                        'vale_user_name' => $firstSale?->valeUser?->name,
+                        'vale_type' => 'vale',
+                        'payment' => [
+                            'id' => $payment->tb4_id,
+                            'valor_total' => round((float) $payment->valor_total, 2),
+                            'valor_pago' => $payment->valor_pago !== null ? round((float) $payment->valor_pago, 2) : null,
+                            'troco' => $payment->troco !== null ? round((float) $payment->troco, 2) : null,
+                            'dois_pgto' => $payment->dois_pgto !== null ? round((float) $payment->dois_pgto, 2) : null,
+                            'tipo_pagamento' => $payment->tipo_pagamento,
+                        ],
+                        'items' => $sales
+                            ->map(function (Venda $sale) {
+                                return [
+                                    'id' => $sale->tb3_id,
+                                    'product_id' => $sale->tb1_id,
+                                    'product_name' => $sale->produto_nome,
+                                    'quantity' => (int) $sale->quantidade,
+                                    'unit_price' => round((float) $sale->valor_unitario, 2),
+                                    'subtotal' => round((float) $sale->valor_total, 2),
+                                    'comanda' => $sale->id_comanda,
+                                ];
+                            })
+                            ->values(),
+                    ],
                 ];
             })
             ->values();
@@ -505,6 +567,7 @@ class SalesReportController extends Controller
                     'id' => $payment->tb4_id,
                     'date' => $saleDateTime?->format('d/m/Y'),
                     'time' => $saleDateTime?->format('H:i'),
+                    'comanda' => $sales->pluck('id_comanda')->filter()->unique()->implode(', '),
                     'total' => round((float) $payment->valor_total, 2),
                     'receipt' => [
                         'id' => $payment->tb4_id,

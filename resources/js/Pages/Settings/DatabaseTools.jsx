@@ -1,5 +1,6 @@
 import AlertMessage from '@/Components/Alert/AlertMessage';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { formatBrazilDateTime } from '@/Utils/date';
 import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -44,7 +45,7 @@ const formatDateTime = (value) => {
         return '--';
     }
 
-    return new Date(value).toLocaleString('pt-BR');
+    return formatBrazilDateTime(value);
 };
 
 export default function DatabaseTools({

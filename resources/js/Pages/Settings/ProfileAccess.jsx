@@ -27,8 +27,7 @@ const MENU_OPTIONS = [
     { key: 'expenses', label: 'Gastos' },
     { key: 'notices', label: 'Avisos' },
     { key: 'discard', label: 'Descarte' },
-    { key: 'switch_unit', label: 'Trocar Unidade' },
-    { key: 'switch_role', label: 'Trocar Funcao' },
+    { key: 'switch_unit', label: 'Trocar' },
     { key: 'settings', label: 'Farrammentas' },
     { key: 'lanchonete_terminal', label: 'Terminal Lanchonete' },
 ];

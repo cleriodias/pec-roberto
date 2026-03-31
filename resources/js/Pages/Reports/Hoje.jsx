@@ -1,4 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { formatBrazilDateTime } from '@/Utils/date';
 import { Head } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 
@@ -21,10 +22,7 @@ const formatDateTime = (value) => {
         return '--';
     }
 
-    return new Date(value).toLocaleString('pt-BR', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    });
+    return formatBrazilDateTime(value);
 };
 
 const buildReceiptHtml = (receipt) => {
@@ -202,6 +200,9 @@ export default function Hoje({ records = [], reportDate, unit }) {
                                             <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
                                                 Hora
                                             </th>
+                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                                                Comanda
+                                            </th>
                                             <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
                                                 Valor
                                             </th>
@@ -221,6 +222,9 @@ export default function Hoje({ records = [], reportDate, unit }) {
                                                 </td>
                                                 <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
                                                     {record.time ?? '--'}
+                                                </td>
+                                                <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
+                                                    {record.comanda || '--'}
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
                                                     {formatCurrency(record.total)}

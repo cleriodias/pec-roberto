@@ -55,10 +55,11 @@ class SalaryAdvanceController extends Controller
 
         // se nenhum filtro de mes foi enviado, usar mes corrente
         if (empty($filters['month'])) {
-            $currentMonth = Carbon::now()->format('Y-m');
+            $now = now();
+            $currentMonth = $now->format('Y-m');
             $filters['month'] = $currentMonth;
-            $advancesQuery->whereYear('advance_date', Carbon::now()->year)
-                ->whereMonth('advance_date', Carbon::now()->month);
+            $advancesQuery->whereYear('advance_date', $now->year)
+                ->whereMonth('advance_date', $now->month);
         }
 
         $advances = $advancesQuery

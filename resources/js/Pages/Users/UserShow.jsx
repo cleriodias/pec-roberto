@@ -3,6 +3,7 @@ import InfoButton from "@/Components/Button/InfoButton";
 import Modal from "@/Components/Modal";
 import SecondaryButton from "@/Components/SecondaryButton";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
+import { formatBrazilDate, formatBrazilDateTime } from "@/Utils/date";
 import { Head, Link, usePage } from "@inertiajs/react";
 import { useState } from "react";
 
@@ -42,10 +43,7 @@ const formatDateTime = (value) => {
         return '--';
     }
 
-    return new Date(value).toLocaleString('pt-BR', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    });
+    return formatBrazilDateTime(value);
 };
 
 const formatDate = (value) => {
@@ -53,7 +51,7 @@ const formatDate = (value) => {
         return '--';
     }
 
-    return new Date(value).toLocaleDateString('pt-BR', { dateStyle: 'short' });
+    return formatBrazilDate(value);
 };
 
 export default function UserShow({
