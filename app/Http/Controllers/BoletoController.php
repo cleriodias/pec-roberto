@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Boleto;
 use App\Models\Unidade;
+use App\Support\ManagementScope;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,7 +28,7 @@ class BoletoController extends Controller
         $activeUnitId = is_array($activeUnit) ? ($activeUnit['id'] ?? null) : null;
         $boletos = null;
 
-        if ($this->isMaster($user)) {
+        if ($this->canManageList($user)) {
             $boletos = Boleto::with(['user:id,name', 'paidBy:id,name', 'unit:tb2_id,tb2_nome'])
                 ->forUnit($activeUnitId)
                 ->withPaidStatus($filters['paid'])
@@ -46,7 +47,7 @@ class BoletoController extends Controller
             'activeUnit' => $activeUnit,
             'filters' => $filters,
             'boletos' => $boletos,
-            'canManageList' => $this->isMaster($user),
+            'canManageList' => $this->canManageList($user),
         ]);
     }
 
@@ -86,7 +87,7 @@ class BoletoController extends Controller
     public function pay(Request $request, Boleto $boleto): RedirectResponse
     {
         $user = $request->user();
-        $this->ensureMaster($user);
+        $this->ensureManager($user);
 
         $activeUnit = $this->resolveUnit($request);
         if (! $activeUnit || (int) $boleto->unit_id !== (int) $activeUnit['id']) {
@@ -112,28 +113,28 @@ class BoletoController extends Controller
 
     private function ensureAccess($user): void
     {
-        if (! $user || ! in_array((int) $user->funcao, [0, 3], true)) {
+        if (! $user || ! in_array((int) $user->funcao, [0, 1, 3], true)) {
             abort(403);
         }
     }
 
     private function ensureCreator($user): void
     {
-        if (! $user || ! in_array((int) $user->funcao, [0, 3], true)) {
+        if (! $user || ! in_array((int) $user->funcao, [0, 1, 3], true)) {
             abort(403);
         }
     }
 
-    private function ensureMaster($user): void
+    private function ensureManager($user): void
     {
-        if (! $user || (int) $user->funcao !== 0) {
+        if (! $user || ! ManagementScope::isAdmin($user)) {
             abort(403);
         }
     }
 
-    private function isMaster($user): bool
+    private function canManageList($user): bool
     {
-        return $user && (int) $user->funcao === 0;
+        return ManagementScope::isAdmin($user);
     }
 
     private function resolveUnit(Request $request): ?array

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Unidade;
+use App\Support\ManagementScope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Inertia\Inertia;
@@ -23,16 +24,31 @@ class UnitController extends Controller
     {
         $this->ensureAuthorized();
 
-        $units = Unidade::orderByDesc('tb2_id')->paginate(10);
+        $user = request()->user();
+        $unitsQuery = Unidade::query()->orderByDesc('tb2_id');
+
+        if (ManagementScope::isManager($user)) {
+            $unitIds = ManagementScope::managedUnitIds($user)->all();
+
+            if (empty($unitIds)) {
+                $unitsQuery->whereRaw('1 = 0');
+            } else {
+                $unitsQuery->whereIn('tb2_id', $unitIds);
+            }
+        }
+
+        $units = $unitsQuery->paginate(10);
 
         return Inertia::render('Units/UnitIndex', [
             'units' => $units,
+            'canCreate' => ManagementScope::isMaster($user),
         ]);
     }
 
     public function show(Unidade $unit): Response
     {
         $this->ensureAuthorized();
+        $this->ensureCanManageUnit(request()->user(), $unit);
 
         return Inertia::render('Units/UnitShow', [
             'unit' => $unit,
@@ -42,6 +58,7 @@ class UnitController extends Controller
     public function create(): Response
     {
         $this->ensureAuthorized();
+        $this->ensureCanCreateUnit(request()->user());
 
         return Inertia::render('Units/UnitCreate');
     }
@@ -49,6 +66,7 @@ class UnitController extends Controller
     public function store(Request $request)
     {
         $this->ensureAuthorized();
+        $this->ensureCanCreateUnit($request->user());
 
         $data = $this->validateUnit($request);
 
@@ -68,6 +86,7 @@ class UnitController extends Controller
     public function edit(Unidade $unit): Response
     {
         $this->ensureAuthorized();
+        $this->ensureCanManageUnit(request()->user(), $unit);
 
         return Inertia::render('Units/UnitEdit', [
             'unit' => $unit,
@@ -77,6 +96,7 @@ class UnitController extends Controller
     public function update(Request $request, Unidade $unit)
     {
         $this->ensureAuthorized();
+        $this->ensureCanManageUnit($request->user(), $unit);
 
         $data = $this->validateUnit($request);
 
@@ -96,6 +116,7 @@ class UnitController extends Controller
     public function destroy(Unidade $unit)
     {
         $this->ensureAuthorized();
+        $this->ensureCanManageUnit(request()->user(), $unit);
 
         $unit->delete();
 
@@ -143,5 +164,19 @@ class UnitController extends Controller
         }
 
         return $value;
+    }
+
+    private function ensureCanCreateUnit($user): void
+    {
+        if (! ManagementScope::isMaster($user)) {
+            abort(403, 'Acesso negado.');
+        }
+    }
+
+    private function ensureCanManageUnit($user, Unidade $unit): void
+    {
+        if (! $user || ! ManagementScope::canManageUnit($user, (int) $unit->tb2_id)) {
+            abort(403, 'Acesso negado.');
+        }
     }
 }

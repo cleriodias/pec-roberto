@@ -8,6 +8,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductDiscardController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\LanchoneteTerminalController;
+use App\Http\Controllers\MobileRevenueController;
 use App\Http\Controllers\NoticeController;
 use App\Http\Controllers\NewsletterSubscriptionController;
 use App\Http\Controllers\RoleSwitchController;
@@ -48,6 +49,14 @@ Route::get('/', function (Request $request) {
 Route::post('/newsletter', [NewsletterSubscriptionController::class, 'store'])
     ->name('newsletter.store');
 
+Route::get('/app/endpoints/mobile/revenue/dashboard', [MobileRevenueController::class, 'dashboard'])
+    ->name('mobile.revenue.dashboard');
+Route::get('/app/endpoints/mobile/revenue/daily', [MobileRevenueController::class, 'daily'])
+    ->name('mobile.revenue.daily');
+Route::get('/app/endpoints/mobile/revenue/monthly', [MobileRevenueController::class, 'monthly'])
+    ->name('mobile.revenue.monthly');
+
+
 Route::get('/dashboard', function () {
     return Inertia::render('Dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
@@ -62,10 +71,11 @@ Route::post('/supplier/disputes/{bid}/invoice', [SupplierPortalController::class
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::put('/profile/access-code', [ProfileController::class, 'updateAccessCode'])->name('profile.access-code.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::get('/settings', function () {
         $user = auth()->user();
-        if (! $user || (int) $user->funcao !== 0) {
+        if (! $user || ! in_array((int) $user->funcao, [0, 1], true)) {
             abort(403);
         }
 
@@ -73,7 +83,7 @@ Route::middleware('auth')->group(function () {
     })->name('settings.config');
     Route::get('/settings/menu', function () {
         $user = auth()->user();
-        if (! $user || (int) $user->funcao !== 0) {
+        if (! $user || ! in_array((int) $user->funcao, [0, 1], true)) {
             abort(403);
         }
 
@@ -81,7 +91,7 @@ Route::middleware('auth')->group(function () {
     })->name('settings.menu');
     Route::get('/settings/profile-access', function () {
         $user = auth()->user();
-        if (! $user || (int) $user->funcao !== 0) {
+        if (! $user || ! in_array((int) $user->funcao, [0, 1], true)) {
             abort(403);
         }
 
@@ -89,7 +99,7 @@ Route::middleware('auth')->group(function () {
     })->name('settings.profile-access');
     Route::get('/settings/menu-order', function () {
         $user = auth()->user();
-        if (! $user || (int) $user->funcao !== 0) {
+        if (! $user || ! in_array((int) $user->funcao, [0, 1], true)) {
             abort(403);
         }
 

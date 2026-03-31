@@ -7,7 +7,7 @@ import Pagination from "@/Components/Pagination";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, Link, usePage } from "@inertiajs/react";
 
-export default function UnitIndex({ auth, units }) {
+export default function UnitIndex({ auth, units, canCreate = false }) {
     const { flash } = usePage().props;
 
     return (
@@ -22,11 +22,13 @@ export default function UnitIndex({ auth, units }) {
                     <div className="flex justify-between items-center m-4">
                         <h3 className="text-lg">Listar</h3>
                         <div className="flex space-x-4">
-                            <Link href={route('units.create')}>
-                                <SuccessButton aria-label="Cadastrar" title="Cadastrar">
-                                    <i className="bi bi-plus-lg text-lg" aria-hidden="true"></i>
-                                </SuccessButton>
-                            </Link>
+                            {canCreate && (
+                                <Link href={route('units.create')}>
+                                    <SuccessButton aria-label="Cadastrar" title="Cadastrar">
+                                        <i className="bi bi-plus-lg text-lg" aria-hidden="true"></i>
+                                    </SuccessButton>
+                                </Link>
+                            )}
                         </div>
                     </div>
 

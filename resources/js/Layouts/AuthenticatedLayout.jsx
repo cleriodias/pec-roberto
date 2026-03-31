@@ -62,11 +62,12 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
     const isCashier = user && effectiveRole === 3;
     const isLanchonete = user && effectiveRole === 4;
     const isMaster = user && effectiveRole === 0;
+    const isAdmin = user && [0, 1].includes(effectiveRole);
     const canSeeUsers = user && [0, 1].includes(effectiveRole);
     const canSeeUnits = canSeeUsers;
     const canSeeReports = canSeeUnits;
     const canSeeExpenses = user && (canSeeReports || effectiveRole === 3);
-    const canAccessBoletos = user && [0, 3].includes(effectiveRole);
+    const canAccessBoletos = user && [0, 1, 3].includes(effectiveRole);
     const canSwitchUnit = user && [0, 1, 2, 3].includes(originalRole);
     const hasLanchoneteRoute =
         typeof route === 'function' && route().has && route().has('lanchonete.terminal');
@@ -304,7 +305,7 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
             },
             {
                 key: 'settings',
-                visible: isMaster && hasMenuAccess('settings'),
+                visible: isAdmin && hasMenuAccess('settings'),
                 node: (
                     <Dropdown.Link href={route('settings.config')}>
                         <MenuLabel icon="bi bi-gear" text="Farrammentas" />

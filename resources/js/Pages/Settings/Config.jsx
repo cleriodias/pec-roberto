@@ -2,16 +2,14 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head } from '@inertiajs/react';
 
 export default function Config({ auth }) {
+    const role = Number(auth?.user?.funcao ?? -1);
+    const isMaster = role === 0;
+
     const options = [
         {
             label: 'Menu',
             icon: 'bi-ui-checks',
             href: route('settings.menu'),
-        },
-        {
-            label: 'Avisos',
-            icon: 'bi-megaphone',
-            href: route('settings.notices'),
         },
         {
             label: 'Relatorios',
@@ -44,26 +42,36 @@ export default function Config({ auth }) {
             href: route('settings.menu-order'),
         },
         {
-            label: 'Banco de dados',
-            icon: 'bi-database',
-            href: route('settings.database'),
-        },
-        {
-            label: 'Fornecedores',
-            icon: 'bi-truck',
-            href: route('settings.suppliers'),
-        },
-        {
             label: 'Relatorio Gastos',
             icon: 'bi-receipt',
             href: route('reports.gastos'),
         },
-        {
-            label: 'Disputa de Vendas',
-            icon: 'bi-hammer',
-            href: route('settings.sales-disputes'),
-        },
     ];
+
+    if (isMaster) {
+        options.push(
+            {
+                label: 'Banco de dados',
+                icon: 'bi-database',
+                href: route('settings.database'),
+            },
+            {
+                label: 'Fornecedores',
+                icon: 'bi-truck',
+                href: route('settings.suppliers'),
+            },
+            {
+                label: 'Disputa de Vendas',
+                icon: 'bi-hammer',
+                href: route('settings.sales-disputes'),
+            },
+            {
+                label: 'Avisos',
+                icon: 'bi-megaphone',
+                href: route('settings.notices'),
+            },
+        );
+    }
 
     return (
         <AuthenticatedLayout

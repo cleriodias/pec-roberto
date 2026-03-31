@@ -61,10 +61,26 @@ const SECTIONS = [
     },
 ];
 
-export default function Menu() {
+export default function Menu({ auth }) {
+    const role = Number(auth?.user?.funcao ?? -1);
+    const isMaster = role === 0;
+
     const visibleSections = SECTIONS.map((section) => ({
         ...section,
-        items: section.items.filter((item) => item.href),
+        items: section.items.filter((item) => {
+            if (!item.href) {
+                return false;
+            }
+
+            if (
+                !isMaster
+                && ['Avisos', 'Fornecedores', 'Disputa de Vendas'].includes(item.label)
+            ) {
+                return false;
+            }
+
+            return true;
+        }),
     })).filter((section) => section.items.length > 0);
 
     return (

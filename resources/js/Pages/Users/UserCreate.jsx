@@ -4,26 +4,49 @@ import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, Link, useForm } from "@inertiajs/react";
 
 const roleOptions = [
-    { value: 0, label: 'MASTER' },
-    { value: 1, label: 'GERENTE' },
-    { value: 2, label: 'SUB-GERENTE' },
-    { value: 3, label: 'CAIXA' },
-    { value: 4, label: 'LANCHONETE' },
-    { value: 5, label: 'FUNCIONARIO' },
-    { value: 6, label: 'CLIENTE' },
+    { value: 0, label: 'Master' },
+    { value: 1, label: 'Gerente' },
+    { value: 2, label: 'Sub-gerente' },
+    { value: 3, label: 'Caixa' },
+    { value: 4, label: 'Lanchonete' },
+    { value: 5, label: 'Funcionario' },
+    { value: 6, label: 'Cliente' },
 ];
 
-export default function UserCreate({ auth, units = [] }) {
+const formatNameInput = (value) => {
+    const sanitizedValue = value
+        .replace(/[^A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .replace(/^\s+/, '');
 
-    const initialUnits = units.length ? [String(units[0].tb2_id)] : [];
+    const words = sanitizedValue
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2);
+
+    const formattedName = words
+        .map((word) => word.charAt(0).toLocaleUpperCase('pt-BR') + word.slice(1).toLocaleLowerCase('pt-BR'))
+        .join(' ');
+
+    return formattedName.slice(0, 15);
+};
+
+export default function UserCreate({ auth, units = [] }) {
+    const now = new Date();
+    const generatedPassword = `${String(now.getHours()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+
+    const initialUnits = units
+        .filter((unit) => Number(unit.tb2_id) !== 4)
+        .map((unit) => String(unit.tb2_id));
+
     const { data, setData, post, processing, errors } = useForm({
         name: '',
-        email: '',
-        password: '',
-        password_confirmation: '',
-        funcao: '5',
-        hr_ini: '08:00',
-        hr_fim: '17:00',
+        email: '@paoecafe83.com.br',
+        password: generatedPassword,
+        password_confirmation: generatedPassword,
+        funcao: '4',
+        hr_ini: '00:00',
+        hr_fim: '23:00',
         salario: '1518',
         vr_cred: '350',
         tb2_id: initialUnits,
@@ -69,57 +92,63 @@ export default function UserCreate({ auth, units = [] }) {
                     <div className="bg-gray-50 text-sm dark:bg-gray-700 p-4 rounded-lg shadow-m">
                         <form onSubmit={handleSubmit}>
 
-                            <div className="mb-4">
-                                <label htmlFor="name" className="block text-sm font-medium text-gray-700">Nome</label>
-                                <input
-                                    id="name"
-                                    type="text"
-                                    placeholder={'Nome completo do usu\u00E1rio'}
-                                    value={data.name}
-                                    onChange={(e) => setData('name', e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                />
-                                {errors.name && <span className="text-red-600">{errors.name}</span>}
+                            <div className="mb-4 grid grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="name" className="block text-sm font-medium text-gray-700">Nome</label>
+                                    <input
+                                        id="name"
+                                        type="text"
+                                        placeholder={'Nome Sobrenome'}
+                                        value={data.name}
+                                        maxLength={15}
+                                        onChange={(e) => setData('name', formatNameInput(e.target.value))}
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                    />
+                                    {errors.name && <span className="text-red-600">{errors.name}</span>}
+                                </div>
+
+                                <div>
+                                    <label htmlFor="email" className="block text-sm font-medium text-gray-700">E-mail</label>
+                                    <input
+                                        id="email"
+                                        type="email"
+                                        placeholder={'@paoecafe83.com.br'}
+                                        value={data.email}
+                                        onChange={(e) => setData('email', e.target.value)}
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                    />
+                                    {errors.email && <span className="text-red-600">{errors.email}</span>}
+                                </div>
                             </div>
 
                             <div className="mb-4">
-                                <label htmlFor="email" className="block text-sm font-medium text-gray-700">E-mail</label>
-                                <input
-                                    id="email"
-                                    type="email"
-                                    placeholder={'Melhor e-mail do usu\u00E1rio'}
-                                    value={data.email}
-                                    onChange={(e) => setData('email', e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                />
-                                {errors.email && <span className="text-red-600">{errors.email}</span>}
-                            </div>
-
-                            <div className="mb-4">
-                                <label htmlFor="funcao" className="block text-sm font-medium text-gray-700">{'Fun\u00E7\u00E3o'}</label>
-                                <select
-                                    id="funcao"
-                                    value={data.funcao}
-                                    onChange={(e) => setData('funcao', e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                >
+                                <p className="block text-sm font-medium text-gray-700">{'Fun\u00E7\u00E3o'}</p>
+                                <div className="mt-2 flex flex-nowrap items-center gap-4 overflow-x-auto pb-2">
                                     {roleOptions.map((option) => (
-                                        <option key={option.value} value={option.value}>
-                                            {option.label}
-                                        </option>
+                                        <label key={option.value} className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                                            <input
+                                                type="radio"
+                                                name="funcao"
+                                                value={option.value}
+                                                checked={data.funcao === String(option.value)}
+                                                onChange={(e) => setData('funcao', e.target.value)}
+                                                className="border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500"
+                                            />
+                                            <span>{option.label}</span>
+                                        </label>
                                     ))}
-                                </select>
+                                </div>
                                 {errors.funcao && <span className="text-red-600">{errors.funcao}</span>}
                             </div>
 
                             <div className="mb-4">
                                 <p className="block text-sm font-medium text-gray-700">Unidades</p>
                                 {units.length ? (
-                                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                    <div className="mt-2 flex flex-nowrap items-center gap-4 overflow-x-auto pb-2">
                                         {units.map((unit) => {
                                             const unitId = String(unit.tb2_id);
                                             return (
-                                                <label key={unit.tb2_id} className="inline-flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-200">
+                                                <label key={unit.tb2_id} className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
                                                     <input
                                                         type="checkbox"
                                                         value={unitId}
@@ -194,32 +223,34 @@ export default function UserCreate({ auth, units = [] }) {
                                 </div>
                             </div>
 
-                            <div className="mb-4">
-                                <label htmlFor="password" className="block text-sm font-medium text-gray-700">Senha</label>
-                                <input
-                                    id="password"
-                                    type="password"
-                                    autoComplete="password"
-                                    placeholder={'Senha para o usu\u00E1rio acessar o sistema'}
-                                    value={data.password}
-                                    onChange={(e) => setData('password', e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                />
-                                {errors.password && <span className="text-red-600">{errors.password}</span>}
-                            </div>
+                            <div className="mb-4 grid grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="password" className="block text-sm font-medium text-gray-700">Senha</label>
+                                    <input
+                                        id="password"
+                                        type="password"
+                                        autoComplete="password"
+                                        placeholder={'Senha para o usu\u00E1rio acessar o sistema'}
+                                        value={data.password}
+                                        onChange={(e) => setData('password', e.target.value)}
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                    />
+                                    {errors.password && <span className="text-red-600">{errors.password}</span>}
+                                </div>
 
-                            <div className="mb-4">
-                                <label htmlFor="password_confirmation" className="block text-sm font-medium text-gray-700">Confirma a Senha</label>
-                                <input
-                                    id="password_confirmation"
-                                    type="password"
-                                    autoComplete="password_confirmation"
-                                    placeholder="Confirmar a senha"
-                                    value={data.password_confirmation}
-                                    onChange={(e) => setData('password_confirmation', e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                />
-                                {errors.password_confirmation && <span className="text-red-600">{errors.password_confirmation}</span>}
+                                <div>
+                                    <label htmlFor="password_confirmation" className="block text-sm font-medium text-gray-700">Confirma a Senha</label>
+                                    <input
+                                        id="password_confirmation"
+                                        type="password"
+                                        autoComplete="password_confirmation"
+                                        placeholder="Confirmar a senha"
+                                        value={data.password_confirmation}
+                                        onChange={(e) => setData('password_confirmation', e.target.value)}
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                    />
+                                    {errors.password_confirmation && <span className="text-red-600">{errors.password_confirmation}</span>}
+                                </div>
                             </div>
 
                             <div className="flex justify-end">

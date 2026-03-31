@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\Unidade;
 use App\Models\Venda;
 use App\Models\SalaryAdvance;
+use App\Support\ManagementScope;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,9 +43,13 @@ class UserController extends Controller
 
     public function index(Request $request): Response
     {
+        $authUser = $request->user();
         $filters = $request->only(['unit', 'funcao']);
 
-        $users = User::with('units:tb2_id,tb2_nome')
+        $users = User::with('units:tb2_id,tb2_nome');
+        ManagementScope::applyManagedUserScope($users, $authUser);
+
+        $users = $users
             ->when($request->filled('funcao'), function ($query) use ($request) {
                 $funcao = (int) $request->input('funcao');
                 $query->where('funcao', $funcao);
@@ -62,7 +67,7 @@ class UserController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-        $units = Unidade::orderBy('tb2_nome')->get(['tb2_id', 'tb2_nome']);
+        $units = ManagementScope::managedUnits($authUser, ['tb2_id', 'tb2_nome']);
 
         return Inertia::render('Users/UserIndex', [
             'users' => $users,
@@ -74,6 +79,7 @@ class UserController extends Controller
     public function show(User $user): Response
     {
         $user->load('units:tb2_id,tb2_nome');
+        $this->ensureCanManageUser(request()->user(), $user);
 
         $valeSales = Venda::query()
             ->select(['tb3_id', 'tb4_id', 'valor_total', 'data_hora', 'tipo_pago', 'id_unidade'])
@@ -122,7 +128,7 @@ class UserController extends Controller
 
     public function create(): Response
     {
-        $units = Unidade::orderBy('tb2_nome')->get(['tb2_id', 'tb2_nome']);
+        $units = ManagementScope::managedUnits(request()->user(), ['tb2_id', 'tb2_nome']);
 
         return Inertia::render('Users/UserCreate', [
             'units' => $units,
@@ -131,11 +137,16 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
+        $authUser = $request->user();
+        $request->merge([
+            'name' => $this->normalizeUserName((string) $request->input('name', '')),
+        ]);
+
         $request->validate(
             [
-                'name' => 'required|string|max:255',
+                'name' => ['required', 'string', 'max:15', 'regex:/^\pL+(?: \pL+)?$/u'],
                 'email' => 'required|string|email|max:255|unique:users',
-                'password' => 'required|string|min:8|max:255|confirmed',
+                'password' => 'required|string|min:4|max:255|confirmed',
                 'funcao' => 'required|integer|between:0,6',
                 'hr_ini' => 'required|date_format:H:i',
                 'hr_fim' => 'required|date_format:H:i|after:hr_ini',
@@ -148,6 +159,7 @@ class UserController extends Controller
                 'name.required' => 'O campo nome é obrigatório!',
                 'name.string' => 'O nome deve ser uma string válida.',
                 'name.max' => 'O nome não pode ter mais que :max caracteres.',
+                'name.regex' => 'Informe nome e sobrenome usando apenas letras e um único espaço.',
                 'email.required' => 'O campo e-mail é obrigatório.',
                 'email.string' => 'O e-mail deve ser uma string válida.',
                 'email.email' => 'O e-mail deve ser um endereço válido.',
@@ -187,12 +199,22 @@ class UserController extends Controller
             ->values()
             ->all();
 
+        if (ManagementScope::isManager($authUser)) {
+            $allowedUnitIds = ManagementScope::managedUnitIds($authUser)->all();
+            $invalidUnitIds = array_diff($unitIds, $allowedUnitIds);
+
+            if (! empty($invalidUnitIds)) {
+                abort(403);
+            }
+        }
+
         $primaryUnit = $unitIds[0] ?? 1;
 
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
             'password' => $request->password,
+            'cod_acesso' => $request->password,
             'funcao' => $request->funcao,
             'hr_ini' => $request->hr_ini,
             'hr_fim' => $request->hr_fim,
@@ -208,8 +230,9 @@ class UserController extends Controller
 
     public function edit(User $user): Response
     {
-        $units = Unidade::orderBy('tb2_nome')->get(['tb2_id', 'tb2_nome']);
         $user->load('units:tb2_id,tb2_nome');
+        $this->ensureCanManageUser(request()->user(), $user);
+        $units = ManagementScope::managedUnits(request()->user(), ['tb2_id', 'tb2_nome']);
 
         return Inertia::render('Users/UserEdit', [
             'user' => $user,
@@ -219,6 +242,8 @@ class UserController extends Controller
 
     public function update(Request $request, User $user)
     {
+        $this->ensureCanManageUser($request->user(), $user);
+
         $request->validate(
             [
                 'name' => 'required|string|max:255',
@@ -269,6 +294,15 @@ class UserController extends Controller
             ->values()
             ->all();
 
+        if (ManagementScope::isManager($request->user())) {
+            $allowedUnitIds = ManagementScope::managedUnitIds($request->user())->all();
+            $invalidUnitIds = array_diff($unitIds, $allowedUnitIds);
+
+            if (! empty($invalidUnitIds)) {
+                abort(403);
+            }
+        }
+
         $primaryUnit = $unitIds[0] ?? 1;
 
         $user->update([
@@ -299,7 +333,10 @@ class UserController extends Controller
         $monthStart = now()->startOfMonth();
         $monthEnd = now()->endOfMonth();
 
-        $users = User::query()
+        $users = User::query();
+        ManagementScope::applyManagedUserScope($users, $request->user());
+
+        $users = $users
             ->where('name', 'like', '%' . $safeTerm . '%')
             ->orderBy('name')
             ->limit(10)
@@ -335,6 +372,8 @@ class UserController extends Controller
 
     public function destroy(User $user)
     {
+        $this->ensureCanManageUser(request()->user(), $user);
+
         if ($this->userHasTransactions($user)) {
             return Redirect::back()->with('error', 'Não é possível excluir usuários com lançamentos associados.');
         }
@@ -346,6 +385,8 @@ class UserController extends Controller
 
     public function resetPassword(Request $request, User $user)
     {
+        $this->ensureCanManageUser($request->user(), $user);
+
         $newPassword = str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
         $user->forceFill([
@@ -421,5 +462,33 @@ class UserController extends Controller
         $hasAdvances = SalaryAdvance::where('user_id', $user->id)->exists();
 
         return $hasSales || $hasAdvances;
+    }
+
+    private function ensureCanManageUser(?User $actingUser, User $targetUser): void
+    {
+        if (! $actingUser || ! ManagementScope::canManageUser($actingUser, $targetUser)) {
+            abort(403);
+        }
+    }
+
+    private function normalizeUserName(string $name): string
+    {
+        $lettersAndSpaces = preg_replace('/[^\pL\s]/u', '', $name) ?? '';
+        $normalizedSpaces = preg_replace('/\s+/u', ' ', trim($lettersAndSpaces)) ?? '';
+
+        if ($normalizedSpaces === '') {
+            return '';
+        }
+
+        $words = explode(' ', $normalizedSpaces);
+
+        $formattedWords = array_map(function (string $word): string {
+            $firstLetter = mb_substr($word, 0, 1, 'UTF-8');
+            $remainingLetters = mb_substr($word, 1, null, 'UTF-8');
+
+            return mb_strtoupper($firstLetter, 'UTF-8') . mb_strtolower($remainingLetters, 'UTF-8');
+        }, $words);
+
+        return implode(' ', $formattedWords);
     }
 }

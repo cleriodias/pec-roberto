@@ -53,6 +53,32 @@ class ProfileController extends Controller
     }
 
     /**
+     * Update the user's access code.
+     */
+    public function updateAccessCode(Request $request): RedirectResponse
+    {
+        $validated = $request->validate(
+            [
+                'cod_acesso' => ['required', 'digits:4', 'confirmed'],
+            ],
+            [
+                'cod_acesso.required' => 'O novo codigo de acesso e obrigatorio.',
+                'cod_acesso.digits' => 'O codigo de acesso deve ter exatamente 4 digitos.',
+                'cod_acesso.confirmed' => 'A confirmacao do codigo de acesso nao corresponde.',
+            ],
+            [
+                'cod_acesso' => 'codigo de acesso',
+            ]
+        );
+
+        $request->user()->update([
+            'cod_acesso' => $validated['cod_acesso'],
+        ]);
+
+        return Redirect::route('profile.edit');
+    }
+
+    /**
      * Delete the user's account.
      */
     public function destroy(Request $request): RedirectResponse

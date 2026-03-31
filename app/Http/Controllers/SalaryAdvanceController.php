@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\SalaryAdvance;
 use App\Models\User;
 use App\Models\Unidade;
+use App\Support\ManagementScope;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
@@ -17,7 +18,8 @@ class SalaryAdvanceController extends Controller
 {
     public function index(Request $request): Response
     {
-        $this->ensureManager($request->user());
+        $user = $request->user();
+        $this->ensureManager($user);
 
         $monthParam = $request->query('month');
         $unitParam = $request->query('unit_id');
@@ -27,6 +29,25 @@ class SalaryAdvanceController extends Controller
         ];
 
         $advancesQuery = SalaryAdvance::with(['user:id,name,tb2_id', 'unit:tb2_id,tb2_nome'])
+            ->when(ManagementScope::isManager($user), function ($query) use ($user) {
+                $allowedUnitIds = ManagementScope::managedUnitIds($user)->all();
+
+                if (empty($allowedUnitIds)) {
+                    $query->whereRaw('1 = 0');
+
+                    return;
+                }
+
+                $query->where(function ($sub) use ($allowedUnitIds) {
+                    $sub->whereIn('unit_id', $allowedUnitIds)
+                        ->orWhere(function ($legacy) use ($user) {
+                            $legacy->whereNull('unit_id')
+                                ->whereHas('user', function ($userQuery) use ($user) {
+                                    ManagementScope::applyManagedUserScope($userQuery, $user);
+                                });
+                        });
+                });
+            })
             ->when($filters['month'], function ($query) use ($filters) {
                 try {
                     [$year, $month] = explode('-', $filters['month']);
@@ -67,7 +88,7 @@ class SalaryAdvanceController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-        $units = Unidade::orderBy('tb2_nome')->get(['tb2_id', 'tb2_nome']);
+        $units = ManagementScope::managedUnits($user, ['tb2_id', 'tb2_nome']);
 
         return Inertia::render('Finance/SalaryAdvanceIndex', [
             'advances' => $advances,
@@ -78,10 +99,12 @@ class SalaryAdvanceController extends Controller
 
     public function create(Request $request): Response
     {
-        $this->ensureManager($request->user());
+        $user = $request->user();
+        $this->ensureManager($user);
 
-        $users = User::orderBy('name')
-            ->get(['id', 'name', 'salario']);
+        $users = User::query()->orderBy('name');
+        ManagementScope::applyManagedUserScope($users, $user);
+        $users = $users->get(['id', 'name', 'salario']);
         $activeUnit = $this->resolveUnit($request);
 
         return Inertia::render('Finance/SalaryAdvanceCreate', [
@@ -112,6 +135,7 @@ class SalaryAdvanceController extends Controller
         ]);
 
         $user = User::select('id', 'salario', 'funcao')->findOrFail($data['user_id']);
+        $this->ensureCanManageUser($request->user(), $user);
 
         $totalTaken = SalaryAdvance::where('user_id', $user->id)->sum('amount');
         $totalDueAsVale = DB::table('tb3_vendas')
@@ -139,6 +163,10 @@ class SalaryAdvanceController extends Controller
     public function destroy(Request $request, SalaryAdvance $salaryAdvance): RedirectResponse
     {
         $this->ensureManager($request->user());
+
+        if (! $this->canManageAdvance($request->user(), $salaryAdvance)) {
+            abort(403);
+        }
 
         $salaryAdvance->delete();
 
@@ -178,5 +206,32 @@ class SalaryAdvanceController extends Controller
             'id' => (int) $unitId,
             'name' => $unit?->tb2_nome ?? ('Unidade #' . $unitId),
         ];
+    }
+
+    private function ensureCanManageUser($actingUser, User $targetUser): void
+    {
+        if (! $actingUser || ! ManagementScope::canManageUser($actingUser, $targetUser)) {
+            abort(403);
+        }
+    }
+
+    private function canManageAdvance($actingUser, SalaryAdvance $salaryAdvance): bool
+    {
+        if (! $actingUser || ! ManagementScope::isAdmin($actingUser)) {
+            return false;
+        }
+
+        if (ManagementScope::isMaster($actingUser)) {
+            return true;
+        }
+
+        if ($salaryAdvance->unit_id) {
+            return ManagementScope::canManageUnit($actingUser, (int) $salaryAdvance->unit_id);
+        }
+
+        $salaryAdvance->loadMissing('user.units:tb2_id,tb2_nome');
+
+        return $salaryAdvance->user instanceof User
+            && ManagementScope::canManageUser($actingUser, $salaryAdvance->user);
     }
 }
