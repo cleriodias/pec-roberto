@@ -46,28 +46,12 @@ const buildReceiptHtml = (receipt) => {
         )
         .join('');
 
-    const paymentHtml = receipt.payment
-        ? `
-                ${
-                    receipt.payment.valor_pago !== null
-                        ? `<p>Pago em dinheiro: ${formatCurrency(receipt.payment.valor_pago)}</p>`
-                        : ''
-                }
-                <p>Troco: ${formatCurrency(receipt.payment.troco ?? 0)}</p>
-                ${
-                    Number(receipt.payment.dois_pgto ?? 0) > 0
-                        ? `<p>Cartao (compl.): ${formatCurrency(receipt.payment.dois_pgto)}</p>`
-                        : ''
-                }
-            `
-        : '';
-
     return `
         <!DOCTYPE html>
         <html>
             <head>
                 <meta charset="utf-8" />
-                <title>Cupom #${receipt.id}</title>
+                <title>Comanda #${receipt.id}</title>
                 <style>
                     * { font-family: 'Courier New', monospace; box-sizing: border-box; }
                     body { width: 80mm; margin: 0 auto; padding: 12px; }
@@ -80,32 +64,24 @@ const buildReceiptHtml = (receipt) => {
                 </style>
             </head>
             <body>
-                <h1>${receipt.unit_name || 'Cupom'}</h1>
+                <h1>${receipt.unit_name || 'Comanda'}</h1>
                 ${unitInfoHtml}
-                <p>Cupom: #${receipt.id}</p>
+                <p>Comanda: #${receipt.id}</p>
                 <p>Caixa: ${receipt.cashier_name || '---'}</p>
-                ${
-                    receipt.vale_user_name
-                        ? `<p>Vale: ${receipt.vale_user_name}${
-                              receipt.vale_type === 'refeicao' ? ' (Refeicao)' : ''
-                          }</p>`
-                        : ''
-                }
+                <p>Pagamento: ${PAYMENT_LABELS[receipt.tipo_pago] ?? receipt.tipo_pago}</p>
                 <p>Data: ${formatDateTime(receipt.date_time)}</p>
                 <div class="divider"></div>
                 ${itemsHtml}
                 <div class="divider"></div>
-                <p>Pagamento: ${PAYMENT_LABELS[receipt.tipo_pago] ?? receipt.tipo_pago}</p>
-                ${paymentHtml}
                 <div class="total">Total: ${formatCurrency(receipt.total)}</div>
-                <p style="text-align:center;margin-top:12px;">Obrigado pela preferencia</p>
             </body>
         </html>
     `;
 };
 
-export default function ValeReport({
+export default function ComandasEmAberto({
     rows = [],
+    summary = {},
     startDate,
     endDate,
     unit,
@@ -126,12 +102,13 @@ export default function ValeReport({
                 ? String(selectedUserId)
                 : 'all',
     });
+
     const [selectedReceipt, setSelectedReceipt] = useState(null);
     const [printError, setPrintError] = useState('');
 
     const handleSubmit = (event) => {
         event.preventDefault();
-        get(route('reports.vale'), {
+        get(route('reports.comandas-aberto'), {
             preserveState: true,
             preserveScroll: true,
             replace: true,
@@ -156,25 +133,23 @@ export default function ValeReport({
         printWindow.close();
     };
 
-    const totalAmount = rows.reduce((sum, row) => sum + (Number(row.total) || 0), 0);
-
     return (
         <AuthenticatedLayout
             header={
                 <div>
                     <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">
-                        Relatorio Vales
+                        Comandas em Aberto
                     </h2>
                     <p className="text-sm text-gray-500 dark:text-gray-300">
-                        Compras feitas no vale. Unidade atual: {unit?.name ?? '---'}.
+                        Comandas abertas agrupadas por numero. Unidade atual: {unit?.name ?? '---'}.
                     </p>
                 </div>
             }
         >
-            <Head title="Relatorio Vales" />
+            <Head title="Comandas em Aberto" />
 
             <div className="py-8">
-                <div className="mx-auto max-w-6xl space-y-6 px-4 sm:px-6 lg:px-8">
+                <div className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8">
                     {printError && (
                         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
                             {printError}
@@ -210,7 +185,7 @@ export default function ValeReport({
                             </div>
                             <div>
                                 <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                    Unidade
+                                    Loja
                                 </label>
                                 <select
                                     value={data.unit_id}
@@ -255,18 +230,23 @@ export default function ValeReport({
                     <div className="rounded-2xl bg-white p-6 shadow dark:bg-gray-800">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                Compras no vale
+                                Lista de comandas em aberto
                             </h3>
                             <div className="flex flex-wrap items-center gap-3">
-                                <span className="text-xs font-semibold text-gray-500 dark:text-gray-300">
-                                    {rows.length} registros
-                                </span>
                                 <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-indigo-700 shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200">
                                     <p className="text-[10px] font-semibold uppercase tracking-wide">
-                                        Total
+                                        Valor total
                                     </p>
                                     <p className="text-sm font-bold">
-                                        {formatCurrency(totalAmount)}
+                                        {formatCurrency(summary.total_amount)}
+                                    </p>
+                                </div>
+                                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-700 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wide">
+                                        Registros
+                                    </p>
+                                    <p className="text-sm font-bold">
+                                        {Number(summary.total_records ?? 0)}
                                     </p>
                                 </div>
                             </div>
@@ -274,7 +254,7 @@ export default function ValeReport({
 
                         {rows.length === 0 ? (
                             <p className="mt-4 rounded-xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-300">
-                                Nenhuma compra no vale para o periodo selecionado.
+                                Nenhuma comanda em aberto para os filtros selecionados.
                             </p>
                         ) : (
                             <div className="mt-4 overflow-x-auto">
@@ -282,28 +262,25 @@ export default function ValeReport({
                                     <thead className="bg-gray-100 dark:bg-gray-900/60">
                                         <tr>
                                             <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
-                                                ID tb4
-                                            </th>
-                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
-                                                Data/Hora
-                                            </th>
-                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
-                                                Comanda
-                                            </th>
-                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
-                                                Itens
-                                            </th>
-                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
-                                                Total
-                                            </th>
-                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
-                                                Unidade
-                                            </th>
-                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
                                                 Caixa
                                             </th>
                                             <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
-                                                Usuario Vale
+                                                N. Comanda
+                                            </th>
+                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                Valor
+                                            </th>
+                                            <th className="px-3 py-2 text-center font-medium text-gray-600 dark:text-gray-300">
+                                                Itens
+                                            </th>
+                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                                                Loja
+                                            </th>
+                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                                                Usr lanchonete
+                                            </th>
+                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                                                Data e hora
                                             </th>
                                             <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
                                                 Cupom
@@ -313,29 +290,26 @@ export default function ValeReport({
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                                         {rows.map((row) => (
                                             <tr key={row.id}>
-                                                <td className="px-3 py-2 font-semibold text-gray-800 dark:text-gray-100">
-                                                    #{row.id}
-                                                </td>
-                                                <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
-                                                    {formatDateTime(row.date_time)}
-                                                </td>
-                                                <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
-                                                    {row.comanda ?? '--'}
-                                                </td>
                                                 <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
-                                                    <p className="font-medium">{row.items_count} item(ns)</p>
+                                                    {row.cashier ?? '--'}
+                                                </td>
+                                                <td className="px-3 py-2 font-semibold text-gray-800 dark:text-gray-100">
+                                                    #{row.comanda}
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-gray-100">
                                                     {formatCurrency(row.total)}
+                                                </td>
+                                                <td className="px-3 py-2 text-center text-gray-700 dark:text-gray-200">
+                                                    {row.items_count}
                                                 </td>
                                                 <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
                                                     {row.unit_name ?? '---'}
                                                 </td>
                                                 <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
-                                                    {row.cashier ?? '--'}
+                                                    {row.lanchonete_user ?? '--'}
                                                 </td>
                                                 <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
-                                                    {row.vale_user ?? '--'}
+                                                    {formatDateTime(row.date_time)}
                                                 </td>
                                                 <td className="px-3 py-2 text-right">
                                                     <button
@@ -362,7 +336,7 @@ export default function ValeReport({
                         <div className="flex items-start justify-between gap-4">
                             <div>
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                    Cupom #{selectedReceipt.id}
+                                    Comanda #{selectedReceipt.id}
                                 </h3>
                                 <p className="text-sm text-gray-500 dark:text-gray-300">
                                     {formatDateTime(selectedReceipt.date_time)}
@@ -388,11 +362,6 @@ export default function ValeReport({
                             <p>
                                 <span className="font-medium">Caixa:</span> {selectedReceipt.cashier_name}
                             </p>
-                            {selectedReceipt.vale_user_name && (
-                                <p>
-                                    <span className="font-medium">Cliente Vale:</span> {selectedReceipt.vale_user_name}
-                                </p>
-                            )}
                             <p className="text-lg font-bold text-indigo-600">
                                 Total: {formatCurrency(selectedReceipt.total)}
                             </p>
@@ -418,6 +387,11 @@ export default function ValeReport({
                                             {item.comanda && (
                                                 <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">
                                                     Comanda: {item.comanda}
+                                                </p>
+                                            )}
+                                            {item.lanchonete_user_name && (
+                                                <p className="text-xs text-gray-500 dark:text-gray-300">
+                                                    Usr lanchonete: {item.lanchonete_user_name}
                                                 </p>
                                             )}
                                         </div>

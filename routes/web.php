@@ -165,8 +165,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/reports/sales-period', [SalesReportController::class, 'period'])->name('reports.sales.period');
     Route::get('/reports/sales-detailed', [SalesReportController::class, 'detailed'])->name('reports.sales.detailed');
     Route::get('/reports/lanchonete', [SalesReportController::class, 'lanchonete'])->name('reports.lanchonete');
+    Route::get('/reports/comandas-em-aberto', [SalesReportController::class, 'comandasEmAberto'])->name('reports.comandas-aberto');
     Route::get('/reports/vale', [SalesReportController::class, 'vale'])->name('reports.vale');
     Route::get('/reports/refeicao', [SalesReportController::class, 'refeicao'])->name('reports.refeicao');
+    Route::get('/reports/faturar', [SalesReportController::class, 'faturar'])->name('reports.faturar');
     Route::get('/reports/adiantamentos', [SalesReportController::class, 'adiantamentos'])->name('reports.adiantamentos');
     Route::get('/reports/fornecedores', [SalesReportController::class, 'fornecedores'])->name('reports.fornecedores');
     Route::get('/reports/gastos', [SalesReportController::class, 'gastos'])->name('reports.gastos');

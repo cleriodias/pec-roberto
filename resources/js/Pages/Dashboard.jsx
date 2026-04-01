@@ -38,6 +38,13 @@ const paymentOptions = [
         classes: 'bg-gray-900 hover:bg-gray-800 focus:ring-gray-200 text-white',
     },
 ];
+const faturarWarningText = [
+    'Aviso sobre a utilização do pagamento “Faturar”',
+    'A opção de pagamento “Faturar” deve ser utilizada exclusivamente em situações excepcionais, quando o cliente deixa o estabelecimento sem efetuar o pagamento devido. Ao selecionar esta opção, o utilizador reconhece que está a justificar a ausência do valor correspondente no caixa.',
+    'É importante salientar que a utilização indevida ou recorrente deste tipo de pagamento poderá implicar consequências administrativas, incluindo a necessidade de apresentação de justificativas formais, auditorias internas e eventuais responsabilizações conforme as políticas da empresa.',
+    'Antes de prosseguir, confirme que a situação se enquadra nos critérios definidos e que todas as alternativas de cobrança foram devidamente consideradas.',
+    'Deseja continuar com o registo como “Faturar” ou prefere cancelar a operação?',
+];
 
 const createCartItemId = (productId, price) =>
     `product-${Number(productId ?? 0)}-price-${Number(price ?? 0).toFixed(2)}`;
@@ -156,6 +163,7 @@ export default function Dashboard() {
     const [showReceipt, setShowReceipt] = useState(false);
     const [cashInputVisible, setCashInputVisible] = useState(false);
     const [cashValue, setCashValue] = useState('');
+    const [showFaturarWarning, setShowFaturarWarning] = useState(false);
     const cashInputRef = useRef(null);
     const [savedCarts, setSavedCarts] = useState([]);
     const [favoriteProducts, setFavoriteProducts] = useState([]);
@@ -262,7 +270,11 @@ export default function Dashboard() {
     const closureBlockMessage = requiresClosure
         ? `Fechamento pendente${
               pendingClosureDate ? ` em ${formatDate(pendingClosureDate)}` : ''
-          }. Receba uma comanda em aberto para continuar.`
+          }. ${
+              hasPendingComandas
+                  ? 'Conclua o fechamento do caixa apos receber as pendencias.'
+                  : 'Conclua o fechamento do caixa para continuar.'
+          }`
         : '';
     const pendingComandaMessage = hasPendingComandas
         ? `Comanda${
@@ -910,6 +922,10 @@ export default function Dashboard() {
         finalizeSale('dinheiro', { cashAmount: numericCashValue });
     };
 
+    const closeFaturarWarning = () => {
+        setShowFaturarWarning(false);
+    };
+
     const finalizeSale = (type, { valeUserId = null, valeType = null, cashAmount = null } = {}) => {
         if (isSalesBlocked) {
             if (blockedSaleMessage) {
@@ -1007,7 +1023,7 @@ export default function Dashboard() {
             });
     };
 
-    const handlePaymentClick = (type) => {
+    const proceedWithPayment = (type) => {
         if (saleLoading) {
             return;
         }
@@ -1061,6 +1077,35 @@ export default function Dashboard() {
         setShowChangeCard(false);
         setCashValue('');
         finalizeSale(type);
+    };
+
+    const handlePaymentClick = (type) => {
+        if (type === 'faturar') {
+            if (saleLoading) {
+                return;
+            }
+            if (isSalesBlocked) {
+                if (blockedSaleMessage) {
+                    setSaleError(blockedSaleMessage);
+                }
+                return;
+            }
+            if (items.length === 0) {
+                setSaleError('Adicione pelo menos um item antes de escolher o pagamento.');
+                return;
+            }
+
+            setSaleError('');
+            setShowFaturarWarning(true);
+            return;
+        }
+
+        proceedWithPayment(type);
+    };
+
+    const handleFaturarWarningChoice = (type) => {
+        closeFaturarWarning();
+        proceedWithPayment(type);
     };
 
     const handleLoadComandaItems = (codigo) => {
@@ -1863,6 +1908,54 @@ export default function Dashboard() {
                     </div>
                 </div>
             </div>
+            {showFaturarWarning && (
+                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4 py-6">
+                    <div className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900">
+                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                            {faturarWarningText[0]}
+                        </h3>
+                        <div className="mt-4 space-y-4 text-sm leading-6 text-gray-700 dark:text-gray-200">
+                            {faturarWarningText.slice(1).map((paragraph) => (
+                                <p key={paragraph}>{paragraph}</p>
+                            ))}
+                        </div>
+                        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <button
+                                type="button"
+                                onClick={() => handleFaturarWarningChoice('dinheiro')}
+                                disabled={saleLoading}
+                                className="rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white shadow hover:bg-green-700 disabled:opacity-60"
+                            >
+                                Dinheiro
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleFaturarWarningChoice('maquina')}
+                                disabled={saleLoading}
+                                className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60"
+                            >
+                                Maquina
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleFaturarWarningChoice('faturar')}
+                                disabled={saleLoading}
+                                className="rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white shadow hover:bg-gray-800 disabled:opacity-60"
+                            >
+                                Faturar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={closeFaturarWarning}
+                                disabled={saleLoading}
+                                className="rounded-xl border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-60 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {showReceipt && receiptData && (
                 <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4 py-6">
                     <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900">

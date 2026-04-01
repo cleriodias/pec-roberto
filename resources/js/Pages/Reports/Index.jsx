@@ -52,6 +52,13 @@ const fallbackReports = [
         route: 'reports.lanchonete',
     },
     {
+        key: 'comandas-aberto',
+        label: 'Comandas em Aberto',
+        description: 'Comandas abertas agrupadas por numero com filtros por periodo, loja e usuario.',
+        icon: 'bi-journal-bookmark',
+        route: 'reports.comandas-aberto',
+    },
+    {
         key: 'vales',
         label: 'Vales',
         description: 'Compras feitas no vale.',
@@ -64,6 +71,13 @@ const fallbackReports = [
         description: 'Compras feitas na refeicao.',
         icon: 'bi-cup-straw',
         route: 'reports.refeicao',
+    },
+    {
+        key: 'faturar',
+        label: 'Faturar',
+        description: 'Cupons com pagamento faturado por caixa e loja.',
+        icon: 'bi-journal-text',
+        route: 'reports.faturar',
     },
     {
         key: 'adiantamentos',
