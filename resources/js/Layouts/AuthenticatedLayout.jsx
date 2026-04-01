@@ -5,10 +5,17 @@ import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
 import { Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
 
-const MenuLabel = ({ icon, text }) => (
+const MenuLabel = ({ icon, text, attention = false }) => (
     <span className="inline-flex items-center gap-2">
         <i className={`${icon} text-base`} aria-hidden="true"></i>
         <span>{text}</span>
+        {attention && (
+            <i
+                className="bi bi-exclamation-triangle-fill text-amber-500"
+                aria-hidden="true"
+                title="Alerta de discarte"
+            ></i>
+        )}
     </span>
 );
 
@@ -50,6 +57,7 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
     const pageProps = usePage().props;
     const user = pageProps.auth.user;
     const activeUnitName = pageProps.auth.unit?.name ?? 'Dashboard';
+    const discardAlert = pageProps.discardAlert ?? null;
     const effectiveRole = user ? Number(user.funcao) : null;
     const originalRole = user ? Number(user.funcao_original ?? user.funcao) : null;
     const roleLabels = {
@@ -71,6 +79,7 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
     const canSeeExpenses = user && (canSeeReports || effectiveRole === 3);
     const canAccessBoletos = user && [0, 1, 3].includes(effectiveRole);
     const canSwitchUnit = user && [0, 1, 2, 3].includes(originalRole);
+    const hasDiscardAttention = Boolean(discardAlert?.has_alert);
     const hasLanchoneteRoute =
         typeof route === 'function' && route().has && route().has('lanchonete.terminal');
     const hasHojeRoute =
@@ -248,7 +257,11 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                         href={route('reports.cash.closure')}
                         active={route().current('reports.cash.closure')}
                     >
-                        <MenuLabel icon="bi bi-clipboard-data" text="Fech. de CAIXA" />
+                        <MenuLabel
+                            icon="bi bi-clipboard-data"
+                            text="Fech. de CAIXA"
+                            attention={hasDiscardAttention}
+                        />
                     </NavLink>
                 ),
             },

@@ -1,5 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import InputError from '@/Components/InputError';
+import Modal from '@/Components/Modal';
 import { formatBrazilDateTime } from '@/Utils/date';
 import { Head, useForm } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
@@ -15,16 +16,30 @@ const formatDate = (value) => {
     return formatBrazilDateTime(value);
 };
 
+const formatCurrency = (value) =>
+    Number(value ?? 0).toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+    });
+
+const formatQuantity = (value, decimals = 3) =>
+    Number(value ?? 0).toLocaleString('pt-BR', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+    });
+
 export default function ProductDiscard({ recentDiscards = [] }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [suggestions, setSuggestions] = useState([]);
     const [loading, setLoading] = useState(false);
     const [searchError, setSearchError] = useState('');
     const [selectedProduct, setSelectedProduct] = useState(null);
+    const [confirmModalOpen, setConfirmModalOpen] = useState(false);
 
     const { data, setData, post, processing, errors, reset } = useForm({
         product_id: '',
         quantity: '',
+        unit_price: '',
     });
 
     useEffect(() => {
@@ -94,18 +109,49 @@ export default function ProductDiscard({ recentDiscards = [] }) {
         setSearchTerm(product.tb1_nome);
         setSuggestions([]);
         setData('product_id', product.tb1_id);
+        setData('unit_price', Number(product.tb1_vlr_venda ?? 0).toFixed(2));
     };
 
-    const handleSubmit = (event) => {
+    const unitPrice = useMemo(() => Number(data.unit_price || 0), [data.unit_price]);
+
+    const quantityValue = useMemo(() => Number(data.quantity || 0), [data.quantity]);
+
+    const totalValue = useMemo(
+        () => unitPrice * quantityValue,
+        [quantityValue, unitPrice],
+    );
+
+    const closeConfirmModal = () => setConfirmModalOpen(false);
+
+    const handlePrepareSubmit = (event) => {
         event.preventDefault();
+
+        if (!data.product_id || quantityValue <= 0) {
+            post(route('products.discard.store'), {
+                preserveScroll: true,
+                onError: () => {
+                    setConfirmModalOpen(false);
+                },
+            });
+            return;
+        }
+
+        setConfirmModalOpen(true);
+    };
+
+    const handleConfirmSubmit = () => {
         post(route('products.discard.store'), {
             preserveScroll: true,
             onSuccess: () => {
-                reset('quantity');
+                setConfirmModalOpen(false);
+                reset('quantity', 'unit_price');
                 setSelectedProduct(null);
                 setSearchTerm('');
                 setSuggestions([]);
                 setData('product_id', '');
+            },
+            onError: () => {
+                setConfirmModalOpen(false);
             },
         });
     };
@@ -153,7 +199,7 @@ export default function ProductDiscard({ recentDiscards = [] }) {
             <div className="py-12">
                 <div className="mx-auto max-w-4xl space-y-8 px-4 sm:px-6 lg:px-8">
                     <div className="rounded-2xl bg-white p-6 shadow dark:bg-gray-800">
-                        <form onSubmit={handleSubmit} className="space-y-6">
+                        <form onSubmit={handlePrepareSubmit} className="space-y-6">
                             <div>
                                 <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
                                     Buscar produto
@@ -180,6 +226,8 @@ export default function ProductDiscard({ recentDiscards = [] }) {
                                 <InputError message={errors.product_id} className="mt-2" />
                             </div>
 
+                            <input type="hidden" value={data.product_id} readOnly />
+
                             {selectedProduct && (
                                 <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm shadow-sm dark:border-indigo-500/40 dark:bg-indigo-900/30">
                                     <p className="font-semibold text-indigo-900 dark:text-white">
@@ -191,20 +239,47 @@ export default function ProductDiscard({ recentDiscards = [] }) {
                                 </div>
                             )}
 
-                            <div>
-                                <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                    Quantidade descartada
-                                </label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    value={data.quantity}
-                                    onChange={(event) => setData('quantity', event.target.value)}
-                                    className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                    placeholder="Informe a quantidade"
-                                />
-                                <InputError message={errors.quantity} className="mt-2" />
+                            <div className="grid gap-4 md:grid-cols-3">
+                                <div>
+                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                        Valor unitario
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={data.unit_price}
+                                        onChange={(event) => setData('unit_price', event.target.value)}
+                                        className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                        placeholder="Informe o valor unitario"
+                                    />
+                                    <InputError message={errors.unit_price} className="mt-2" />
+                                </div>
+
+                                <div>
+                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                        Quantidade
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.001"
+                                        min="0"
+                                        value={data.quantity}
+                                        onChange={(event) => setData('quantity', event.target.value)}
+                                        className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                        placeholder="Informe a quantidade"
+                                    />
+                                    <InputError message={errors.quantity} className="mt-2" />
+                                </div>
+
+                                <div>
+                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                        Valor
+                                    </label>
+                                    <div className="mt-1 flex min-h-[42px] items-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-900/20 dark:text-emerald-200">
+                                        {formatCurrency(totalValue)}
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="flex justify-end">
@@ -266,6 +341,73 @@ export default function ProductDiscard({ recentDiscards = [] }) {
                     </div>
                 </div>
             </div>
+
+            <Modal show={confirmModalOpen} onClose={closeConfirmModal} maxWidth="lg" tone="light">
+                <div className="bg-white p-6 text-gray-800">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                        Confirmar descarte
+                    </h3>
+                    <p className="mt-2 text-sm text-gray-500">
+                        Confira os dados antes de registrar o descarte.
+                    </p>
+
+                    <div className="mt-6 space-y-4 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                Produto
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-gray-900">
+                                {selectedProduct?.tb1_nome ?? 'Produto nao selecionado'}
+                            </p>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-3">
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                    Valor unitario
+                                </p>
+                                <p className="mt-1 text-sm font-semibold text-gray-900">
+                                    {formatCurrency(unitPrice)}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                    Quantidade
+                                </p>
+                                <p className="mt-1 text-sm font-semibold text-gray-900">
+                                    {formatQuantity(quantityValue)}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                    Valor total
+                                </p>
+                                <p className="mt-1 text-base font-bold text-emerald-700">
+                                    {formatCurrency(totalValue)}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-6 flex justify-end gap-3">
+                        <button
+                            type="button"
+                            onClick={closeConfirmModal}
+                            className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                        >
+                            Corrigir
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleConfirmSubmit}
+                            disabled={processing}
+                            className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-red-700 disabled:opacity-50"
+                        >
+                            Descartar
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </AuthenticatedLayout>
     );
 }

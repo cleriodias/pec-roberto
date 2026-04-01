@@ -3,6 +3,7 @@
 use App\Http\Controllers\BoletoController;
 use App\Http\Controllers\CashierClosureController;
 use App\Http\Controllers\DatabaseToolsController;
+use App\Http\Controllers\DiscardSettingsController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductDiscardController;
@@ -109,6 +110,10 @@ Route::middleware('auth')->group(function () {
         ->name('settings.database');
     Route::post('/settings/database', [DatabaseToolsController::class, 'run'])
         ->name('settings.database.run');
+    Route::get('/settings/discard-config', [DiscardSettingsController::class, 'index'])
+        ->name('settings.discard-config');
+    Route::put('/settings/discard-config', [DiscardSettingsController::class, 'update'])
+        ->name('settings.discard-config.update');
     Route::get('/settings/avisos', [NoticeController::class, 'index'])
         ->name('settings.notices');
     Route::post('/settings/avisos', [NoticeController::class, 'store'])

@@ -20,7 +20,7 @@ class ProductDiscardController extends Controller
         $unitId = $unitId ?? $request->user()->tb2_id;
 
         $recent = ProductDiscard::query()
-            ->with('product:tb1_id,tb1_nome,tb1_codbar')
+            ->with('product:tb1_id,tb1_nome,tb1_codbar,tb1_vlr_venda')
             ->where('user_id', $request->user()->id)
             ->when($unitId, function ($query) use ($unitId) {
                 $query->where(function ($subQuery) use ($unitId) {
@@ -35,6 +35,7 @@ class ProductDiscardController extends Controller
                 return [
                     'id' => $discard->id,
                     'quantity' => $discard->quantity,
+                    'unit_price' => $discard->unit_price,
                     'created_at' => $discard->created_at->toIso8601String(),
                     'product' => $discard->product
                         ? [
@@ -64,6 +65,11 @@ class ProductDiscardController extends Controller
                 'numeric',
                 'min:0.01',
             ],
+            'unit_price' => [
+                'required',
+                'numeric',
+                'min:0',
+            ],
         ]);
 
         $activeUnit = $request->session()->get('active_unit');
@@ -87,6 +93,7 @@ class ProductDiscardController extends Controller
             'user_id' => $request->user()->id,
             'unit_id' => $unitId,
             'quantity' => $data['quantity'],
+            'unit_price' => round((float) $data['unit_price'], 2),
         ]);
 
         return redirect()

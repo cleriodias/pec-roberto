@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\DiscardAlertService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -44,6 +45,7 @@ class HandleInertiaRequests extends Middleware
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
             ],
+            'discardAlert' => fn () => app(DiscardAlertService::class)->forRequest($request),
             'csrf_token' => csrf_token(),
         ];
     }

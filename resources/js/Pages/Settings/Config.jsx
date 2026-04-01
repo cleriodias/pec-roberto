@@ -46,6 +46,11 @@ export default function Config({ auth }) {
             icon: 'bi-receipt',
             href: route('reports.gastos'),
         },
+        {
+            label: 'Configuracao do Discarte',
+            icon: 'bi-percent',
+            href: route('settings.discard-config'),
+        },
     ];
 
     if (isMaster) {

@@ -55,6 +55,7 @@ export default function CashClosure({
         open: false,
         cashierName: '',
         items: [],
+        rowKey: null,
     });
 
     useEffect(() => {
@@ -68,7 +69,7 @@ export default function CashClosure({
     const discardMap = useMemo(() => {
         const grouped = {};
         discardDetails.forEach((entry) => {
-            const key = entry.user_id;
+            const key = `${entry.user_id}-${entry.unit_id ?? 'none'}`;
             if (!grouped[key]) {
                 grouped[key] = [];
             }
@@ -137,11 +138,13 @@ export default function CashClosure({
     };
 
     const openDiscardModal = (record) => {
-        const items = discardMap[record.cashier_id] ?? [];
+        const rowKey = record.row_key ?? `${record.cashier_id}-${record.unit_id ?? 'none'}`;
+        const items = discardMap[rowKey] ?? [];
         setDiscardModal({
             open: true,
             cashierName: record.cashier_name,
             items,
+            rowKey,
         });
     };
 
@@ -150,6 +153,7 @@ export default function CashClosure({
             open: false,
             cashierName: '',
             items: [],
+            rowKey: null,
         });
     };
 
@@ -348,7 +352,7 @@ export default function CashClosure({
                                     : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200';
                                 const rowKey =
                                     record.row_key ??
-                                    `${record.cashier_id}-${record.unit_id ?? 'all'}`;
+                                    `${record.cashier_id}-${record.unit_id ?? 'none'}`;
 
                                 return (
                                     <tr key={rowKey}>
@@ -363,17 +367,30 @@ export default function CashClosure({
                                                 type="button"
                                                 onClick={() => openDiscardModal(record)}
                                                 className={`mb-2 w-full rounded-full px-3 py-1 text-xs font-semibold transition ${
-                                                    record.discard_total > 0
-                                                        ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-200'
+                                                    record.discard_alert?.exceeded
+                                                        ? 'border border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200 dark:border-amber-500/60 dark:bg-amber-900/40 dark:text-amber-100'
+                                                        : record.discard_total > 0
+                                                            ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-200'
                                                         : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'
                                                 }`}
                                             >
                                                 <span className="flex items-center justify-between">
-                                                    <span>Descarte</span>
+                                                    <span className="inline-flex items-center gap-2">
+                                                        <span>Descarte</span>
+                                                        {record.discard_alert?.exceeded && (
+                                                            <i className="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                                                        )}
+                                                    </span>
                                                     <span>{formatCurrency(record.discard_total ?? 0)}</span>
                                                 </span>
                                                 <span className="mt-0.5 block text-[10px] font-normal text-gray-500 dark:text-gray-400">
                                                     Qtd: {formatQuantity(record.discard_quantity ?? 0, 3)}
+                                                    {record.discard_alert?.exceeded && record.discard_alert?.percentage !== null
+                                                        ? ` • ${Number(record.discard_alert.percentage).toLocaleString('pt-BR', {
+                                                            minimumFractionDigits: 2,
+                                                            maximumFractionDigits: 2,
+                                                        })}%`
+                                                        : ''}
                                                 </span>
                                             </button>
                                             <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusClass}`}>
@@ -461,7 +478,7 @@ export default function CashClosure({
                                 Descartes do dia {discardModal.cashierName ? `- ${discardModal.cashierName}` : ''}
                             </h3>
                             <p className="text-sm text-gray-500">
-                                Totais aproximados com base no preco atual do produto.
+                                Totais calculados com base no valor registrado em cada discarte.
                             </p>
                         </div>
                         <div className="text-right text-sm">

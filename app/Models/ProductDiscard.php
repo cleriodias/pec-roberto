@@ -17,11 +17,13 @@ class ProductDiscard extends Model
         'user_id',
         'unit_id',
         'quantity',
+        'unit_price',
     ];
 
     protected $casts = [
         'unit_id' => 'integer',
         'quantity' => 'float',
+        'unit_price' => 'float',
     ];
 
     public function product(): BelongsTo
