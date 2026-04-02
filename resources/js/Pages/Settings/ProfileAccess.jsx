@@ -8,6 +8,7 @@ const MENU_OPTIONS = [
     { key: 'units', label: 'Unidades' },
     { key: 'products', label: 'Produtos' },
     { key: 'boletos', label: 'Boletos' },
+    { key: 'support_tickets', label: 'Chamados' },
     { key: 'cashier_close', label: 'Fechar Caixa' },
     { key: 'reports_control', label: 'Controle Financeiro' },
     { key: 'reports_cash', label: 'Fechamento de Caixa' },

@@ -48,6 +48,7 @@ const DEFAULT_MENU_KEYS = [
     'switch_unit',
     'salary_advances',
     'expenses',
+    'support_tickets',
     'notices',
     'settings',
     'lanchonete_terminal',
@@ -222,6 +223,18 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                         active={route().current('expenses.*')}
                     >
                         <MenuLabel icon="bi bi-receipt" text="Gastos" />
+                    </NavLink>
+                ),
+            },
+            {
+                key: 'support_tickets',
+                visible: user && hasMenuAccess('support_tickets'),
+                node: (
+                    <NavLink
+                        href={route('support.tickets.index')}
+                        active={route().current('support.tickets.*')}
+                    >
+                        <MenuLabel icon="bi bi-camera-video" text="Chamados" />
                     </NavLink>
                 ),
             },

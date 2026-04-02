@@ -4,8 +4,10 @@ import SuccessButton from "@/Components/Button/SuccessButton";
 import WarningButton from "@/Components/Button/WarningButton";
 import ConfirmDeleteButton from "@/Components/Delete/ConfirmDeleteButton";
 import Pagination from "@/Components/Pagination";
+import TextInput from "@/Components/TextInput";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, Link, usePage, router } from "@inertiajs/react";
+import { useEffect, useState } from "react";
 
 const funcaoLabels = {
     0: 'MASTER',
@@ -40,10 +42,15 @@ const formatUnitIds = (user) => {
 };
 
 export default function UserIndex({ auth, users, units = [], filters = {} }) {
-
     const { flash } = usePage().props;
     const currentUnit = filters.unit ?? '';
     const currentRole = filters.funcao ?? '';
+    const currentSearch = filters.search ?? '';
+    const [search, setSearch] = useState(currentSearch);
+
+    useEffect(() => {
+        setSearch(currentSearch);
+    }, [currentSearch]);
 
     const handleFilterChange = (key, value) => {
         const payload = {
@@ -57,6 +64,34 @@ export default function UserIndex({ auth, users, units = [], filters = {} }) {
             replace: true,
         });
     };
+
+    useEffect(() => {
+        const trimmedSearch = search.trim();
+        const nextSearch = trimmedSearch.length >= 3 ? trimmedSearch : '';
+        const hasActiveSearch = currentSearch !== '';
+
+        if (nextSearch === currentSearch) {
+            return undefined;
+        }
+
+        if (trimmedSearch.length > 0 && trimmedSearch.length < 3 && !hasActiveSearch) {
+            return undefined;
+        }
+
+        const timeoutId = setTimeout(() => {
+            router.get(route('users.index'), {
+                unit: currentUnit || undefined,
+                funcao: currentRole || undefined,
+                search: nextSearch || undefined,
+            }, {
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            });
+        }, 300);
+
+        return () => clearTimeout(timeoutId);
+    }, [search, currentSearch, currentUnit, currentRole]);
 
     return (
         <AuthenticatedLayout
@@ -78,42 +113,51 @@ export default function UserIndex({ auth, users, units = [], filters = {} }) {
                         </div>
                     </div>
 
-                    {/* Exibir mensagens de alerta */}
                     <AlertMessage message={flash} />
 
-                    <div className="px-4 pb-3 sm:flex sm:items-end sm:gap-4">
-                        <div className="flex flex-1 flex-col gap-1">
-                            <label className="text-sm font-medium text-gray-700">Unidade</label>
-                            <select
-                                value={currentUnit}
-                                onChange={(e) => handleFilterChange('unit', e.target.value)}
-                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                            >
-                                <option value="">Todas</option>
-                                {units.map((unit) => (
-                                    <option key={unit.tb2_id} value={unit.tb2_id}>
-                                        {unit.tb2_nome} ({unit.tb2_id})
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="mt-3 flex flex-1 flex-col gap-1 sm:mt-0">
-                            <label className="text-sm font-medium text-gray-700">Perfil</label>
-                            <select
-                                value={currentRole}
-                                onChange={(e) => handleFilterChange('funcao', e.target.value)}
-                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                            >
-                                <option value="">Todos</option>
-                                {Object.entries(funcaoLabels).map(([key, label]) => (
-                                    <option key={key} value={key}>
-                                        {label}
-                                    </option>
-                                ))}
-                            </select>
+                    <div className="px-4 pb-3">
+                        <div className="grid gap-3 md:grid-cols-3 md:items-end">
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm font-medium text-gray-700">Pesquisar usuario</label>
+                                <TextInput
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    placeholder="Pesquisar por nome ou e-mail"
+                                    className="block w-full"
+                                />
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm font-medium text-gray-700">Unidade</label>
+                                <select
+                                    value={currentUnit}
+                                    onChange={(e) => handleFilterChange('unit', e.target.value)}
+                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                >
+                                    <option value="">Todas</option>
+                                    {units.map((unit) => (
+                                        <option key={unit.tb2_id} value={unit.tb2_id}>
+                                            {unit.tb2_nome} ({unit.tb2_id})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm font-medium text-gray-700">Perfil</label>
+                                <select
+                                    value={currentRole}
+                                    onChange={(e) => handleFilterChange('funcao', e.target.value)}
+                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                >
+                                    <option value="">Todos</option>
+                                    {Object.entries(funcaoLabels).map(([key, label]) => (
+                                        <option key={key} value={key}>
+                                            {label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
                     </div>
-
 
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-700">
@@ -182,12 +226,9 @@ export default function UserIndex({ auth, users, units = [], filters = {} }) {
                         </tbody>
                     </table>
 
-
-                    {/* Paginacao */}
                     <Pagination links={users.links} currentPage={users.current_page} />
                 </div>
             </div>
-
         </AuthenticatedLayout>
-    )
+    );
 }

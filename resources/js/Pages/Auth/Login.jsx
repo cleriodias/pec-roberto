@@ -7,7 +7,7 @@ import { Head, Link, useForm } from '@inertiajs/react';
 
 export default function Login({ status, canResetPassword, units = [] }) {
     const { data, setData, post, processing, errors, reset, transform } = useForm({
-        email: '',
+        username: '',
         password: '',
         remember: false,
         unit_id: '',
@@ -38,23 +38,28 @@ export default function Login({ status, canResetPassword, units = [] }) {
                 </div>
             )}
 
-            <form onSubmit={preventSubmit}>
+            <form onSubmit={preventSubmit} className="mx-auto w-full max-w-md">
                 <div>
-                    <InputLabel htmlFor="email" value="E-mail" />
+                    <InputLabel htmlFor="username" value="Usuário" />
 
-                    <TextInput
-                        id="email"
-                        type="email"
-                        name="email"
-                        placeholder="Digite o e-mail de usuário"
-                        value={data.email}
-                        className="mt-1 block w-full"
-                        autoComplete="username"
-                        isFocused={true}
-                        onChange={(e) => setData('email', e.target.value)}
-                    />
+                    <div className="mt-1 flex overflow-hidden rounded-md border border-gray-300 bg-white shadow-sm focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900">
+                        <TextInput
+                            id="username"
+                            type="text"
+                            name="username"
+                            placeholder="Usuário"
+                            value={data.username}
+                            className="block w-full border-0 shadow-none focus:border-0 focus:ring-0"
+                            autoComplete="username"
+                            isFocused={true}
+                            onChange={(e) => setData('username', e.target.value)}
+                        />
+                        <span className="inline-flex items-center border-s border-gray-300 bg-gray-50 px-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                            @paoecafe83.com.br
+                        </span>
+                    </div>
 
-                    <InputError message={errors.email} className="mt-2" />
+                    <InputError message={errors.username} className="mt-2" />
                 </div>
 
                 <div className="mt-4">
@@ -64,7 +69,7 @@ export default function Login({ status, canResetPassword, units = [] }) {
                         id="password"
                         type="password"
                         name="password"
-                        placeholder="Digite a senha"
+                        placeholder="Senha"
                         value={data.password}
                         className="mt-1 block w-full"
                         autoComplete="current-password"
@@ -84,7 +89,7 @@ export default function Login({ status, canResetPassword, units = [] }) {
                             }
                         />
                         <span className="ms-2 text-sm text-gray-600 dark:text-gray-400">
-                            Lembre de mim
+                            Lembrar
                         </span>
                     </label>
                 </div>
@@ -102,9 +107,6 @@ export default function Login({ status, canResetPassword, units = [] }) {
                 </div>
 
                 <div className="mt-6">
-                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                        Escolha a unidade
-                    </p>
                     {units.length ? (
                         <div className="mt-3 grid gap-3 sm:grid-cols-3">
                             {units.map((unit) => (

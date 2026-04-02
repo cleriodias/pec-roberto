@@ -36,7 +36,7 @@ export default function ProductDiscard({ recentDiscards = [] }) {
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [confirmModalOpen, setConfirmModalOpen] = useState(false);
 
-    const { data, setData, post, processing, errors, reset } = useForm({
+    const { data, setData, post, processing, errors, reset, clearErrors, transform } = useForm({
         product_id: '',
         quantity: '',
         unit_price: '',
@@ -104,13 +104,42 @@ export default function ProductDiscard({ recentDiscards = [] }) {
         };
     }, [searchTerm]);
 
+    useEffect(() => {
+        if (!selectedProduct) {
+            return;
+        }
+
+        if (searchTerm === selectedProduct.tb1_nome) {
+            return;
+        }
+
+        setSelectedProduct(null);
+        setData('product_id', '');
+        setData('unit_price', '');
+        clearErrors('product_id');
+    }, [clearErrors, searchTerm, selectedProduct, setData]);
+
+    useEffect(() => {
+        if (!data.product_id) {
+            return;
+        }
+
+        clearErrors('product_id');
+    }, [clearErrors, data.product_id]);
+
     const handleSelectProduct = (product) => {
         setSelectedProduct(product);
         setSearchTerm(product.tb1_nome);
         setSuggestions([]);
         setData('product_id', product.tb1_id);
         setData('unit_price', Number(product.tb1_vlr_venda ?? 0).toFixed(2));
+        clearErrors('product_id');
     };
+
+    const resolvedProductId = useMemo(
+        () => data.product_id || selectedProduct?.tb1_id || '',
+        [data.product_id, selectedProduct],
+    );
 
     const unitPrice = useMemo(() => Number(data.unit_price || 0), [data.unit_price]);
 
@@ -123,12 +152,23 @@ export default function ProductDiscard({ recentDiscards = [] }) {
 
     const closeConfirmModal = () => setConfirmModalOpen(false);
 
+    const submitDiscard = (callbacks = {}) => {
+        transform((formData) => ({
+            ...formData,
+            product_id: resolvedProductId,
+        }));
+
+        post(route('products.discard.store'), {
+            preserveScroll: true,
+            ...callbacks,
+        });
+    };
+
     const handlePrepareSubmit = (event) => {
         event.preventDefault();
 
-        if (!data.product_id || quantityValue <= 0) {
-            post(route('products.discard.store'), {
-                preserveScroll: true,
+        if (!resolvedProductId || quantityValue <= 0) {
+            submitDiscard({
                 onError: () => {
                     setConfirmModalOpen(false);
                 },
@@ -136,12 +176,15 @@ export default function ProductDiscard({ recentDiscards = [] }) {
             return;
         }
 
+        if (String(data.product_id) !== String(resolvedProductId)) {
+            setData('product_id', resolvedProductId);
+        }
+
         setConfirmModalOpen(true);
     };
 
     const handleConfirmSubmit = () => {
-        post(route('products.discard.store'), {
-            preserveScroll: true,
+        submitDiscard({
             onSuccess: () => {
                 setConfirmModalOpen(false);
                 reset('quantity', 'unit_price');
@@ -226,7 +269,7 @@ export default function ProductDiscard({ recentDiscards = [] }) {
                                 <InputError message={errors.product_id} className="mt-2" />
                             </div>
 
-                            <input type="hidden" value={data.product_id} readOnly />
+                            <input type="hidden" name="product_id" value={data.product_id} readOnly />
 
                             {selectedProduct && (
                                 <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm shadow-sm dark:border-indigo-500/40 dark:bg-indigo-900/30">

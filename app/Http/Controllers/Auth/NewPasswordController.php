@@ -16,13 +16,15 @@ use Inertia\Response;
 
 class NewPasswordController extends Controller
 {
+    private const LOGIN_DOMAIN = '@paoecafe83.com.br';
+
     /**
      * Display the password reset view.
      */
     public function create(Request $request): Response
     {
         return Inertia::render('Auth/ResetPassword', [
-            'email' => $request->email,
+            'username' => Str::before((string) $request->email, '@'),
             'token' => $request->route('token'),
         ]);
     }
@@ -36,7 +38,7 @@ class NewPasswordController extends Controller
     {
         $request->validate([
             'token' => 'required',
-            'email' => 'required|email',
+            'username' => 'required|string',
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
@@ -44,7 +46,12 @@ class NewPasswordController extends Controller
         // will update the password on an actual user model and persist it to the
         // database. Otherwise we will parse the error and return the response.
         $status = Password::reset(
-            $request->only('email', 'password', 'password_confirmation', 'token'),
+            [
+                'email' => $this->emailFromUsername($request->input('username')),
+                'password' => $request->input('password'),
+                'password_confirmation' => $request->input('password_confirmation'),
+                'token' => $request->input('token'),
+            ],
             function ($user) use ($request) {
                 $user->forceFill([
                     'password' => Hash::make($request->password),
@@ -63,7 +70,14 @@ class NewPasswordController extends Controller
         }
 
         throw ValidationException::withMessages([
-            'email' => [trans($status)],
+            'username' => [trans($status)],
         ]);
+    }
+
+    private function emailFromUsername(?string $username): string
+    {
+        $normalizedUsername = Str::before(trim((string) $username), '@');
+
+        return Str::lower($normalizedUsername . self::LOGIN_DOMAIN);
     }
 }

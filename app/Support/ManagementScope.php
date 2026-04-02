@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\ProductDiscard;
 use App\Models\Unidade;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -105,6 +106,39 @@ class ManagementScope
 
         return $targetUnitIds->isNotEmpty()
             && $targetUnitIds->every(fn (int $unitId) => $allowedUnitIds->contains($unitId));
+    }
+
+    public static function discardUnitIds(ProductDiscard $discard): Collection
+    {
+        $discardUnitId = (int) ($discard->unit_id ?? 0);
+
+        if ($discardUnitId > 0) {
+            return collect([$discardUnitId]);
+        }
+
+        $discard->loadMissing('user.units:tb2_id,tb2_nome');
+
+        if (! $discard->user instanceof User) {
+            return collect();
+        }
+
+        return self::targetUserUnitIds($discard->user);
+    }
+
+    public static function canManageDiscard(User $actingUser, ProductDiscard $discard): bool
+    {
+        if (! self::isAdmin($actingUser)) {
+            return false;
+        }
+
+        if (self::isMaster($actingUser)) {
+            return true;
+        }
+
+        $discardUnitIds = self::discardUnitIds($discard);
+
+        return $discardUnitIds->isNotEmpty()
+            && $discardUnitIds->every(fn (int $unitId) => self::canManageUnit($actingUser, $unitId));
     }
 
     public static function applyManagedUserScope(Builder $query, User $user): Builder

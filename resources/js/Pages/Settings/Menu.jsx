@@ -11,6 +11,7 @@ const SECTIONS = [
             { label: 'Dashboard', icon: 'bi-speedometer2', href: routeTo('dashboard') },
             { label: 'Produtos', icon: 'bi-box-seam', href: routeTo('products.index') },
             { label: 'Boletos', icon: 'bi-card-text', href: routeTo('boletos.index') },
+            { label: 'Chamados', icon: 'bi-camera-video', href: routeTo('support.tickets.index') },
             { label: 'Gastos', icon: 'bi-receipt', href: routeTo('expenses.index') },
             { label: 'Fechar Caixa', icon: 'bi-cash-stack', href: routeTo('cashier.close') },
             { label: 'Lanchonete', icon: 'bi-egg-fried', href: routeTo('lanchonete.terminal') },

@@ -1,14 +1,14 @@
+import PrimaryButton from '@/Components/Button/PrimaryButton';
 import InputError from '@/Components/InputError';
 import InputLabel from '@/Components/InputLabel';
-import PrimaryButton from '@/Components/Button/PrimaryButton';
 import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, useForm } from '@inertiajs/react';
 
-export default function ResetPassword({ token, email }) {
+export default function ResetPassword({ token, username }) {
     const { data, setData, post, processing, errors, reset } = useForm({
-        token: token,
-        email: email,
+        token,
+        username: username || '',
         password: '',
         password_confirmation: '',
     });
@@ -25,22 +25,28 @@ export default function ResetPassword({ token, email }) {
         <GuestLayout>
             <Head title="Nova Senha" />
 
-            <form onSubmit={submit}>
+            <form onSubmit={submit} className="mx-auto w-full max-w-md">
                 <div>
-                    <InputLabel htmlFor="email" value="E-mail" />
+                    <InputLabel htmlFor="username" value="Usuário" />
 
-                    <TextInput
-                        id="email"
-                        type="email"
-                        name="email"
-                        placeholder="Digite o seu e-mail"
-                        value={data.email}
-                        className="mt-1 block w-full"
-                        autoComplete="username"
-                        onChange={(e) => setData('email', e.target.value)}
-                    />
+                    <div className="mt-1 flex overflow-hidden rounded-md border border-gray-300 bg-white shadow-sm focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900">
+                        <TextInput
+                            id="username"
+                            type="text"
+                            name="username"
+                            placeholder="Usuário"
+                            value={data.username}
+                            className="block w-full border-0 shadow-none focus:border-0 focus:ring-0"
+                            autoComplete="username"
+                            onChange={(e) => setData('username', e.target.value)}
+                        />
 
-                    <InputError message={errors.email} className="mt-2" />
+                        <span className="inline-flex items-center border-s border-gray-300 bg-gray-50 px-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                            @paoecafe83.com.br
+                        </span>
+                    </div>
+
+                    <InputError message={errors.username} className="mt-2" />
                 </div>
 
                 <div className="mt-4">

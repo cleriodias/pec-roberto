@@ -44,12 +44,21 @@ class UserController extends Controller
     public function index(Request $request): Response
     {
         $authUser = $request->user();
-        $filters = $request->only(['unit', 'funcao']);
+        $filters = $request->only(['unit', 'funcao', 'search']);
 
         $users = User::with('units:tb2_id,tb2_nome');
         ManagementScope::applyManagedUserScope($users, $authUser);
 
         $users = $users
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $term = trim((string) $request->input('search'));
+                $safeTerm = str_replace(['%', '_'], ['\\%', '\\_'], $term);
+
+                $query->where(function ($sub) use ($safeTerm) {
+                    $sub->where('name', 'like', '%' . $safeTerm . '%')
+                        ->orWhere('email', 'like', '%' . $safeTerm . '%');
+                });
+            })
             ->when($request->filled('funcao'), function ($query) use ($request) {
                 $funcao = (int) $request->input('funcao');
                 $query->where('funcao', $funcao);

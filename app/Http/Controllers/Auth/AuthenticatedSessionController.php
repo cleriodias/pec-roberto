@@ -63,7 +63,7 @@ class AuthenticatedSessionController extends Controller
                 Auth::logout();
 
                 throw ValidationException::withMessages([
-                    'email' => 'Seu caixa ja foi fechado hoje para esta unidade. Novo acesso apenas amanha.',
+                    'username' => 'Seu caixa ja foi fechado hoje para esta unidade. Novo acesso apenas amanha.',
                 ]);
             }
         }

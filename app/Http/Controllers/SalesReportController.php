@@ -897,6 +897,7 @@ class SalesReportController extends Controller
                     ? (float) $discard->unit_price
                     : (float) ($discard->product?->tb1_vlr_venda ?? 0);
                 $quantity = (float) $discard->quantity;
+                $actingUser = request()->user();
 
                 return [
                     'id' => $discard->id,
@@ -907,6 +908,9 @@ class SalesReportController extends Controller
                     'user_name' => $discard->user?->name ?? '---',
                     'created_at' => $discard->created_at?->toIso8601String(),
                     'unit_name' => $discard->unit?->tb2_nome ?? '---',
+                    'can_delete' => $actingUser instanceof User
+                        ? ManagementScope::canManageDiscard($actingUser, $discard)
+                        : false,
                 ];
             })
             ->values();

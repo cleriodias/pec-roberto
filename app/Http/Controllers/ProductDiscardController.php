@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ProductDiscard;
 use App\Models\Produto;
+use App\Support\ManagementScope;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -54,23 +55,36 @@ class ProductDiscardController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $data = $request->validate([
-            'product_id' => [
-                'required',
-                'integer',
-                'exists:tb1_produto,tb1_id',
+        $data = $request->validate(
+            [
+                'product_id' => [
+                    'required',
+                    'integer',
+                    'exists:tb1_produto,tb1_id',
+                ],
+                'quantity' => [
+                    'required',
+                    'numeric',
+                    'min:0.01',
+                ],
+                'unit_price' => [
+                    'required',
+                    'numeric',
+                    'min:0',
+                ],
             ],
-            'quantity' => [
-                'required',
-                'numeric',
-                'min:0.01',
+            [
+                'product_id.required' => 'Selecione um produto.',
+                'product_id.integer' => 'O produto selecionado é inválido.',
+                'product_id.exists' => 'O produto selecionado não foi encontrado.',
+                'quantity.required' => 'Informe a quantidade descartada.',
+                'quantity.numeric' => 'A quantidade deve ser um número válido.',
+                'quantity.min' => 'A quantidade deve ser maior que zero.',
+                'unit_price.required' => 'Informe o valor unitário.',
+                'unit_price.numeric' => 'O valor unitário deve ser um número válido.',
+                'unit_price.min' => 'O valor unitário não pode ser negativo.',
             ],
-            'unit_price' => [
-                'required',
-                'numeric',
-                'min:0',
-            ],
-        ]);
+        );
 
         $activeUnit = $request->session()->get('active_unit');
         $unitId = is_array($activeUnit)
@@ -99,5 +113,20 @@ class ProductDiscardController extends Controller
         return redirect()
             ->back()
             ->with('success', 'Descarte registrado com sucesso.');
+    }
+
+    public function destroy(Request $request, ProductDiscard $discard): RedirectResponse
+    {
+        $actingUser = $request->user();
+
+        if (! $actingUser || ! ManagementScope::canManageDiscard($actingUser, $discard)) {
+            abort(403);
+        }
+
+        $discard->delete();
+
+        return redirect()
+            ->back()
+            ->with('success', 'Descarte excluido com sucesso.');
     }
 }

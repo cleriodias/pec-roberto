@@ -1,6 +1,7 @@
+import AlertMessage from '@/Components/Alert/AlertMessage';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { formatBrazilDateTime } from '@/Utils/date';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
 
 const formatCurrency = (value) =>
     Number(value ?? 0).toLocaleString('pt-BR', {
@@ -24,6 +25,7 @@ export default function DiscardsReport({
     filterUnits = [],
     selectedUnitId = null,
 }) {
+    const { flash } = usePage().props;
     const { data, setData, get, processing } = useForm({
         start_date: startDate ?? '',
         end_date: endDate ?? '',
@@ -42,6 +44,21 @@ export default function DiscardsReport({
             data,
         });
     };
+
+    const handleDelete = (discardId) => {
+        if (!discardId) {
+            return;
+        }
+
+        if (!window.confirm('Confirma excluir este descarte?')) {
+            return;
+        }
+
+        router.delete(route('reports.descarte.destroy', discardId), {
+            preserveScroll: true,
+        });
+    };
+
     const totalAmount = rows.reduce((sum, row) => sum + (Number(row.total) || 0), 0);
 
     return (
@@ -61,6 +78,8 @@ export default function DiscardsReport({
 
             <div className="py-8">
                 <div className="mx-auto max-w-6xl space-y-6 px-4 sm:px-6 lg:px-8">
+                    <AlertMessage message={flash} />
+
                     <form
                         onSubmit={handleSubmit}
                         className="rounded-2xl bg-white p-4 shadow dark:bg-gray-800"
@@ -165,6 +184,9 @@ export default function DiscardsReport({
                                             <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
                                                 Unidade
                                             </th>
+                                            <th className="px-3 py-2 text-center font-medium text-gray-600 dark:text-gray-300">
+                                                Acoes
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -190,6 +212,21 @@ export default function DiscardsReport({
                                                 </td>
                                                 <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
                                                     {row.unit_name ?? '---'}
+                                                </td>
+                                                <td className="px-3 py-2 text-center">
+                                                    {row.can_delete ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDelete(row.id)}
+                                                            className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200 dark:border-red-500/60 dark:text-red-300 dark:hover:bg-red-500/10"
+                                                        >
+                                                            Excluir
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-xs font-medium text-gray-400 dark:text-gray-500">
+                                                            Sem permissao
+                                                        </span>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}

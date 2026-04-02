@@ -6,12 +6,15 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class PasswordResetLinkController extends Controller
 {
+    private const LOGIN_DOMAIN = '@paoecafe83.com.br';
+
     /**
      * Display the password reset link request view.
      */
@@ -30,14 +33,14 @@ class PasswordResetLinkController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $request->validate([
-            'email' => 'required|email',
+            'username' => 'required|string',
         ]);
 
         // We will send the password reset link to this user. Once we have attempted
         // to send the link, we will examine the response then see the message we
         // need to show to the user. Finally, we'll send out a proper response.
         $status = Password::sendResetLink(
-            $request->only('email')
+            ['email' => $this->emailFromUsername($request->input('username'))]
         );
 
         if ($status == Password::RESET_LINK_SENT) {
@@ -45,7 +48,14 @@ class PasswordResetLinkController extends Controller
         }
 
         throw ValidationException::withMessages([
-            'email' => [trans($status)],
+            'username' => [trans($status)],
         ]);
+    }
+
+    private function emailFromUsername(?string $username): string
+    {
+        $normalizedUsername = Str::before(trim((string) $username), '@');
+
+        return Str::lower($normalizedUsername . self::LOGIN_DOMAIN);
     }
 }

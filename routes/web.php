@@ -19,6 +19,7 @@ use App\Http\Controllers\SalesReportController;
 use App\Http\Controllers\SalaryAdvanceController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\SupplierPortalController;
+use App\Http\Controllers\SupportTicketController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\UnitSwitchController;
 use App\Http\Controllers\UserController;
@@ -70,6 +71,14 @@ Route::put('/supplier/disputes/{bid}', [SupplierPortalController::class, 'update
 Route::post('/supplier/disputes/{bid}/invoice', [SupplierPortalController::class, 'invoice'])->name('supplier.disputes.invoice');
 
 Route::middleware('auth')->group(function () {
+    Route::get('/chamados', [SupportTicketController::class, 'index'])->name('support.tickets.index');
+    Route::post('/chamados', [SupportTicketController::class, 'store'])->name('support.tickets.store');
+    Route::post('/chamados/{ticket}/interacoes', [SupportTicketController::class, 'reply'])->name('support.tickets.reply');
+    Route::put('/chamados/{ticket}/status', [SupportTicketController::class, 'updateStatus'])->name('support.tickets.update-status');
+    Route::delete('/chamados/{ticket}', [SupportTicketController::class, 'destroy'])->name('support.tickets.destroy');
+    Route::get('/chamados/{ticket}/video', [SupportTicketController::class, 'video'])->name('support.tickets.video');
+    Route::get('/chamados/anexos/{attachment}', [SupportTicketController::class, 'attachment'])->name('support.tickets.attachments.show');
+
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::put('/profile/access-code', [ProfileController::class, 'updateAccessCode'])->name('profile.access-code.update');
@@ -178,6 +187,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/reports/fornecedores', [SalesReportController::class, 'fornecedores'])->name('reports.fornecedores');
     Route::get('/reports/gastos', [SalesReportController::class, 'gastos'])->name('reports.gastos');
     Route::get('/reports/descarte', [SalesReportController::class, 'descarte'])->name('reports.descarte');
+    Route::delete('/reports/descarte/{discard}', [ProductDiscardController::class, 'destroy'])->name('reports.descarte.destroy');
     Route::get('/reports/hoje', [SalesReportController::class, 'hoje'])->name('reports.hoje');
     Route::get('/reports/cash-closure', [SalesReportController::class, 'cashClosure'])->name('reports.cash.closure');
     Route::get('/reports/cash-discrepancies', [SalesReportController::class, 'cashDiscrepancies'])->name('reports.cash.discrepancies');

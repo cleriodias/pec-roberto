@@ -1,5 +1,6 @@
 ﻿import AlertMessage from "@/Components/Alert/AlertMessage";
 import InfoButton from "@/Components/Button/InfoButton";
+import SuccessButton from "@/Components/Button/SuccessButton";
 import Modal from "@/Components/Modal";
 import SecondaryButton from "@/Components/SecondaryButton";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
@@ -116,14 +117,12 @@ export default function UserShow({
     ];
 
     const infoItems = [
-        { label: 'ID', value: user.id ?? '---' },
         { label: 'NOME', value: user.name ?? '---' },
         { label: 'E-MAIL', value: user.email ?? '---' },
         { label: 'FUN\u00c7\u00c3O', value: funcaoLabels[user.funcao] ?? '---' },
         { label: 'JORNADA', value: `${formatTime(user.hr_ini)} - ${formatTime(user.hr_fim)}` },
         { label: 'SAL\u00c1RIO', value: formatCurrency(user.salario) },
         { label: 'CR\u00c9DITO VR', value: formatCurrency(user.vr_cred) },
-        { label: 'UNIDADE PRINCIPAL (ID)', value: user.tb2_id ?? '---' },
     ];
 
     const renderGroupedList = (groups, type) => {
@@ -188,17 +187,24 @@ export default function UserShow({
                                 <h3 className="text-lg font-semibold text-gray-900">Visualizar</h3>
                                 <p className="text-sm text-gray-500">Informações gerais do usuário</p>
                             </div>
-                            <Link href={route('users.index')}>
-                                <InfoButton aria-label="Listar" title="Listar" className="rounded-2xl px-3 py-3">
-                                    <i className="bi bi-list text-lg" aria-hidden="true"></i>
-                                </InfoButton>
-                            </Link>
+                            <div className="flex items-center gap-3">
+                                <Link href={route('users.create')}>
+                                    <SuccessButton aria-label="Incluir" title="Incluir" className="rounded-2xl px-3 py-3">
+                                        <i className="bi bi-plus-lg text-lg" aria-hidden="true"></i>
+                                    </SuccessButton>
+                                </Link>
+                                <Link href={route('users.index')}>
+                                    <InfoButton aria-label="Listar" title="Listar" className="rounded-2xl px-3 py-3">
+                                        <i className="bi bi-list text-lg" aria-hidden="true"></i>
+                                    </InfoButton>
+                                </Link>
+                            </div>
                         </div>
 
                         <AlertMessage message={flash} />
 
                         <div className="border-t border-gray-100 px-6 py-8 text-sm text-gray-700">
-                            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                                 {infoItems.map((item) => (
                                     <div key={item.label} className="space-y-2">
                                         <p className="text-[0.65rem] font-bold uppercase tracking-[0.3em] text-gray-400">

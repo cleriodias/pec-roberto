@@ -11,6 +11,8 @@ use Illuminate\Validation\ValidationException;
 
 class LoginRequest extends FormRequest
 {
+    private const LOGIN_DOMAIN = '@paoecafe83.com.br';
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -27,7 +29,7 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email' => ['required', 'string', 'email'],
+            'username' => ['required', 'string'],
             'password' => ['required', 'string'],
             'unit_id' => ['required', 'integer', 'exists:tb2_unidades,tb2_id'],
         ];
@@ -42,11 +44,11 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
+        if (! Auth::attempt($this->credentials(), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
-                'email' => trans('auth.failed'),
+                'username' => trans('auth.failed'),
             ]);
         }
 
@@ -69,7 +71,7 @@ class LoginRequest extends FormRequest
         $seconds = RateLimiter::availableIn($this->throttleKey());
 
         throw ValidationException::withMessages([
-            'email' => trans('auth.throttle', [
+            'username' => trans('auth.throttle', [
                 'seconds' => $seconds,
                 'minutes' => ceil($seconds / 60),
             ]),
@@ -77,10 +79,33 @@ class LoginRequest extends FormRequest
     }
 
     /**
+     * Get the credentials for the authentication attempt.
+     *
+     * @return array<string, mixed>
+     */
+    protected function credentials(): array
+    {
+        return [
+            'email' => $this->email(),
+            'password' => $this->string('password')->toString(),
+        ];
+    }
+
+    /**
+     * Build the full email address from the provided username.
+     */
+    protected function email(): string
+    {
+        $username = Str::before(trim($this->string('username')->toString()), '@');
+
+        return Str::lower($username . self::LOGIN_DOMAIN);
+    }
+
+    /**
      * Get the rate limiting throttle key for the request.
      */
     public function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->string('email')).'|'.$this->ip());
+        return Str::transliterate(Str::lower($this->email()).'|'.$this->ip());
     }
 }
