@@ -6,3 +6,5 @@ IMPORTANT:
 - Sempre informe os arquivos que serao alterados e aguarde o ok para proceguir com a alteraçao.
 - A pagina antes do login(resources/js/Pages/Welcome.jsx) nunca deve ser sincronizada, ele é diferente mesmo. a Original é Pao e Cafe este projeto é Pao e Cafe Premium
 - Sempre que for nescessario voce pode adicione algo que seja importante para proximas sincronizaçoes no AGENST.md
+- Em sincronizaçoes que alterem banco de dados, nao colocar `php artisan migrate` no startup/deploy automatico do App Service. Gerar tambem um script SQL manual para execuçao direta no banco quando solicitado.
+- Em ajustes de deploy manter a limpeza de `public/hot`, pois esse arquivo pode fazer a aplicaçao carregar assets errados e gerar tela em branco.
