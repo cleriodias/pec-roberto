@@ -48,7 +48,7 @@ export default function ForgotPassword({ status }) {
                         />
 
                         <span className="inline-flex items-center border-s border-gray-300 bg-gray-50 px-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                            @paoecafe83.com.br
+                            @paoecafepremium.com.br
                         </span>
                     </div>
 

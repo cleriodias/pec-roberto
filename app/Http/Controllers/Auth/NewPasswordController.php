@@ -16,7 +16,7 @@ use Inertia\Response;
 
 class NewPasswordController extends Controller
 {
-    private const LOGIN_DOMAIN = '@paoecafe83.com.br';
+    private const LOGIN_DOMAIN = '@paoecafepremium.com.br';
 
     /**
      * Display the password reset view.

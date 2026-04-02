@@ -11,7 +11,7 @@ use Illuminate\Validation\ValidationException;
 
 class LoginRequest extends FormRequest
 {
-    private const LOGIN_DOMAIN = '@paoecafe83.com.br';
+    private const LOGIN_DOMAIN = '@paoecafepremium.com.br';
 
     /**
      * Determine if the user is authorized to make this request.
