@@ -5,3 +5,4 @@ IMPORTANT:
 - Sempre que for questionado sobre a igualdade entre os sistemas verificar o projeto original e aplicar as alteraçoes.
 - Sempre informe os arquivos que serao alterados e aguarde o ok para proceguir com a alteraçao.
 - A pagina antes do login(resources/js/Pages/Welcome.jsx) nunca deve ser sincronizada, ele é diferente mesmo. a Original é Pao e Cafe este projeto é Pao e Cafe Premium
+- Sempre que for nescessario voce pode adicione algo que seja importante para proximas sincronizaçoes no AGENST.md

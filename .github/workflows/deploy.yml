@@ -105,7 +105,7 @@ jobs:
           az webapp config set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEBAPP_NAME" \
-            --startup-file "cp /home/site/wwwroot/nginx.conf /etc/nginx/sites-available/default && cp /home/site/wwwroot/nginx.conf /etc/nginx/sites-enabled/default && cd /home/site/wwwroot && php artisan migrate --force && service nginx reload"
+            --startup-file "cp /home/site/wwwroot/nginx.conf /etc/nginx/sites-available/default && cp /home/site/wwwroot/nginx.conf /etc/nginx/sites-enabled/default && rm -f /home/site/wwwroot/public/hot && cd /home/site/wwwroot && php artisan migrate --force && service nginx reload"
 
           az webapp config appsettings set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
@@ -160,9 +160,11 @@ jobs:
             --exclude "artifacts" \
             --exclude "node_modules" \
             --exclude ".env" \
+            --exclude "public/hot" \
             --exclude "storage/logs" \
             --exclude "vendor/bin"
           rm -rf artifacts/staging/public/storage
+          rm -f artifacts/staging/public/hot
           mkdir -p artifacts/staging/public/storage
           touch artifacts/staging/public/storage/.gitkeep
           (cd artifacts/staging && zip -r ../app.zip .)
