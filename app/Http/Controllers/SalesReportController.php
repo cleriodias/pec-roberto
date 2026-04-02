@@ -155,6 +155,13 @@ class SalesReportController extends Controller
                 'icon' => 'bi-recycle',
                 'route' => 'reports.descarte',
             ],
+            [
+                'key' => 'descarte-consolidado',
+                'label' => 'Discarte Consolidado',
+                'description' => 'Agrupa descartes por item para destacar os produtos mais descartados no mes.',
+                'icon' => 'bi-bar-chart-line',
+                'route' => 'reports.descarte.consolidado',
+            ],
         ];
 
         return Inertia::render('Reports/Index', [
@@ -919,6 +926,155 @@ class SalesReportController extends Controller
             'rows' => $rows,
             'startDate' => $startDate,
             'endDate' => $endDate,
+            'unit' => $selectedUnit,
+            'filterUnits' => $filterUnits,
+            'selectedUnitId' => $filterUnitId,
+        ]);
+    }
+
+    public function descarteConsolidado(Request $request): Response
+    {
+        $this->ensureManager($request);
+        $availableUnits = $this->availableUnits($request->user());
+        $fallbackUnitId = $this->resolveUnitId($request);
+        $selectedUnitId = $fallbackUnitId > 0 ? $fallbackUnitId : null;
+
+        if ($selectedUnitId && ! $availableUnits->contains(fn ($unit) => $unit['id'] === $selectedUnitId)) {
+            $selectedUnitId = null;
+        }
+
+        $requestedUnitId = $request->query('unit_id');
+        if ($requestedUnitId !== null && $requestedUnitId !== '' && $requestedUnitId !== 'all') {
+            $candidateUnitId = (int) $requestedUnitId;
+
+            if ($candidateUnitId > 0 && $availableUnits->contains(fn ($unit) => $unit['id'] === $candidateUnitId)) {
+                $selectedUnitId = $candidateUnitId;
+            }
+        }
+
+        if (! $selectedUnitId) {
+            $selectedUnitId = $availableUnits->first()['id'] ?? null;
+        }
+
+        $filterUnitId = $selectedUnitId;
+        $filterUnits = $availableUnits->values();
+        $selectedUnit = $filterUnitId
+            ? $availableUnits->firstWhere('id', $filterUnitId)
+            : ['id' => null, 'name' => '---'];
+        [$start, $end, $monthValue, $monthLabel] = $this->resolveMonthRange($request->query('month'));
+
+        $entries = ProductDiscard::query()
+            ->with(['product:tb1_id,tb1_nome,tb1_vlr_venda', 'user:id,name,tb2_id', 'unit:tb2_id,tb2_nome'])
+            ->whereBetween('created_at', [$start, $end])
+            ->when($filterUnitId, function ($query) use ($filterUnitId) {
+                $query->where(function ($subQuery) use ($filterUnitId) {
+                    $subQuery->where('unit_id', $filterUnitId)
+                        ->orWhere(function ($legacy) use ($filterUnitId) {
+                            $legacy->whereNull('unit_id')
+                                ->where(function ($legacyUnit) use ($filterUnitId) {
+                                    $legacyUnit->whereHas('user', function ($userQuery) use ($filterUnitId) {
+                                        $userQuery->where('tb2_id', $filterUnitId);
+                                    })->orWhereHas('user.units', function ($unitQuery) use ($filterUnitId) {
+                                        $unitQuery->where('tb2_unidades.tb2_id', $filterUnitId);
+                                    });
+                                });
+                        });
+                });
+            })
+            ->orderByDesc('created_at')
+            ->get([
+                'id',
+                'product_id',
+                'user_id',
+                'unit_id',
+                'quantity',
+                'unit_price',
+                'created_at',
+            ]);
+
+        $rows = $entries
+            ->groupBy(function (ProductDiscard $discard) {
+                if ($discard->product_id) {
+                    return 'product-' . $discard->product_id;
+                }
+
+                return 'product-name-' . strtolower(trim((string) ($discard->product?->tb1_nome ?? 'produto-removido')));
+            })
+            ->map(function (Collection $group) {
+                $first = $group->first();
+                $productName = trim((string) ($first?->product?->tb1_nome ?? 'Produto removido'));
+                $totalQuantity = (float) $group->sum(fn (ProductDiscard $discard) => (float) $discard->quantity);
+                $totalValue = (float) $group->sum(function (ProductDiscard $discard) {
+                    $unitPrice = $discard->unit_price !== null
+                        ? (float) $discard->unit_price
+                        : (float) ($discard->product?->tb1_vlr_venda ?? 0);
+
+                    return $unitPrice * (float) $discard->quantity;
+                });
+                $lastEntry = $group->sortByDesc('created_at')->first();
+                $averageUnitPrice = $totalQuantity > 0 ? $totalValue / $totalQuantity : 0.0;
+
+                return [
+                    'product_id' => $first?->product_id ? (int) $first->product_id : null,
+                    'product' => $productName !== '' ? $productName : 'Produto removido',
+                    'occurrences' => $group->count(),
+                    'total_quantity' => round($totalQuantity, 3),
+                    'total_value' => round($totalValue, 2),
+                    'average_unit_price' => round($averageUnitPrice, 2),
+                    'last_discard_at' => $lastEntry?->created_at?->toIso8601String(),
+                ];
+            })
+            ->sort(function (array $left, array $right) {
+                if ($left['total_quantity'] !== $right['total_quantity']) {
+                    return $right['total_quantity'] <=> $left['total_quantity'];
+                }
+
+                if ($left['occurrences'] !== $right['occurrences']) {
+                    return $right['occurrences'] <=> $left['occurrences'];
+                }
+
+                if ($left['total_value'] !== $right['total_value']) {
+                    return $right['total_value'] <=> $left['total_value'];
+                }
+
+                return strcmp($left['product'], $right['product']);
+            })
+            ->values()
+            ->map(function (array $row, int $index) {
+                $row['rank'] = $index + 1;
+
+                return $row;
+            });
+
+        $topQuantityProduct = $rows->first();
+        $topValueProduct = $rows
+            ->sort(function (array $left, array $right) {
+                if ($left['total_value'] !== $right['total_value']) {
+                    return $right['total_value'] <=> $left['total_value'];
+                }
+
+                if ($left['total_quantity'] !== $right['total_quantity']) {
+                    return $right['total_quantity'] <=> $left['total_quantity'];
+                }
+
+                return strcmp($left['product'], $right['product']);
+            })
+            ->first();
+
+        $summary = [
+            'products_count' => $rows->count(),
+            'total_quantity' => round((float) $rows->sum('total_quantity'), 3),
+            'total_value' => round((float) $rows->sum('total_value'), 2),
+            'total_occurrences' => (int) $rows->sum('occurrences'),
+            'top_quantity_product' => $topQuantityProduct,
+            'top_value_product' => $topValueProduct,
+        ];
+
+        return Inertia::render('Reports/DiscardConsolidated', [
+            'rows' => $rows,
+            'summary' => $summary,
+            'monthValue' => $monthValue,
+            'monthLabel' => $monthLabel,
             'unit' => $selectedUnit,
             'filterUnits' => $filterUnits,
             'selectedUnitId' => $filterUnitId,
@@ -2116,6 +2272,28 @@ class SalesReportController extends Controller
         }
 
         return $fallback->copy();
+    }
+
+    private function resolveMonthRange(?string $value): array
+    {
+        $fallback = Carbon::today()->startOfMonth();
+
+        if ($value) {
+            try {
+                $month = Carbon::createFromFormat('Y-m', $value)->startOfMonth();
+            } catch (InvalidFormatException $exception) {
+                $month = $fallback->copy();
+            }
+        } else {
+            $month = $fallback->copy();
+        }
+
+        return [
+            $month->copy()->startOfMonth()->startOfDay(),
+            $month->copy()->endOfMonth()->endOfDay(),
+            $month->format('Y-m'),
+            $month->format('m/Y'),
+        ];
     }
 
     private function normalizeControlPaymentType(?string $value): string

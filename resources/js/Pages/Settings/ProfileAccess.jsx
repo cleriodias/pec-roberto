@@ -25,6 +25,7 @@ const MENU_OPTIONS = [
     { key: 'supplier_disputes', label: 'Disputas Fornecedor' },
     { key: 'reports_gastos', label: 'Relatorio Gastos' },
     { key: 'reports_descarte', label: 'Relatorio Descarte' },
+    { key: 'reports_descarte_consolidado', label: 'Discarte Consolidado' },
     { key: 'reports_hoje', label: 'Hoje' },
     { key: 'salary_advances', label: 'Adiantamento' },
     { key: 'expenses', label: 'Gastos' },

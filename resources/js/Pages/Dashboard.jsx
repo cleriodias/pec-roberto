@@ -477,32 +477,55 @@ export default function Dashboard() {
         }
     }, [autoOpenComandasKey, shouldFocusComandas]);
 
-    const fetchOpenComandas = useCallback(() => {
-        let isMounted = true;
+    const fetchOpenComandas = useCallback(async (signal) => {
+        const response = await axios.get(route('sales.open-comandas'), { signal });
+        const data = response.data ?? {};
 
-        axios
-            .get(route('sales.open-comandas'))
-            .then((response) => {
-                if (!isMounted) {
-                    return;
-                }
-                const data = response.data ?? {};
-                setOpenComandasList(Array.isArray(data.comandas) ? data.comandas : []);
-            })
-            .catch(() => {
-                if (isMounted) {
-                    setOpenComandasList([]);
-                }
-            });
+        return Array.isArray(data.comandas) ? data.comandas : [];
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return undefined;
+        }
+
+        let isMounted = true;
+        let currentController = null;
+
+        const loadOpenComandas = () => {
+            currentController?.abort();
+
+            const controller = new AbortController();
+            currentController = controller;
+
+            fetchOpenComandas(controller.signal)
+                .then((comandas) => {
+                    if (isMounted) {
+                        setOpenComandasList(comandas);
+                    }
+                })
+                .catch((error) => {
+                    if (axios.isCancel(error) || error?.code === 'ERR_CANCELED') {
+                        return;
+                    }
+
+                    if (isMounted) {
+                        setOpenComandasList([]);
+                    }
+                });
+        };
+
+        loadOpenComandas();
+
+        const intervalId = window.setInterval(() => {
+            loadOpenComandas();
+        }, 60000);
 
         return () => {
             isMounted = false;
+            window.clearInterval(intervalId);
+            currentController?.abort();
         };
-    }, [refreshCashierRestrictions]);
-
-    useEffect(() => {
-        const cleanup = fetchOpenComandas();
-        return cleanup;
     }, [fetchOpenComandas]);
 
     useEffect(() => {

@@ -107,6 +107,13 @@ const fallbackReports = [
         icon: 'bi-recycle',
         route: 'reports.descarte',
     },
+    {
+        key: 'descarte-consolidado',
+        label: 'Discarte Consolidado',
+        description: 'Agrupa descartes por item para destacar os produtos mais descartados no mes.',
+        icon: 'bi-bar-chart-line',
+        route: 'reports.descarte.consolidado',
+    },
 ];
 
 export default function ReportsIndex({ reports = [] }) {

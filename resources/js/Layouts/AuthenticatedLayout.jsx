@@ -43,6 +43,7 @@ const DEFAULT_MENU_KEYS = [
     'supplier_disputes',
     'reports_gastos',
     'reports_descarte',
+    'reports_descarte_consolidado',
     'reports_hoje',
     'discard',
     'switch_unit',
@@ -328,6 +329,15 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                 node: (
                     <Dropdown.Link href={route('reports.lanchonete')}>
                         <MenuLabel icon="bi bi-cup-hot" text="Relatório Lanchonete" />
+                    </Dropdown.Link>
+                ),
+            },
+            {
+                key: 'reports_descarte_consolidado',
+                visible: canSeeReports && hasMenuAccess('reports_descarte_consolidado'),
+                node: (
+                    <Dropdown.Link href={route('reports.descarte.consolidado')}>
+                        <MenuLabel icon="bi bi-bar-chart-line" text="Discarte Consolidado" />
                     </Dropdown.Link>
                 ),
             },

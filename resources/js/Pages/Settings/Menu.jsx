@@ -44,6 +44,7 @@ const SECTIONS = [
             { label: 'Relatorio Fornecedores', icon: 'bi-truck', href: routeTo('reports.fornecedores') },
             { label: 'Relatorio Gastos', icon: 'bi-receipt', href: routeTo('reports.gastos') },
             { label: 'Relatorio Descarte', icon: 'bi-recycle', href: routeTo('reports.descarte') },
+            { label: 'Discarte Consolidado', icon: 'bi-bar-chart-line', href: routeTo('reports.descarte.consolidado') },
         ],
     },
     {
