@@ -10,6 +10,7 @@ const MENU_OPTIONS = [
     { key: 'boletos', label: 'Boletos' },
     { key: 'support_tickets', label: 'Chamados' },
     { key: 'cashier_close', label: 'Fechar Caixa' },
+    { key: 'online_users', label: 'On-Line' },
     { key: 'reports_control', label: 'Controle Financeiro' },
     { key: 'reports_cash', label: 'Fechamento de Caixa' },
     { key: 'reports_sales_today', label: 'Vendas Hoje' },

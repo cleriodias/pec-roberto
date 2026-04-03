@@ -18,58 +18,19 @@ class SaleController extends Controller
 {
     public function openComandas(Request $request): JsonResponse
     {
-        $unitId = $this->resolveActiveUnitId($request);
-
-        $baseQuery = Venda::query()
-            ->whereNotNull('id_comanda')
-            ->where('status', 0);
-
-        if ($unitId) {
-            $baseQuery->where('id_unidade', $unitId);
-        }
-
-        $open = (clone $baseQuery)
-            ->selectRaw('COUNT(DISTINCT id_comanda) as total_comandas, COALESCE(SUM(valor_total), 0) as total_amount')
-            ->first();
-
-        $comandas = (clone $baseQuery)
-            ->selectRaw('id_comanda, COALESCE(SUM(valor_total), 0) as total_amount')
-            ->groupBy('id_comanda')
-            ->orderBy('id_comanda')
-            ->get()
-            ->map(function ($row) {
-                return [
-                    'codigo' => (int) $row->id_comanda,
-                    'total' => (float) $row->total_amount,
-                ];
-            });
-
-        return response()->json([
-            'total_comandas' => (int) ($open->total_comandas ?? 0),
-            'total_amount' => (float) ($open->total_amount ?? 0),
-            'comandas' => $comandas,
-        ]);
+        return response()->json($this->buildOpenComandasPayload($request));
     }
 
     public function restrictions(Request $request): JsonResponse
     {
-        $user = $request->user();
+        return response()->json($this->buildRestrictionsPayload($request));
+    }
 
-        if (! $user || (int) $user->funcao !== 3) {
-            return response()->json([
-                'requires_closure' => false,
-                'pending_closure_date' => null,
-                'pending_comandas' => [],
-            ]);
-        }
-
-        $unit = $request->session()->get('active_unit');
-        $restrictions = $this->resolveCashierRestrictions($user, $unit);
-
+    public function dashboardStatus(Request $request): JsonResponse
+    {
         return response()->json([
-            'requires_closure' => $restrictions['requires_closure'],
-            'pending_closure_date' => $restrictions['pending_closure_date'],
-            'pending_comandas' => $restrictions['pending_comandas'],
+            ...$this->buildOpenComandasPayload($request),
+            ...$this->buildRestrictionsPayload($request),
         ]);
     }
 
@@ -527,6 +488,8 @@ class SaleController extends Controller
         $validated = $request->validate([
             'product_id' => ['required', 'integer', 'exists:tb1_produto,tb1_id'],
             'quantity' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'barcode' => ['nullable', 'string', 'max:64'],
+            'unit_price' => ['nullable', 'numeric', 'min:0'],
             'access_user_id' => ['required', 'integer', 'exists:users,id'],
         ]);
 
@@ -536,14 +499,31 @@ class SaleController extends Controller
 
         $product = Produto::select('tb1_id', 'tb1_nome', 'tb1_vlr_venda')->findOrFail($validated['product_id']);
         $quantity = (int) ($validated['quantity'] ?? 1);
-        $price = (float) $product->tb1_vlr_venda;
+        $barcode = trim((string) ($validated['barcode'] ?? ''));
+        $weightedBarcode = $barcode !== '' ? $this->parseWeightedBarcode($barcode) : null;
+
+        if ($barcode !== '' && $weightedBarcode === null) {
+            return response()->json(['message' => 'Codigo de barras da balanca invalido.'], 422);
+        }
+
+        if ($weightedBarcode !== null && $weightedBarcode['product_id'] !== (int) $product->tb1_id) {
+            return response()->json([
+                'message' => 'O codigo de barras da balanca nao corresponde ao produto informado.',
+            ], 422);
+        }
+
+        $explicitUnitPrice = array_key_exists('unit_price', $validated) && $validated['unit_price'] !== null
+            ? round((float) $validated['unit_price'], 2)
+            : null;
+        $price = (float) ($weightedBarcode['unit_price'] ?? $explicitUnitPrice ?? $product->tb1_vlr_venda);
         $total = round($price * $quantity, 2);
 
-        // Upsert para manter um registro por produto/comanda em aberto.
+        // Mantem um registro por produto/preco/comanda em aberto.
         $existing = Venda::query()
             ->where('id_comanda', $codigo)
             ->where('id_unidade', $unitId)
             ->where('tb1_id', $product->tb1_id)
+            ->where('valor_unitario', $price)
             ->where('status', 0)
             ->first();
 
@@ -582,18 +562,24 @@ class SaleController extends Controller
         ]);
     }
 
-    public function updateComandaItem(Request $request, int $codigo, int $productId): JsonResponse
+    public function updateComandaItem(Request $request, int $codigo, string $lineKey): JsonResponse
     {
         $unitId = $this->resolveActiveUnitId($request);
         $validated = $request->validate([
             'quantity' => ['required', 'integer', 'min:0', 'max:1000'],
             'access_user_id' => ['nullable', 'integer', 'exists:users,id'],
         ]);
+        $lineData = $this->parseSaleItemKey($lineKey);
+
+        if ($lineData === null) {
+            return response()->json(['message' => 'Item invalido na comanda.'], 422);
+        }
 
         $record = Venda::query()
             ->where('id_comanda', $codigo)
             ->where('id_unidade', $unitId)
-            ->where('tb1_id', $productId)
+            ->where('tb1_id', $lineData['product_id'])
+            ->where('valor_unitario', $lineData['unit_price'])
             ->where('status', 0)
             ->first();
 
@@ -684,6 +670,65 @@ class SaleController extends Controller
         return $hasClosure ? null : $lastSaleDay;
     }
 
+    private function buildOpenComandasPayload(Request $request): array
+    {
+        $unitId = $this->resolveActiveUnitId($request);
+
+        $baseQuery = Venda::query()
+            ->whereNotNull('id_comanda')
+            ->where('status', 0);
+
+        if ($unitId) {
+            $baseQuery->where('id_unidade', $unitId);
+        }
+
+        $open = (clone $baseQuery)
+            ->selectRaw('COUNT(DISTINCT id_comanda) as total_comandas, COALESCE(SUM(valor_total), 0) as total_amount')
+            ->first();
+
+        $comandas = (clone $baseQuery)
+            ->selectRaw('id_comanda, COALESCE(SUM(valor_total), 0) as total_amount')
+            ->groupBy('id_comanda')
+            ->orderBy('id_comanda')
+            ->get()
+            ->map(function ($row) {
+                return [
+                    'codigo' => (int) $row->id_comanda,
+                    'total' => (float) $row->total_amount,
+                ];
+            })
+            ->values()
+            ->all();
+
+        return [
+            'total_comandas' => (int) ($open->total_comandas ?? 0),
+            'total_amount' => (float) ($open->total_amount ?? 0),
+            'comandas' => $comandas,
+        ];
+    }
+
+    private function buildRestrictionsPayload(Request $request): array
+    {
+        $user = $request->user();
+
+        if (! $user || (int) $user->funcao !== 3) {
+            return [
+                'requires_closure' => false,
+                'pending_closure_date' => null,
+                'pending_comandas' => [],
+            ];
+        }
+
+        $unit = $request->session()->get('active_unit');
+        $restrictions = $this->resolveCashierRestrictions($user, $unit);
+
+        return [
+            'requires_closure' => $restrictions['requires_closure'],
+            'pending_closure_date' => $restrictions['pending_closure_date'],
+            'pending_comandas' => $restrictions['pending_comandas'],
+        ];
+    }
+
     private function getComandaItems(int $codigo, ?int $unitId = null): array
     {
         $items = Venda::query()
@@ -746,6 +791,27 @@ class SaleController extends Controller
         $normalizedPrice = number_format((float) ($unitPrice ?? 0), 2, '.', '');
 
         return sprintf('product-%d-price-%s', $productId, $normalizedPrice);
+    }
+
+    private function parseSaleItemKey(?string $itemKey): ?array
+    {
+        $itemKey = trim((string) $itemKey);
+
+        if (! preg_match('/^product-(\d+)-price-(\d+\.\d{2})$/', $itemKey, $matches)) {
+            return null;
+        }
+
+        $productId = (int) $matches[1];
+        $unitPrice = round((float) $matches[2], 2);
+
+        if ($productId <= 0) {
+            return null;
+        }
+
+        return [
+            'product_id' => $productId,
+            'unit_price' => $unitPrice,
+        ];
     }
 
     private function collapseSaleItems(array $items): array

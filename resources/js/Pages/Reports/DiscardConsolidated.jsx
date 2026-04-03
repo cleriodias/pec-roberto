@@ -234,67 +234,69 @@ export default function DiscardConsolidated({
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                                        {rows.map((row) => {
-                                            const isTopQuantity =
-                                                topQuantityProduct &&
-                                                row.product === topQuantityProduct.product &&
-                                                Number(row.total_quantity) === Number(topQuantityProduct.total_quantity) &&
-                                                Number(row.total_value) === Number(topQuantityProduct.total_value);
-                                            const isTopValue =
-                                                topValueProduct &&
-                                                row.product === topValueProduct.product &&
-                                                Number(row.total_value) === Number(topValueProduct.total_value) &&
-                                                Number(row.total_quantity) === Number(topValueProduct.total_quantity);
-                                            const rowClassName =
-                                                isTopQuantity && isTopValue
-                                                    ? 'bg-gradient-to-r from-amber-50 to-emerald-50 dark:from-amber-500/10 dark:to-emerald-500/10'
-                                                    : isTopQuantity
-                                                        ? 'bg-amber-50/60 dark:bg-amber-500/10'
-                                                        : isTopValue
-                                                            ? 'bg-emerald-50/70 dark:bg-emerald-500/10'
-                                                            : '';
+                                        {rows.map((row) => (
+                                            (() => {
+                                                const isTopQuantity =
+                                                    topQuantityProduct
+                                                    && row.product === topQuantityProduct.product
+                                                    && Number(row.total_quantity) === Number(topQuantityProduct.total_quantity)
+                                                    && Number(row.total_value) === Number(topQuantityProduct.total_value);
+                                                const isTopValue =
+                                                    topValueProduct
+                                                    && row.product === topValueProduct.product
+                                                    && Number(row.total_value) === Number(topValueProduct.total_value)
+                                                    && Number(row.total_quantity) === Number(topValueProduct.total_quantity);
+                                                const rowClassName =
+                                                    isTopQuantity && isTopValue
+                                                        ? 'bg-gradient-to-r from-amber-50 to-emerald-50 dark:from-amber-500/10 dark:to-emerald-500/10'
+                                                        : isTopQuantity
+                                                            ? 'bg-amber-50/60 dark:bg-amber-500/10'
+                                                            : isTopValue
+                                                                ? 'bg-emerald-50/70 dark:bg-emerald-500/10'
+                                                                : '';
 
-                                            return (
-                                                <tr
-                                                    key={`${row.product_id ?? row.product}-${row.rank}`}
-                                                    className={rowClassName}
-                                                >
-                                                    <td className="px-3 py-2 text-center font-bold text-gray-700 dark:text-gray-200">
-                                                        {row.rank}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
-                                                        <div className="font-semibold">{row.product}</div>
-                                                        <div className="mt-1 flex flex-wrap gap-2 text-xs">
-                                                            {isTopQuantity ? (
-                                                                <span className="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
-                                                                    Lider em quantidade
-                                                                </span>
-                                                            ) : null}
-                                                            {isTopValue ? (
-                                                                <span className="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
-                                                                    Lider em valor
-                                                                </span>
-                                                            ) : null}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-3 py-2 text-center text-gray-700 dark:text-gray-200">
-                                                        {row.occurrences}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-gray-100">
-                                                        {formatQuantity(row.total_quantity)}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-200">
-                                                        {formatCurrency(row.average_unit_price)}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-right font-semibold text-emerald-700 dark:text-emerald-300">
-                                                        {formatCurrency(row.total_value)}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
-                                                        {formatDateTime(row.last_discard_at)}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
+                                                return (
+                                                    <tr
+                                                        key={`${row.product_id ?? row.product}-${row.rank}`}
+                                                        className={rowClassName}
+                                                    >
+                                                        <td className="px-3 py-2 text-center font-bold text-gray-700 dark:text-gray-200">
+                                                            {row.rank}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
+                                                            <div className="font-semibold">{row.product}</div>
+                                                            <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                                                                {isTopQuantity ? (
+                                                                    <span className="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
+                                                                        Lider em quantidade
+                                                                    </span>
+                                                                ) : null}
+                                                                {isTopValue ? (
+                                                                    <span className="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
+                                                                        Lider em valor
+                                                                    </span>
+                                                                ) : null}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-3 py-2 text-center text-gray-700 dark:text-gray-200">
+                                                            {row.occurrences}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-gray-100">
+                                                            {formatQuantity(row.total_quantity)}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-200">
+                                                            {formatCurrency(row.average_unit_price)}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right font-semibold text-emerald-700 dark:text-emerald-300">
+                                                            {formatCurrency(row.total_value)}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
+                                                            {formatDateTime(row.last_discard_at)}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })()
+                                        ))}
                                     </tbody>
                                 </table>
                             </div>

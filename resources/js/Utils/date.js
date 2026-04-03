@@ -15,6 +15,12 @@ const dateTimeFormatter = new Intl.DateTimeFormat('pt-BR', {
     timeStyle: 'short',
 });
 
+const timeFormatter = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: BRAZIL_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+});
+
 const todayInputFormatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: BRAZIL_TIME_ZONE,
     year: 'numeric',
@@ -89,6 +95,16 @@ export const formatBrazilDateTime = (value) => {
     }
 
     return dateTimeFormatter.format(date);
+};
+
+export const formatBrazilTime = (value) => {
+    const date = parseDateValue(value);
+
+    if (!date) {
+        return '--';
+    }
+
+    return timeFormatter.format(date);
 };
 
 export const getBrazilTodayInputValue = () => todayInputFormatter.format(new Date());

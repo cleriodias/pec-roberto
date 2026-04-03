@@ -430,42 +430,77 @@ export default function Dashboard() {
         };
     }, []);
 
-    const refreshCashierRestrictions = useCallback(() => {
-        if (!isCashier || typeof route !== 'function') {
-            return () => {};
+    const refreshDashboardStatus = useCallback(
+        async (signal) => {
+            const response = await axios.get(route('sales.dashboard-status'), { signal });
+            const data = response.data ?? {};
+            const nextComandas = Array.isArray(data.comandas) ? data.comandas : [];
+
+            setOpenComandasList(nextComandas);
+            setCashierRestrictions(
+                isCashier
+                    ? {
+                          requires_closure: Boolean(data.requires_closure),
+                          pending_closure_date: data.pending_closure_date ?? null,
+                          pending_comandas: Array.isArray(data.pending_comandas)
+                              ? data.pending_comandas
+                              : [],
+                      }
+                    : null,
+            );
+
+            return data;
+        },
+        [isCashier],
+    );
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return undefined;
         }
 
         let isMounted = true;
-        setCashierRestrictionsLoading(true);
+        let currentController = null;
 
-        axios
-            .get(route('sales.restrictions'))
-            .then((response) => {
-                if (!isMounted) {
-                    return;
-                }
-                setCashierRestrictions(response.data ?? null);
-            })
-            .catch(() => {
-                if (isMounted) {
-                    setCashierRestrictions(null);
-                }
-            })
-            .finally(() => {
-                if (isMounted) {
-                    setCashierRestrictionsLoading(false);
-                }
-            });
+        const loadDashboardStatus = () => {
+            currentController?.abort();
+
+            const controller = new AbortController();
+            currentController = controller;
+            setCashierRestrictionsLoading(isCashier);
+
+            refreshDashboardStatus(controller.signal)
+                .catch((error) => {
+                    if (axios.isCancel(error) || error?.code === 'ERR_CANCELED') {
+                        return;
+                    }
+
+                    if (isMounted) {
+                        setOpenComandasList([]);
+                        if (isCashier) {
+                            setCashierRestrictions(null);
+                        }
+                    }
+                })
+                .finally(() => {
+                    if (isMounted && isCashier) {
+                        setCashierRestrictionsLoading(false);
+                    }
+                });
+        };
+
+        loadDashboardStatus();
+
+        const intervalId = window.setInterval(() => {
+            loadDashboardStatus();
+        }, 60000);
 
         return () => {
             isMounted = false;
+            window.clearInterval(intervalId);
+            currentController?.abort();
         };
-    }, [isCashier]);
-
-    useEffect(() => {
-        const cleanup = refreshCashierRestrictions();
-        return cleanup;
-    }, []);
+    }, [isCashier, refreshDashboardStatus]);
 
     useEffect(() => {
         if (!shouldFocusComandas) {
@@ -476,57 +511,6 @@ export default function Dashboard() {
             lastAutoOpenComandasKey.current = autoOpenComandasKey;
         }
     }, [autoOpenComandasKey, shouldFocusComandas]);
-
-    const fetchOpenComandas = useCallback(async (signal) => {
-        const response = await axios.get(route('sales.open-comandas'), { signal });
-        const data = response.data ?? {};
-
-        return Array.isArray(data.comandas) ? data.comandas : [];
-    }, []);
-
-    useEffect(() => {
-        if (typeof window === 'undefined') {
-            return undefined;
-        }
-
-        let isMounted = true;
-        let currentController = null;
-
-        const loadOpenComandas = () => {
-            currentController?.abort();
-
-            const controller = new AbortController();
-            currentController = controller;
-
-            fetchOpenComandas(controller.signal)
-                .then((comandas) => {
-                    if (isMounted) {
-                        setOpenComandasList(comandas);
-                    }
-                })
-                .catch((error) => {
-                    if (axios.isCancel(error) || error?.code === 'ERR_CANCELED') {
-                        return;
-                    }
-
-                    if (isMounted) {
-                        setOpenComandasList([]);
-                    }
-                });
-        };
-
-        loadOpenComandas();
-
-        const intervalId = window.setInterval(() => {
-            loadOpenComandas();
-        }, 60000);
-
-        return () => {
-            isMounted = false;
-            window.clearInterval(intervalId);
-            currentController?.abort();
-        };
-    }, [fetchOpenComandas]);
 
     useEffect(() => {
         const term = texto.trim();
@@ -1018,9 +1002,8 @@ export default function Dashboard() {
                 if (selectedComandaCode !== null) {
                     setSelectedComandaCode(null);
                     setItems([]);
-                    fetchOpenComandas();
                 }
-                refreshCashierRestrictions();
+                refreshDashboardStatus().catch(() => {});
             })
             .catch((error) => {
                 let message = 'Falha ao registrar a venda.';
@@ -1160,7 +1143,7 @@ export default function Dashboard() {
                 setSelectedComandaCode(codigo);
                 setSaleError('');
                 setShowComandasButtons(false);
-                fetchOpenComandas();
+                refreshDashboardStatus().catch(() => {});
             })
             .catch(() => {
                 setSaleError('Nao foi possivel carregar os itens da comanda.');

@@ -11,6 +11,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\LanchoneteTerminalController;
 use App\Http\Controllers\MobileRevenueController;
 use App\Http\Controllers\NoticeController;
+use App\Http\Controllers\OnlineController;
 use App\Http\Controllers\NewsletterSubscriptionController;
 use App\Http\Controllers\RoleSwitchController;
 use App\Http\Controllers\SaleController;
@@ -83,6 +84,11 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::put('/profile/access-code', [ProfileController::class, 'updateAccessCode'])->name('profile.access-code.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    Route::get('/on-line', [OnlineController::class, 'index'])->name('online.index');
+    Route::get('/on-line/snapshot', [OnlineController::class, 'snapshot'])->name('online.snapshot');
+    Route::get('/on-line/summary', [OnlineController::class, 'summary'])->name('online.summary');
+    Route::post('/on-line/heartbeat', [OnlineController::class, 'heartbeat'])->name('online.heartbeat');
+    Route::post('/on-line/messages', [OnlineController::class, 'storeMessage'])->name('online.messages.store');
     Route::get('/settings', function () {
         $user = auth()->user();
         if (! $user || ! in_array((int) $user->funcao, [0, 1], true)) {
@@ -170,6 +176,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('products', ProductController::class);
     Route::get('/sales/open-comandas', [SaleController::class, 'openComandas'])->name('sales.open-comandas');
     Route::get('/sales/restrictions', [SaleController::class, 'restrictions'])->name('sales.restrictions');
+    Route::get('/sales/dashboard-status', [SaleController::class, 'dashboardStatus'])->name('sales.dashboard-status');
     Route::get('/sales/comandas/{codigo}/items', [SaleController::class, 'comandaItems'])->name('sales.comandas.items');
     Route::post('/sales', [SaleController::class, 'store'])->name('sales.store');
     Route::post('/sales/comandas/{codigo}/items', [SaleController::class, 'addComandaItem'])->name('sales.comandas.add-item');

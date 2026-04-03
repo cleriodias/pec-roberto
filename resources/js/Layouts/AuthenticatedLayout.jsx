@@ -2,6 +2,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo';
 import Dropdown from '@/Components/Dropdown';
 import NavLink from '@/Components/NavLink';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
+import axios from 'axios';
 import { Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -52,6 +53,7 @@ const DEFAULT_MENU_KEYS = [
     'support_tickets',
     'notices',
     'settings',
+    'online_users',
     'lanchonete_terminal',
 ];
 
@@ -86,11 +88,17 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
         typeof route === 'function' && route().has && route().has('lanchonete.terminal');
     const hasHojeRoute =
         typeof route === 'function' && route().has && route().has('reports.hoje');
+    const hasOnlineRoute =
+        typeof route === 'function' && route().has && route().has('online.index');
 
     const [showingNavigationDropdown, setShowingNavigationDropdown] =
         useState(false);
     const [menuAccessConfig, setMenuAccessConfig] = useState(null);
     const [menuOrderConfig, setMenuOrderConfig] = useState(null);
+    const [onlineSummary, setOnlineSummary] = useState({
+        unread_total: 0,
+        unread_sender_ids: [],
+    });
 
     useEffect(() => {
         if (typeof window === 'undefined') {
@@ -165,6 +173,36 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
         }, {});
     }, [menuOrderConfig]);
 
+    useEffect(() => {
+        if (
+            typeof window === 'undefined' ||
+            typeof route !== 'function' ||
+            !hasOnlineRoute ||
+            !user ||
+            ![0, 1, 2, 3, 4].includes(effectiveRole)
+        ) {
+            return undefined;
+        }
+
+        let cancelled = false;
+
+        const sendHeartbeat = () => {
+            axios.post(route('online.heartbeat')).catch(() => {
+                if (!cancelled) {
+                    // Mantem a UI silenciosa para nao poluir a navegacao em caso de falha temporaria.
+                }
+            });
+        };
+
+        sendHeartbeat();
+        const intervalId = window.setInterval(sendHeartbeat, 45000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(intervalId);
+        };
+    }, [effectiveRole, hasOnlineRoute, user]);
+
     const sortMenu = (items) =>
         items
             .map((item, idx) => ({
@@ -176,6 +214,53 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                         : 1000 + idx),
             }))
             .sort((a, b) => a.order - b.order);
+
+    const canSeeOnline =
+        user &&
+        [0, 1, 2, 3, 4].includes(effectiveRole) &&
+        hasOnlineRoute &&
+        hasMenuAccess('online_users');
+    const unreadOnlineTotal = Number(onlineSummary?.unread_total ?? 0);
+
+    useEffect(() => {
+        if (
+            typeof window === 'undefined' ||
+            typeof route !== 'function' ||
+            !canSeeOnline
+        ) {
+            return undefined;
+        }
+
+        let cancelled = false;
+
+        const loadOnlineSummary = () => {
+            axios.get(route('online.summary')).then((response) => {
+                if (cancelled) {
+                    return;
+                }
+
+                const data = response?.data ?? {};
+                setOnlineSummary({
+                    unread_total: Number(data.unread_total ?? 0),
+                    unread_sender_ids: Array.isArray(data.unread_sender_ids)
+                        ? data.unread_sender_ids.map((value) => Number(value))
+                        : [],
+                });
+            }).catch(() => {
+                if (!cancelled) {
+                    // Mantem o contador atual para evitar flicker em falhas temporarias.
+                }
+            });
+        };
+
+        loadOnlineSummary();
+        const intervalId = window.setInterval(loadOnlineSummary, 60000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(intervalId);
+        };
+    }, [canSeeOnline]);
 
     const mainMenuItems = sortMenu(
         [
@@ -402,7 +487,7 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                             </div>
                         </div>
 
-                        <div className="hidden sm:ms-6 sm:flex sm:items-center">
+                        <div className="hidden sm:ms-6 sm:flex sm:items-center gap-3">
                             {canSwitchUnit && (
                                 <Link
                                     href={route('reports.switch-unit')}
@@ -412,15 +497,31 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                                     Trocar
                                 </Link>
                             )}
-                            <div className="relative ms-3">
+                            {canSeeOnline ? (
+                                <Link
+                                    href={route('online.index')}
+                                    className="relative inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-indigo-400 hover:text-indigo-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:text-indigo-300"
+                                >
+                                    <span>{user.name}</span>
+                                    {unreadOnlineTotal > 0 && (
+                                        <span className="absolute -right-1 -top-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow">
+                                            {unreadOnlineTotal > 99 ? '99+' : unreadOnlineTotal}
+                                        </span>
+                                    )}
+                                </Link>
+                            ) : (
+                                <div className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
+                                    {user.name}
+                                </div>
+                            )}
+                            <div className="relative">
                                 <Dropdown>
                                     <Dropdown.Trigger>
                                         <span className="inline-flex rounded-md">
                                             <button
                                                 type="button"
-                                                className="inline-flex items-center gap-2 rounded-md border border-transparent bg-white px-3 py-2 text-sm font-medium leading-4 text-gray-500 transition duration-150 ease-in-out hover:text-gray-700 focus:outline-none dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-300"
+                                                className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium leading-4 text-gray-500 shadow-sm transition duration-150 ease-in-out hover:border-indigo-400 hover:text-gray-700 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-gray-100"
                                             >
-                                                <span>{user.name}</span>
                                                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-200">
                                                     {roleLabels[effectiveRole] ?? '---'}
                                                 </span>
@@ -445,6 +546,11 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                                         <Dropdown.Link href={route('profile.edit')}>
                                             <MenuLabel icon="bi bi-person-circle" text="Perfil" />
                                         </Dropdown.Link>
+                                        {canSeeOnline && (
+                                            <Dropdown.Link href={route('online.index')}>
+                                                <MenuLabel icon="bi bi-broadcast-pin" text="On-Line" />
+                                            </Dropdown.Link>
+                                        )}
                                         {dropdownMenuItems.map((item) => (
                                             <span key={item.key}>{item.node}</span>
                                         ))}
@@ -513,9 +619,23 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
 
                     <div className="border-t border-gray-200 pb-1 pt-4 dark:border-gray-600">
                         <div className="px-4">
-                            <div className="text-base font-medium text-gray-800 dark:text-gray-200">
-                                {user.name}
-                            </div>
+                            {canSeeOnline ? (
+                                <Link
+                                    href={route('online.index')}
+                                    className="relative inline-flex max-w-full items-center rounded-full border border-gray-200 bg-white px-3 py-2 text-base font-medium text-gray-800 shadow-sm transition hover:border-indigo-400 hover:text-indigo-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:text-indigo-300"
+                                >
+                                    <span className="truncate">{user.name}</span>
+                                    {unreadOnlineTotal > 0 && (
+                                        <span className="absolute -right-1 -top-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow">
+                                            {unreadOnlineTotal > 99 ? '99+' : unreadOnlineTotal}
+                                        </span>
+                                    )}
+                                </Link>
+                            ) : (
+                                <div className="text-base font-medium text-gray-800 dark:text-gray-200">
+                                    {user.name}
+                                </div>
+                            )}
                             <div className="text-sm font-medium text-gray-500">
                                 {user.email}
                                 <span className="ms-2 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-200">
@@ -532,6 +652,14 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                                         active={route().current('reports.switch-unit')}
                                     >
                                         Trocar
+                                    </ResponsiveNavLink>
+                                )}
+                                {canSeeOnline && (
+                                    <ResponsiveNavLink
+                                        href={route('online.index')}
+                                        active={route().current('online.index')}
+                                    >
+                                        On-Line
                                     </ResponsiveNavLink>
                                 )}
                                 <ResponsiveNavLink

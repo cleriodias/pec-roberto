@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -72,5 +73,20 @@ class User extends Authenticatable
     public function primaryUnit(): BelongsTo
     {
         return $this->belongsTo(Unidade::class, 'tb2_id', 'tb2_id');
+    }
+
+    public function onlineSessions(): HasMany
+    {
+        return $this->hasMany(OnlineUser::class, 'user_id');
+    }
+
+    public function sentChatMessages(): HasMany
+    {
+        return $this->hasMany(ChatMessage::class, 'sender_id');
+    }
+
+    public function receivedChatMessages(): HasMany
+    {
+        return $this->hasMany(ChatMessage::class, 'recipient_id');
     }
 }

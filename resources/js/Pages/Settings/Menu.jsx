@@ -14,6 +14,7 @@ const SECTIONS = [
             { label: 'Chamados', icon: 'bi-camera-video', href: routeTo('support.tickets.index') },
             { label: 'Gastos', icon: 'bi-receipt', href: routeTo('expenses.index') },
             { label: 'Fechar Caixa', icon: 'bi-cash-stack', href: routeTo('cashier.close') },
+            { label: 'On-Line', icon: 'bi-broadcast-pin', href: routeTo('online.index') },
             { label: 'Lanchonete', icon: 'bi-egg-fried', href: routeTo('lanchonete.terminal') },
         ],
     },
