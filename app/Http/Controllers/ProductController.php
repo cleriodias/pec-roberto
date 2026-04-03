@@ -333,6 +333,7 @@ class ProductController extends Controller
     private function prepareProductData(array $data, ?Produto $product = null): array
     {
         $type = (int) ($data['tb1_tipo'] ?? $product?->tb1_tipo ?? 0);
+        $data['tb1_nome'] = mb_strtoupper(trim((string) ($data['tb1_nome'] ?? '')));
 
         if ($type === 1) {
             $data['tb1_codbar'] = '';
