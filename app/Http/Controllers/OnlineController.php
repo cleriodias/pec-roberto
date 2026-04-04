@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AnyDesckCode;
 use App\Models\ChatMessage;
 use App\Models\OnlineUser;
 use App\Models\User;
@@ -24,6 +25,11 @@ class OnlineController extends Controller
         4 => 'LANCHONETE',
         5 => 'FUNCIONARIO',
         6 => 'CLIENTE',
+    ];
+
+    private const ANYDESCK_ROLE_TYPE_MAP = [
+        3 => 'Caixa',
+        4 => 'Lanchonete',
     ];
 
     private const ONLINE_WINDOW_MINUTES = 2;
@@ -67,6 +73,57 @@ class OnlineController extends Controller
         $user = $this->ensureCanAccessOnline($request->user());
 
         return response()->json($this->buildUnreadSummary((int) $user->id));
+    }
+
+    public function anydesck(Request $request): JsonResponse
+    {
+        $user = $this->ensureCanAccessOnline($request->user());
+        $this->touchPresence($request, $user);
+
+        return response()->json(
+            $this->buildAnyDesckPayload($request, $user, $this->resolveAnyDesckType($request, $user))
+        );
+    }
+
+    public function updateAnydesck(Request $request): JsonResponse
+    {
+        $user = $this->ensureCanAccessOnline($request->user());
+        $this->touchPresence($request, $user);
+
+        $type = $this->resolveAnyDesckType($request, $user);
+        $unitId = $this->resolveActiveUnitId($request);
+
+        if (! $unitId) {
+            throw ValidationException::withMessages([
+                'type' => 'Nenhuma loja ativa foi encontrada para este usuario.',
+            ]);
+        }
+
+        $normalizedCode = $this->normalizeAnyDesckCode((string) $request->input('code'));
+        $request->merge([
+            'code' => $normalizedCode,
+        ]);
+
+        $data = $request->validate([
+            'code' => ['required', 'string', 'regex:/^\d \d{3} \d{3} \d{3}$/'],
+        ], [
+            'code.required' => 'Informe o codigo AnyDesk.',
+            'code.regex' => 'Use o formato 1 186 429 402.',
+        ]);
+
+        AnyDesckCode::updateOrCreate(
+            [
+                'unit_id' => $unitId,
+                'type' => $type,
+            ],
+            [
+                'code' => $data['code'],
+            ]
+        );
+
+        return response()->json(
+            $this->buildAnyDesckPayload($request, $user, $type)
+        );
     }
 
     public function storeMessage(Request $request): JsonResponse
@@ -217,11 +274,13 @@ class OnlineController extends Controller
 
         $onlineUsers = $visiblePresences
             ->map(function (OnlineUser $presence) {
+                $displayRole = (int) ($presence->user?->funcao_original ?? $presence->user?->funcao ?? $presence->active_role);
+
                 return [
                     'id' => (int) $presence->user_id,
                     'name' => (string) $presence->user->name,
-                    'role' => (int) $presence->active_role,
-                    'role_label' => self::ROLE_LABELS[(int) $presence->active_role] ?? '---',
+                    'role' => $displayRole,
+                    'role_label' => self::ROLE_LABELS[$displayRole] ?? '---',
                     'unit_id' => $presence->active_unit_id ? (int) $presence->active_unit_id : null,
                     'unit_name' => $presence->unit?->tb2_nome ?? 'Sem loja ativa',
                     'last_seen_at' => optional($presence->last_seen_at)->toIso8601String(),
@@ -253,6 +312,7 @@ class OnlineController extends Controller
             ->map(function (User $target) {
                 $targetUnitIds = ManagementScope::targetUserUnitIds($target);
                 $primaryTargetUnitId = $targetUnitIds->first();
+                $displayRole = (int) ($target->funcao_original ?? $target->funcao);
                 $unitName = $target->primaryUnit?->tb2_nome
                     ?? $target->units->firstWhere('tb2_id', $primaryTargetUnitId)?->tb2_nome
                     ?? $target->units->first()?->tb2_nome
@@ -261,8 +321,8 @@ class OnlineController extends Controller
                 return [
                     'id' => (int) $target->id,
                     'name' => (string) $target->name,
-                    'role' => (int) $target->funcao,
-                    'role_label' => self::ROLE_LABELS[(int) $target->funcao] ?? '---',
+                    'role' => $displayRole,
+                    'role_label' => self::ROLE_LABELS[$displayRole] ?? '---',
                     'unit_id' => $primaryTargetUnitId ? (int) $primaryTargetUnitId : null,
                     'unit_name' => $unitName,
                     'last_seen_at' => null,
@@ -353,6 +413,33 @@ class OnlineController extends Controller
             ->all();
     }
 
+    private function buildAnyDesckPayload(Request $request, User $user, string $type): array
+    {
+        $unitId = $this->resolveActiveUnitId($request);
+        $unitName = $this->resolveActiveUnitName($request);
+
+        if (! $unitId) {
+            throw ValidationException::withMessages([
+                'type' => 'Nenhuma loja ativa foi encontrada para este usuario.',
+            ]);
+        }
+
+        $record = AnyDesckCode::query()
+            ->where('unit_id', $unitId)
+            ->where('type', $type)
+            ->first();
+
+        return [
+            'role' => (int) $user->funcao,
+            'role_label' => self::ROLE_LABELS[(int) $user->funcao] ?? '---',
+            'unit_id' => $unitId,
+            'unit_name' => $unitName ?? ('Loja #' . $unitId),
+            'type' => $type,
+            'code' => $record?->code,
+            'code_record_id' => $record?->id,
+        ];
+    }
+
     private function resolveVisibleContact(Request $request, User $viewer, int $recipientId): ?array
     {
         $contacts = $this->buildVisibleContacts($request, $viewer);
@@ -360,6 +447,25 @@ class OnlineController extends Controller
         return collect($contacts['online'])
             ->merge($contacts['offline'])
             ->first(fn (array $user) => (int) $user['id'] === $recipientId);
+    }
+
+    private function resolveAnyDesckType(Request $request, User $user): string
+    {
+        $role = (int) $user->funcao;
+
+        if (array_key_exists($role, self::ANYDESCK_ROLE_TYPE_MAP)) {
+            return self::ANYDESCK_ROLE_TYPE_MAP[$role];
+        }
+
+        $type = trim((string) ($request->query('type', $request->input('type')) ?? ''));
+
+        if (! in_array($type, ['Caixa', 'Lanchonete'], true)) {
+            throw ValidationException::withMessages([
+                'type' => 'Selecione se voce esta na maquina do Caixa ou da Lanchonete.',
+            ]);
+        }
+
+        return $type;
     }
 
     private function touchPresence(Request $request, User $user): OnlineUser
@@ -490,6 +596,17 @@ class OnlineController extends Controller
         return is_array($unit)
             ? ($unit['name'] ?? $unit['tb2_nome'] ?? null)
             : (is_object($unit) ? ($unit->name ?? $unit->tb2_nome ?? null) : null);
+    }
+
+    private function normalizeAnyDesckCode(string $value): string
+    {
+        $digits = preg_replace('/\D/', '', $value) ?? '';
+
+        if (strlen($digits) !== 10) {
+            return trim($value);
+        }
+
+        return preg_replace('/(\d)(\d{3})(\d{3})(\d{3})/', '$1 $2 $3 $4', $digits) ?? trim($value);
     }
 
     private function ensureCanAccessOnline(?User $user): User

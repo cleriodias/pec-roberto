@@ -49,6 +49,9 @@ const differenceTone = (value) => {
     return (value ?? 0) > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400';
 };
 
+const systemCashBase = (record) =>
+    (Number(record?.totals?.dinheiro) || 0) + (Number(record?.totals?.maquina) || 0);
+
 export default function CashDiscrepancies({
     records = [],
     dateValue = '',
@@ -110,7 +113,7 @@ export default function CashDiscrepancies({
                         Fechamentos com discrepancia
                     </h2>
                     <p className="text-sm text-gray-500 dark:text-gray-300">
-                        Fechamentos de caixa com diferencas entre sistema e fechamento.
+                        Fechamentos de caixa com diferencas entre sistema e fechamento. A discrepancia considera somente dinheiro e cartao.
                     </p>
                 </div>
             }
@@ -198,6 +201,9 @@ export default function CashDiscrepancies({
                                 </div>
                             </div>
                         </div>
+                        <p className="mt-3 text-sm text-gray-500 dark:text-gray-300">
+                            O valor do sistema usado na discrepancia soma apenas dinheiro e cartao. Vale, refeicao e fatura permanecem exibidos apenas para conferencia das vendas.
+                        </p>
 
                         {records.length === 0 ? (
                             <p className="mt-4 rounded-xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-300">
@@ -325,6 +331,9 @@ export default function CashDiscrepancies({
 
                             <div>
                                 <p className="text-xs font-semibold uppercase text-gray-500">Valores do sistema</p>
+                                <p className="mt-1 text-sm text-gray-500">
+                                    A discrepancia abaixo considera somente dinheiro e cartao.
+                                </p>
                                 <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                                     {systemDetailColumns.map((column) => (
                                         <div
@@ -339,6 +348,48 @@ export default function CashDiscrepancies({
                                             </p>
                                         </div>
                                     ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <p className="text-xs font-semibold uppercase text-gray-500">Base da discrepancia</p>
+                                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                                        <p className="text-xs font-semibold uppercase text-gray-500">
+                                            Sistema dinheiro
+                                        </p>
+                                        <p className="text-lg font-bold text-gray-900">
+                                            {formatCurrency(detailModal.record.totals?.dinheiro ?? 0)}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                                        <p className="text-xs font-semibold uppercase text-gray-500">
+                                            Sistema cartao
+                                        </p>
+                                        <p className="text-lg font-bold text-gray-900">
+                                            {formatCurrency(detailModal.record.totals?.maquina ?? 0)}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+                                        <p className="text-xs font-semibold uppercase text-emerald-700">
+                                            Sistema caixa
+                                        </p>
+                                        <p className="text-lg font-bold text-emerald-900">
+                                            {formatCurrency(systemCashBase(detailModal.record))}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
+                                        <p className="text-xs font-semibold uppercase text-amber-700">
+                                            Diferenca
+                                        </p>
+                                        <p
+                                            className={`text-lg font-bold ${differenceTone(
+                                                detailModal.record.discrepancy,
+                                            )}`}
+                                        >
+                                            {formatCurrency(detailModal.record.discrepancy)}
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
 

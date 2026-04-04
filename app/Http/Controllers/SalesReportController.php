@@ -1197,11 +1197,10 @@ class SalesReportController extends Controller
         $this->ensureManager($request);
         $user = $request->user();
         $availableUnits = $this->availableUnits($user);
-        $fallbackUnitId = $this->resolveUnitId($request);
         $requestedUnitId = $request->query('unit_id');
-        $filterUnitId = $requestedUnitId !== null && $requestedUnitId !== ''
+        $filterUnitId = $requestedUnitId !== null && $requestedUnitId !== '' && $requestedUnitId !== 'all'
             ? (int) $requestedUnitId
-            : ($fallbackUnitId > 0 ? $fallbackUnitId : null);
+            : null;
 
         if ($filterUnitId && !$availableUnits->contains(fn ($unit) => $unit['id'] === $filterUnitId)) {
             $filterUnitId = null;
@@ -1508,6 +1507,7 @@ class SalesReportController extends Controller
             'selectedUnitId' => $filterUnitId,
             'selectedUnit' => $selectedUnit,
             'discardDetails' => $discardDetails,
+            'meta' => self::TYPE_META,
         ]);
     }
 

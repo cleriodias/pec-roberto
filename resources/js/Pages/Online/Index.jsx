@@ -1,5 +1,6 @@
 import AlertMessage from '@/Components/Alert/AlertMessage';
 import Modal from '@/Components/Modal';
+import PrimaryButton from '@/Components/Button/PrimaryButton';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import {
     formatRoleBadgeLabel,
@@ -90,6 +91,39 @@ const resolveDraftKey = (userId) => String(userId ?? '');
 const COMPACT_BADGE_CLASSNAME =
     'inline-flex shrink-0 items-center justify-center rounded-full border font-semibold uppercase tracking-wide whitespace-nowrap';
 
+const ANYDESCK_TYPE_OPTIONS = [
+    { label: 'Maquina do Caixa', value: 'Caixa' },
+    { label: 'Maquina da Lanchonete', value: 'Lanchonete' },
+];
+
+const ANYDESCK_ROLE_TYPE_MAP = {
+    3: 'Caixa',
+    4: 'Lanchonete',
+};
+
+const applyAnyDeskCodeMask = (value) => {
+    const digits = String(value ?? '').replace(/\D/g, '').slice(0, 10);
+    const groups = [];
+
+    if (digits.length > 0) {
+        groups.push(digits.slice(0, 1));
+    }
+
+    if (digits.length > 1) {
+        groups.push(digits.slice(1, 4));
+    }
+
+    if (digits.length > 4) {
+        groups.push(digits.slice(4, 7));
+    }
+
+    if (digits.length > 7) {
+        groups.push(digits.slice(7, 10));
+    }
+
+    return groups.join(' ');
+};
+
 export default function OnlineIndex({
     onlineUsers: initialOnlineUsers = [],
     offlineUsers: initialOfflineUsers = [],
@@ -102,6 +136,7 @@ export default function OnlineIndex({
     const [offlineUsers, setOfflineUsers] = useState(initialOfflineUsers);
     const [selectedUserId, setSelectedUserId] = useState(initialSelectedUserId);
     const [messages, setMessages] = useState(initialMessages);
+    const [currentViewer, setCurrentViewer] = useState(currentUser);
     const [draftMessages, setDraftMessages] = useState({});
     const [loadingSnapshot, setLoadingSnapshot] = useState(false);
     const [refreshingSnapshot, setRefreshingSnapshot] = useState(false);
@@ -111,6 +146,14 @@ export default function OnlineIndex({
     const [editDraftMessage, setEditDraftMessage] = useState('');
     const [savingEditMessage, setSavingEditMessage] = useState(false);
     const [editErrorMessage, setEditErrorMessage] = useState('');
+    const [showAnyDeskModal, setShowAnyDeskModal] = useState(false);
+    const [selectedAnyDeskType, setSelectedAnyDeskType] = useState('');
+    const [anyDeskData, setAnyDeskData] = useState(null);
+    const [anyDeskCodeDraft, setAnyDeskCodeDraft] = useState('');
+    const [loadingAnyDesk, setLoadingAnyDesk] = useState(false);
+    const [savingAnyDesk, setSavingAnyDesk] = useState(false);
+    const [sendingAnyDesk, setSendingAnyDesk] = useState(false);
+    const [anyDeskErrorMessage, setAnyDeskErrorMessage] = useState('');
     const textareaRef = useRef(null);
     const editTextareaRef = useRef(null);
     const messagesEndRef = useRef(null);
@@ -140,6 +183,13 @@ export default function OnlineIndex({
         () => draftMessages[resolveDraftKey(selectedUserId)] ?? '',
         [draftMessages, selectedUserId],
     );
+
+    const fixedAnyDeskType = useMemo(
+        () => ANYDESCK_ROLE_TYPE_MAP[Number(currentViewer?.role ?? -1)] ?? '',
+        [currentViewer],
+    );
+
+    const anyDeskNeedsTypeSelection = !fixedAnyDeskType;
 
     useEffect(() => {
         selectedUserIdRef.current = selectedUserId;
@@ -203,6 +253,9 @@ export default function OnlineIndex({
         setOfflineUsers(nextOfflineUsers);
         setSelectedUserId(nextSelectedUserId);
         setMessages(Array.isArray(payload?.messages) ? payload.messages : []);
+        if (payload?.currentUser) {
+            setCurrentViewer(payload.currentUser);
+        }
     };
 
     const loadSnapshot = async (requestedUserId = null, silent = false) => {
@@ -281,6 +334,141 @@ export default function OnlineIndex({
     const handleSelectUser = (userId) => {
         setSelectedUserId(userId);
         loadSnapshot(userId);
+    };
+
+    const closeAnyDeskModal = () => {
+        if (savingAnyDesk || sendingAnyDesk) {
+            return;
+        }
+
+        setShowAnyDeskModal(false);
+        setSelectedAnyDeskType(fixedAnyDeskType || '');
+        setAnyDeskData(null);
+        setAnyDeskCodeDraft('');
+        setAnyDeskErrorMessage('');
+    };
+
+    const loadAnyDesk = async (type) => {
+        if (!type) {
+            setAnyDeskData(null);
+            setAnyDeskCodeDraft('');
+            return;
+        }
+
+        setLoadingAnyDesk(true);
+
+        try {
+            const response = await axios.get(route('online.anydesck.show'), {
+                params: { type },
+            });
+            const payload = response.data ?? null;
+
+            setAnyDeskData(payload);
+            setAnyDeskCodeDraft(applyAnyDeskCodeMask(payload?.code ?? ''));
+            setAnyDeskErrorMessage('');
+        } catch (error) {
+            setAnyDeskData(null);
+            setAnyDeskCodeDraft('');
+            setAnyDeskErrorMessage(resolveErrorMessage(error, 'Nao foi possivel carregar o codigo AnyDesk.'));
+        } finally {
+            setLoadingAnyDesk(false);
+        }
+    };
+
+    const openAnyDeskModal = async () => {
+        const nextType = fixedAnyDeskType || '';
+
+        setShowAnyDeskModal(true);
+        setSelectedAnyDeskType(nextType);
+        setAnyDeskData(null);
+        setAnyDeskCodeDraft('');
+        setAnyDeskErrorMessage('');
+
+        if (nextType) {
+            await loadAnyDesk(nextType);
+        }
+    };
+
+    const handleSelectAnyDeskType = async (type) => {
+        setSelectedAnyDeskType(type);
+        setAnyDeskData(null);
+        setAnyDeskCodeDraft('');
+        setAnyDeskErrorMessage('');
+        await loadAnyDesk(type);
+    };
+
+    const persistAnyDesk = async (type, code) => {
+        const response = await axios.put(route('online.anydesck.update'), {
+            type,
+            code,
+        });
+        const payload = response.data ?? null;
+
+        setAnyDeskData(payload);
+        setAnyDeskCodeDraft(applyAnyDeskCodeMask(payload?.code ?? code));
+
+        return payload;
+    };
+
+    const handleSaveAnyDesk = async (event) => {
+        event.preventDefault();
+
+        if (!selectedAnyDeskType) {
+            setAnyDeskErrorMessage('Selecione se voce esta na maquina do Caixa ou da Lanchonete.');
+            return;
+        }
+
+        if (!anyDeskCodeDraft.trim()) {
+            setAnyDeskErrorMessage('Informe o codigo AnyDesk antes de salvar.');
+            return;
+        }
+
+        setSavingAnyDesk(true);
+
+        try {
+            await persistAnyDesk(selectedAnyDeskType, anyDeskCodeDraft);
+            setAnyDeskErrorMessage('');
+        } catch (error) {
+            setAnyDeskErrorMessage(resolveErrorMessage(error, 'Nao foi possivel atualizar o codigo AnyDesk.'));
+        } finally {
+            setSavingAnyDesk(false);
+        }
+    };
+
+    const handleSendAnyDesk = async () => {
+        if (!selectedUser) {
+            setAnyDeskErrorMessage('Selecione um usuario no bate-papo antes de enviar o AnyDesk.');
+            return;
+        }
+
+        if (!selectedAnyDeskType) {
+            setAnyDeskErrorMessage('Selecione se voce esta na maquina do Caixa ou da Lanchonete.');
+            return;
+        }
+
+        if (!anyDeskCodeDraft.trim()) {
+            setAnyDeskErrorMessage('Informe o codigo AnyDesk antes de enviar.');
+            return;
+        }
+
+        setSendingAnyDesk(true);
+
+        try {
+            const payload = await persistAnyDesk(selectedAnyDeskType, anyDeskCodeDraft);
+            const message = `Codigo AnyDesk (${payload?.type ?? selectedAnyDeskType} - ${payload?.unit_name ?? currentViewer?.unit_name ?? 'Sem loja'}): ${payload?.code ?? anyDeskCodeDraft}`;
+            const response = await axios.post(route('online.messages.store'), {
+                recipient_user_id: selectedUser.id,
+                message,
+            });
+
+            applySnapshot(response.data ?? {}, selectedUser.id);
+            setAnyDeskErrorMessage('');
+            closeAnyDeskModal();
+        } catch (error) {
+            setAnyDeskErrorMessage(resolveErrorMessage(error, 'Nao foi possivel enviar o codigo AnyDesk pelo bate-papo.'));
+        } finally {
+            setSendingAnyDesk(false);
+        }
     };
 
     const submitMessage = async () => {
@@ -637,13 +825,23 @@ export default function OnlineIndex({
                                             <p className="text-xs text-gray-500 dark:text-gray-400">
                                                 `Enter` quebra linha. Use o botao para enviar. Clique na sua mensagem para editar.
                                             </p>
-                                            <button
-                                                type="submit"
-                                                disabled={!selectedUser || sendingMessage}
-                                                className="rounded-2xl bg-indigo-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                            >
-                                                {sendingMessage ? 'Enviando...' : 'Enviar'}
-                                            </button>
+                                            <div className="flex items-center gap-2 self-end">
+                                                <PrimaryButton
+                                                    type="button"
+                                                    onClick={openAnyDeskModal}
+                                                    disabled={loadingAnyDesk || savingAnyDesk || sendingAnyDesk}
+                                                    className="rounded-2xl px-5 py-2 normal-case tracking-normal"
+                                                >
+                                                    AnyDesk
+                                                </PrimaryButton>
+                                                <PrimaryButton
+                                                    type="submit"
+                                                    disabled={!selectedUser || sendingMessage}
+                                                    className="rounded-2xl px-5 py-2 normal-case tracking-normal"
+                                                >
+                                                    {sendingMessage ? 'Enviando...' : 'Enviar'}
+                                                </PrimaryButton>
+                                            </div>
                                         </div>
                                     </form>
                                 </div>
@@ -697,6 +895,120 @@ export default function OnlineIndex({
                         >
                             {savingEditMessage ? 'Salvando...' : 'Salvar'}
                         </button>
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal show={showAnyDeskModal} onClose={closeAnyDeskModal} maxWidth="lg" tone="light">
+                <form onSubmit={handleSaveAnyDesk} className="space-y-4 p-6">
+                    <div>
+                        <h3 className="text-lg font-semibold text-gray-900">AnyDesk</h3>
+                        <p className="mt-1 text-sm text-gray-500">
+                            Consulte, atualize e envie o codigo da maquina da sua loja ativa.
+                        </p>
+                    </div>
+
+                    {anyDeskNeedsTypeSelection && (
+                        <div className="space-y-2">
+                            <p className="text-sm font-semibold text-gray-700">Onde voce esta?</p>
+                            <div className="flex flex-wrap gap-2">
+                                {ANYDESCK_TYPE_OPTIONS.map((option) => {
+                                    const isActive = selectedAnyDeskType === option.value;
+
+                                    return (
+                                        <button
+                                            key={option.value}
+                                            type="button"
+                                            onClick={() => handleSelectAnyDeskType(option.value)}
+                                            className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                                                isActive
+                                                    ? 'border-blue-500 bg-blue-500 text-white'
+                                                    : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:text-blue-600'
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="grid gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700 sm:grid-cols-3">
+                        <div>
+                            <p className="text-xs font-semibold uppercase text-gray-500">Perfil</p>
+                            <p className="mt-1 font-semibold">{anyDeskData?.role_label ?? currentViewer?.role_label ?? '---'}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs font-semibold uppercase text-gray-500">Loja</p>
+                            <p className="mt-1 font-semibold">{anyDeskData?.unit_name ?? currentViewer?.unit_name ?? '---'}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs font-semibold uppercase text-gray-500">Tipo</p>
+                            <p className="mt-1 font-semibold">{selectedAnyDeskType || 'Selecione acima'}</p>
+                        </div>
+                    </div>
+
+                    {anyDeskErrorMessage && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                            {anyDeskErrorMessage}
+                        </div>
+                    )}
+
+                    <div>
+                        <label htmlFor="online-anydesk-code" className="text-sm font-semibold text-gray-700">
+                            Codigo AnyDesk
+                        </label>
+                        <input
+                            id="online-anydesk-code"
+                            type="text"
+                            value={anyDeskCodeDraft}
+                            onChange={(event) => setAnyDeskCodeDraft(applyAnyDeskCodeMask(event.target.value))}
+                            placeholder="1 186 429 402"
+                            inputMode="numeric"
+                            disabled={loadingAnyDesk || !selectedAnyDeskType}
+                            className="mt-2 w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm text-gray-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-gray-100"
+                        />
+                        <p className="mt-2 text-xs text-gray-500">
+                            {loadingAnyDesk
+                                ? 'Carregando codigo da loja...'
+                                : anyDeskData?.code
+                                  ? 'Codigo carregado. Voce pode atualizar se necessario.'
+                                  : 'Nenhum codigo cadastrado para esta loja/tipo. Informe e salve para criar.'}
+                        </p>
+                    </div>
+
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs text-gray-500">
+                            {selectedUser
+                                ? `O codigo sera enviado para ${selectedUser.name}.`
+                                : 'Selecione um usuario no bate-papo para habilitar o envio.'}
+                        </p>
+                        <div className="flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={closeAnyDeskModal}
+                                disabled={savingAnyDesk || sendingAnyDesk}
+                                className="rounded-full border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-blue-400 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                Fechar
+                            </button>
+                            <PrimaryButton
+                                type="submit"
+                                disabled={!selectedAnyDeskType || loadingAnyDesk || savingAnyDesk || sendingAnyDesk}
+                                className="rounded-full px-4 py-2 text-sm normal-case tracking-normal"
+                            >
+                                {savingAnyDesk ? 'Salvando...' : 'Atualizar dados'}
+                            </PrimaryButton>
+                            <PrimaryButton
+                                type="button"
+                                onClick={handleSendAnyDesk}
+                                disabled={!selectedUser || !selectedAnyDeskType || loadingAnyDesk || savingAnyDesk || sendingAnyDesk}
+                                className="rounded-full px-4 py-2 text-sm normal-case tracking-normal"
+                            >
+                                {sendingAnyDesk ? 'Enviando...' : 'Enviar no bate-papo'}
+                            </PrimaryButton>
+                        </div>
                     </div>
                 </form>
             </Modal>

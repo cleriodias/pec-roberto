@@ -24,6 +24,7 @@ const SECTIONS = [
             { label: 'Usuarios', icon: 'bi-people-fill', href: routeTo('users.index') },
             { label: 'Unidades', icon: 'bi-building', href: routeTo('units.index') },
             { label: 'Fornecedores', icon: 'bi-truck', href: routeTo('settings.suppliers') },
+            { label: 'AnyDesck', icon: 'bi-pc-display', href: routeTo('settings.anydesck') },
         ],
     },
     {
@@ -80,7 +81,7 @@ export default function Menu({ auth }) {
 
             if (
                 !isMaster
-                && ['Avisos', 'Fornecedores', 'Disputa de Vendas'].includes(item.label)
+                && ['Avisos', 'Fornecedores', 'AnyDesck', 'Disputa de Vendas'].includes(item.label)
             ) {
                 return false;
             }

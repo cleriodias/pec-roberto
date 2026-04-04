@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AnyDesckController;
 use App\Http\Controllers\BoletoController;
 use App\Http\Controllers\CashierClosureController;
 use App\Http\Controllers\DatabaseToolsController;
@@ -87,6 +88,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/on-line', [OnlineController::class, 'index'])->name('online.index');
     Route::get('/on-line/snapshot', [OnlineController::class, 'snapshot'])->name('online.snapshot');
     Route::get('/on-line/summary', [OnlineController::class, 'summary'])->name('online.summary');
+    Route::get('/on-line/anydesck', [OnlineController::class, 'anydesck'])->name('online.anydesck.show');
+    Route::put('/on-line/anydesck', [OnlineController::class, 'updateAnydesck'])->name('online.anydesck.update');
     Route::post('/on-line/heartbeat', [OnlineController::class, 'heartbeat'])->name('online.heartbeat');
     Route::post('/on-line/messages', [OnlineController::class, 'storeMessage'])->name('online.messages.store');
     Route::put('/on-line/messages/{message}', [OnlineController::class, 'updateMessage'])->name('online.messages.update');
@@ -138,6 +141,12 @@ Route::middleware('auth')->group(function () {
         ->name('settings.suppliers');
     Route::post('/settings/suppliers', [SupplierController::class, 'store'])
         ->name('settings.suppliers.store');
+    Route::get('/settings/anydesck', [AnyDesckController::class, 'index'])
+        ->name('settings.anydesck');
+    Route::post('/settings/anydesck', [AnyDesckController::class, 'store'])
+        ->name('settings.anydesck.store');
+    Route::put('/settings/anydesck/{anydesck}', [AnyDesckController::class, 'update'])
+        ->name('settings.anydesck.update');
     Route::get('/settings/sales-disputes', [SalesDisputeController::class, 'index'])
         ->name('settings.sales-disputes');
     Route::post('/settings/sales-disputes', [SalesDisputeController::class, 'store'])

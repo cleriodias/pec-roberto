@@ -66,6 +66,11 @@ export default function Config({ auth }) {
                 href: route('settings.suppliers'),
             },
             {
+                label: 'AnyDesck',
+                icon: 'bi-pc-display',
+                href: route('settings.anydesck'),
+            },
+            {
                 label: 'Disputa de Vendas',
                 icon: 'bi-hammer',
                 href: route('settings.sales-disputes'),

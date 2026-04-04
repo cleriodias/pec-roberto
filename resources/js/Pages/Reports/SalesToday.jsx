@@ -12,6 +12,14 @@ const PAYMENT_LABELS = {
     faturar: 'Faturar',
 };
 
+const CARD_TEXT_COLORS = {
+    dinheiro: '#ffffff',
+    maquina: '#ffffff',
+    vale: '#ffffff',
+    refeicao: '#111827',
+    faturar: '#ffffff',
+};
+
 const formatCurrency = (value) =>
     Number(value ?? 0).toLocaleString('pt-BR', {
         style: 'currency',
@@ -408,12 +416,17 @@ export default function SalesToday({
                                 {chartData.map((item) => (
                                     <div
                                         key={item.type}
-                                        className="rounded-2xl border border-gray-100 bg-gray-50 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/40"
+                                        className="rounded-2xl border p-4 shadow-sm"
+                                        style={{
+                                            backgroundColor: item.color,
+                                            borderColor: item.color,
+                                            color: CARD_TEXT_COLORS[item.type] ?? '#ffffff',
+                                        }}
                                     >
-                                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                                        <p className="text-sm font-semibold">
                                             {item.label}
                                         </p>
-                                        <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                                        <p className="text-2xl font-bold">
                                             {formatCurrency(item.total)}
                                         </p>
                                     </div>

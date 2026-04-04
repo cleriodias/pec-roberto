@@ -39,6 +39,42 @@ const differenceTone = (value) => {
     return (value ?? 0) > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400';
 };
 
+const hexToRgb = (value) => {
+    if (typeof value !== 'string') {
+        return null;
+    }
+
+    const normalized = value.replace('#', '').trim();
+
+    if (normalized.length !== 6) {
+        return null;
+    }
+
+    const intValue = Number.parseInt(normalized, 16);
+
+    if (Number.isNaN(intValue)) {
+        return null;
+    }
+
+    return {
+        r: (intValue >> 16) & 255,
+        g: (intValue >> 8) & 255,
+        b: intValue & 255,
+    };
+};
+
+const getContrastingTextColor = (backgroundColor) => {
+    const rgb = hexToRgb(backgroundColor);
+
+    if (!rgb) {
+        return '#ffffff';
+    }
+
+    const brightness = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+
+    return brightness > 160 ? '#111827' : '#ffffff';
+};
+
 export default function CashClosure({
     records = [],
     dateValue = '',
@@ -47,6 +83,7 @@ export default function CashClosure({
     selectedUnitId = null,
     selectedUnit = { name: 'Todas as unidades' },
     discardDetails = [],
+    meta = {},
 }) {
     const normalizedSelectedUnit = selectedUnitId ?? null;
     const [dateInput, setDateInput] = useState(dateInputValue ?? '');
@@ -93,8 +130,18 @@ export default function CashClosure({
         );
     }, [records]);
 
-    const grandTotal = useMemo(
+    const salesGrandTotal = useMemo(
         () => records.reduce((sum, record) => sum + (record.grand_total ?? 0), 0),
+        [records],
+    );
+
+    const conferenceGrandTotal = useMemo(
+        () =>
+            records.reduce(
+                (sum, record) =>
+                    sum + (record.totals?.dinheiro ?? 0) + (record.totals?.maquina ?? 0),
+                0,
+            ),
         [records],
     );
 
@@ -167,15 +214,32 @@ export default function CashClosure({
         };
     }, [discardModal.items]);
 
+    const renderSystemAlignedCell = (label, value) => (
+        <div className="space-y-1 text-right">
+            <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+                <p className="font-semibold text-gray-900 dark:text-white">
+                    {formatCurrency(value)}
+                </p>
+            </div>
+            <div>
+                <p className="text-xs text-transparent select-none">Fechamento</p>
+                <p className="text-sm text-transparent select-none">{formatCurrency(0)}</p>
+            </div>
+            <div>
+                <p className="text-xs text-transparent select-none">Diferenca</p>
+                <p className="text-sm font-semibold text-transparent select-none">
+                    {formatCurrency(0)}
+                </p>
+            </div>
+        </div>
+    );
+
     const renderPaymentCell = (record, column) => {
         const systemValue = record.totals?.[column.key] ?? 0;
 
         if (!['dinheiro', 'maquina'].includes(column.key)) {
-            return (
-                <p className="text-right font-semibold text-gray-900 dark:text-white">
-                    {formatCurrency(systemValue)}
-                </p>
-            );
+            return renderSystemAlignedCell('Sistema', systemValue);
         }
 
         const closure = record.closure ?? null;
@@ -225,7 +289,7 @@ export default function CashClosure({
         return (
             <div className="space-y-1 text-right">
                 <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Sistema</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Sistema caixa</p>
                     <p className="font-semibold text-gray-900 dark:text-white">
                         {formatCurrency(systemTotal)}
                     </p>
@@ -293,21 +357,43 @@ export default function CashClosure({
                 Resumo geral
             </h3>
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
-                {paymentColumns.map((column) => (
-                    <div
-                        key={column.key}
-                        className="rounded-xl border border-gray-100 bg-gray-50 p-4 text-center dark:border-gray-700 dark:bg-gray-900/40"
-                    >
-                        <p className="text-sm text-gray-600 dark:text-gray-300">{column.label}</p>
-                        <p className="text-xl font-bold text-gray-900 dark:text-white">
-                            {formatCurrency(totals[column.key] ?? 0)}
-                        </p>
-                    </div>
-                ))}
+                {paymentColumns.map((column) => {
+                    const columnMeta = meta?.[column.key] ?? {};
+                    const backgroundColor = columnMeta.color ?? '#e5e7eb';
+                    const textColor = getContrastingTextColor(backgroundColor);
+
+                    return (
+                        <div
+                            key={column.key}
+                            className="rounded-xl border p-4 text-center shadow-sm"
+                            style={{
+                                backgroundColor,
+                                borderColor: backgroundColor,
+                                color: textColor,
+                            }}
+                        >
+                            <p className="text-sm font-semibold">{column.label}</p>
+                            <p className="text-xl font-bold">
+                                {formatCurrency(totals[column.key] ?? 0)}
+                            </p>
+                        </div>
+                    );
+                })}
                 <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-center dark:border-indigo-500/40 dark:bg-indigo-900/30">
-                    <p className="text-sm text-indigo-800 dark:text-indigo-200">Total geral</p>
+                    <p className="text-sm text-indigo-800 dark:text-indigo-200">Total de vendas</p>
                     <p className="text-2xl font-bold text-indigo-900 dark:text-white">
-                        {formatCurrency(grandTotal)}
+                        {formatCurrency(salesGrandTotal)}
+                    </p>
+                </div>
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-center dark:border-emerald-500/40 dark:bg-emerald-900/30">
+                    <p className="text-sm text-emerald-800 dark:text-emerald-200">
+                        Base da conferencia
+                    </p>
+                    <p className="text-2xl font-bold text-emerald-900 dark:text-white">
+                        {formatCurrency(conferenceGrandTotal)}
+                    </p>
+                    <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-200">
+                        Somente dinheiro + cartao
                     </p>
                 </div>
             </div>
@@ -319,6 +405,9 @@ export default function CashClosure({
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 Totais por caixa ({selectedUnit?.name ?? 'Todas as unidades'}) - Data do fechamento: {dateValue || '---'}
             </h3>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-300">
+                A diferenca do caixa considera somente dinheiro e cartao. Vale, refeicao e faturar aparecem apenas como informativos de venda.
+            </p>
             <div className="mt-4 overflow-x-auto">
                 {records.length === 0 ? (
                     <p className="rounded-xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-300">
@@ -339,8 +428,8 @@ export default function CashClosure({
                                         {column.label}
                                     </th>
                                 ))}
-                                <th className="px-3 py-2 text-right font-medium">Total</th>
-                                <th className="px-3 py-2 text-right font-medium">Conferência</th>
+                                <th className="px-3 py-2 text-right font-medium">Total vendas</th>
+                                <th className="px-3 py-2 text-right font-medium">Conferencia caixa</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -403,17 +492,13 @@ export default function CashClosure({
                                         {paymentColumns.map((column) => (
                                             <td
                                                 key={`${record.cashier_id}-${column.key}`}
-                                                className={`px-3 py-2 text-right text-gray-700 dark:text-gray-200 ${
-                                                    ['dinheiro', 'maquina'].includes(column.key)
-                                                        ? 'align-top'
-                                                        : ''
-                                                }`}
+                                                className="px-3 py-2 text-right text-gray-700 dark:text-gray-200 align-top"
                                             >
                                                 {renderPaymentCell(record, column)}
                                             </td>
                                         ))}
-                                        <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
-                                            {formatCurrency(record.grand_total ?? 0)}
+                                        <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-200 align-top">
+                                            {renderSystemAlignedCell('Sistema', record.grand_total ?? 0)}
                                         </td>
                                         <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-200 align-top">
                                             {renderConferenceCell(record)}
@@ -443,7 +528,7 @@ export default function CashClosure({
                     Fechamento de CAIXA
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-300">
-                    Totais de venda por atendente organizados por forma de pagamento.
+                    Totais de venda por atendente organizados por forma de pagamento. A conferencia do caixa usa somente dinheiro e cartao.
                 </p>
             </div>
             <div className="flex items-center gap-2">
