@@ -105,7 +105,7 @@ jobs:
           az webapp config set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEBAPP_NAME" \
-            --startup-file "cp /home/site/wwwroot/nginx.conf /etc/nginx/sites-available/default && cp /home/site/wwwroot/nginx.conf /etc/nginx/sites-enabled/default && rm -f /home/site/wwwroot/public/hot && service nginx reload"
+            --startup-file "bash /home/site/wwwroot/start.sh"
 
           az webapp config appsettings set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
