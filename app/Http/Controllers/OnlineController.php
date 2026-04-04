@@ -6,6 +6,7 @@ use App\Models\ChatMessage;
 use App\Models\OnlineUser;
 use App\Models\User;
 use App\Support\ManagementScope;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -105,13 +106,48 @@ class OnlineController extends Controller
         return response()->json($this->buildSnapshotPayload($request, $recipientId));
     }
 
+    public function updateMessage(Request $request, ChatMessage $message): JsonResponse
+    {
+        $user = $this->ensureCanAccessOnline($request->user());
+        $this->touchPresence($request, $user);
+
+        if ((int) $message->sender_id !== (int) $user->id) {
+            abort(403);
+        }
+
+        $data = $request->validate([
+            'message' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $nextMessage = trim((string) $data['message']);
+
+        if ($nextMessage === '') {
+            throw ValidationException::withMessages([
+                'message' => 'Digite uma mensagem antes de salvar.',
+            ]);
+        }
+
+        $message->update([
+            'message' => $nextMessage,
+        ]);
+
+        return response()->json(
+            $this->buildSnapshotPayload($request, (int) $message->recipient_id)
+        );
+    }
+
     private function buildSnapshotPayload(Request $request, ?int $selectedUserId = null): array
     {
         $user = $this->ensureCanAccessOnline($request->user());
         $this->purgeExpiredPresence();
 
-        $onlineUsers = $this->buildVisibleUsers($request, $user);
-        $visibleUserIds = collect($onlineUsers)->pluck('id');
+        $visibleContacts = $this->buildVisibleContacts($request, $user);
+        $onlineUsers = $visibleContacts['online'];
+        $offlineUsers = $visibleContacts['offline'];
+        $visibleUserIds = collect($onlineUsers)->pluck('id')
+            ->merge(collect($offlineUsers)->pluck('id'))
+            ->unique()
+            ->values();
 
         if (! $visibleUserIds->contains($selectedUserId)) {
             $selectedUserId = $visibleUserIds->first();
@@ -123,6 +159,7 @@ class OnlineController extends Controller
 
         return [
             'onlineUsers' => $onlineUsers,
+            'offlineUsers' => $offlineUsers,
             'selectedUserId' => $selectedUserId ? (int) $selectedUserId : null,
             'messages' => $selectedUserId
                 ? $this->buildConversation((int) $user->id, (int) $selectedUserId)
@@ -140,7 +177,7 @@ class OnlineController extends Controller
         ];
     }
 
-    private function buildVisibleUsers(Request $request, User $viewer): array
+    private function buildVisibleContacts(Request $request, User $viewer): array
     {
         $viewerRole = (int) $viewer->funcao;
         $viewerUnitId = $this->resolveActiveUnitId($request);
@@ -176,7 +213,70 @@ class OnlineController extends Controller
             ->map(fn (Collection $group) => $group->sortByDesc('last_seen_at')->first())
             ->values();
 
-        $visibleUserIds = $visiblePresences->pluck('user_id')->map(fn ($value) => (int) $value)->all();
+        $onlineUserIds = $visiblePresences->pluck('user_id')->map(fn ($value) => (int) $value)->all();
+
+        $onlineUsers = $visiblePresences
+            ->map(function (OnlineUser $presence) {
+                return [
+                    'id' => (int) $presence->user_id,
+                    'name' => (string) $presence->user->name,
+                    'role' => (int) $presence->active_role,
+                    'role_label' => self::ROLE_LABELS[(int) $presence->active_role] ?? '---',
+                    'unit_id' => $presence->active_unit_id ? (int) $presence->active_unit_id : null,
+                    'unit_name' => $presence->unit?->tb2_nome ?? 'Sem loja ativa',
+                    'last_seen_at' => optional($presence->last_seen_at)->toIso8601String(),
+                    'is_online' => true,
+                ];
+            })
+            ->sortBy(fn (array $item) => mb_strtolower($item['name'], 'UTF-8'))
+            ->values();
+
+        $offlineUsers = User::query()
+            ->with(['primaryUnit:tb2_id,tb2_nome', 'units:tb2_id,tb2_nome'])
+            ->whereNotIn('id', array_merge($onlineUserIds, [(int) $viewer->id]))
+            ->whereIn('funcao', [0, 1, 2, 3, 4])
+            ->get()
+            ->filter(function (User $target) use ($viewerRole, $viewerUnitId, $managedUnitIds) {
+                $targetRole = (int) $target->funcao;
+                $targetUnitIds = ManagementScope::targetUserUnitIds($target);
+                $primaryTargetUnitId = $targetUnitIds->first();
+
+                return $this->canSeeOfflineUser(
+                    $viewerRole,
+                    $viewerUnitId,
+                    $managedUnitIds,
+                    $targetRole,
+                    $targetUnitIds,
+                    $primaryTargetUnitId ? (int) $primaryTargetUnitId : null
+                );
+            })
+            ->map(function (User $target) {
+                $targetUnitIds = ManagementScope::targetUserUnitIds($target);
+                $primaryTargetUnitId = $targetUnitIds->first();
+                $unitName = $target->primaryUnit?->tb2_nome
+                    ?? $target->units->firstWhere('tb2_id', $primaryTargetUnitId)?->tb2_nome
+                    ?? $target->units->first()?->tb2_nome
+                    ?? 'Sem loja ativa';
+
+                return [
+                    'id' => (int) $target->id,
+                    'name' => (string) $target->name,
+                    'role' => (int) $target->funcao,
+                    'role_label' => self::ROLE_LABELS[(int) $target->funcao] ?? '---',
+                    'unit_id' => $primaryTargetUnitId ? (int) $primaryTargetUnitId : null,
+                    'unit_name' => $unitName,
+                    'last_seen_at' => null,
+                    'is_online' => false,
+                ];
+            })
+            ->sortBy(fn (array $item) => mb_strtolower($item['name'], 'UTF-8'))
+            ->values();
+
+        $visibleUserIds = $onlineUsers->pluck('id')
+            ->merge($offlineUsers->pluck('id'))
+            ->unique()
+            ->values()
+            ->all();
 
         $unreadBySender = empty($visibleUserIds)
             ? collect()
@@ -188,22 +288,19 @@ class OnlineController extends Controller
                 ->groupBy('sender_id')
                 ->pluck('total', 'sender_id');
 
-        return $visiblePresences
-            ->map(function (OnlineUser $presence) use ($unreadBySender) {
-                return [
-                    'id' => (int) $presence->user_id,
-                    'name' => (string) $presence->user->name,
-                    'role' => (int) $presence->active_role,
-                    'role_label' => self::ROLE_LABELS[(int) $presence->active_role] ?? '---',
-                    'unit_id' => $presence->active_unit_id ? (int) $presence->active_unit_id : null,
-                    'unit_name' => $presence->unit?->tb2_nome ?? 'Sem loja ativa',
-                    'last_seen_at' => optional($presence->last_seen_at)->toIso8601String(),
-                    'unread_count' => (int) ($unreadBySender[(int) $presence->user_id] ?? 0),
-                ];
+        $attachUnread = fn (Collection $contacts) => $contacts
+            ->map(function (array $contact) use ($unreadBySender) {
+                $contact['unread_count'] = (int) ($unreadBySender[(int) $contact['id']] ?? 0);
+
+                return $contact;
             })
-            ->sortBy(fn (array $item) => mb_strtolower($item['name'], 'UTF-8'))
             ->values()
             ->all();
+
+        return [
+            'online' => $attachUnread($onlineUsers),
+            'offline' => $attachUnread($offlineUsers),
+        ];
     }
 
     private function buildUnreadSummary(int $viewerId): array
@@ -258,7 +355,10 @@ class OnlineController extends Controller
 
     private function resolveVisibleContact(Request $request, User $viewer, int $recipientId): ?array
     {
-        return collect($this->buildVisibleUsers($request, $viewer))
+        $contacts = $this->buildVisibleContacts($request, $viewer);
+
+        return collect($contacts['online'])
+            ->merge($contacts['offline'])
             ->first(fn (array $user) => (int) $user['id'] === $recipientId);
     }
 
@@ -329,6 +429,43 @@ class OnlineController extends Controller
         }
 
         return false;
+    }
+
+    private function canSeeOfflineUser(
+        int $viewerRole,
+        ?int $viewerUnitId,
+        Collection $managedUnitIds,
+        int $targetRole,
+        Collection $targetUnitIds,
+        ?int $primaryTargetUnitId
+    ): bool {
+        if (in_array($targetRole, [5, 6], true)) {
+            return false;
+        }
+
+        if ($viewerRole === 0) {
+            return true;
+        }
+
+        if ($viewerRole === 1) {
+            return $targetUnitIds->isNotEmpty()
+                && $targetUnitIds->contains(fn (int $unitId) => $managedUnitIds->contains($unitId));
+        }
+
+        if (in_array($viewerRole, [2, 3], true)) {
+            return $targetRole === 0
+                || $targetRole === 1
+                || ($viewerUnitId !== null && $targetUnitIds->contains($viewerUnitId));
+        }
+
+        if ($viewerRole === 4) {
+            return $viewerUnitId !== null
+                && $targetUnitIds->contains($viewerUnitId)
+                && in_array($targetRole, [2, 3], true);
+        }
+
+        return $primaryTargetUnitId !== null
+            && $this->canSeePresence($viewerRole, $viewerUnitId, $managedUnitIds, $targetRole, $primaryTargetUnitId);
     }
 
     private function managedUnitIds(User $user): Collection

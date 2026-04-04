@@ -318,6 +318,7 @@ class UserController extends Controller
             'name' => $request->name,
             'email' => $request->email,
             'funcao' => $request->funcao,
+            'funcao_original' => $request->funcao,
             'hr_ini' => $request->hr_ini,
             'hr_fim' => $request->hr_fim,
             'salario' => $request->salario,

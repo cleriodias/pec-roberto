@@ -569,6 +569,7 @@ class SaleController extends Controller
             'quantity' => ['required', 'integer', 'min:0', 'max:1000'],
             'access_user_id' => ['nullable', 'integer', 'exists:users,id'],
         ]);
+
         $lineData = $this->parseSaleItemKey($lineKey);
 
         if ($lineData === null) {
@@ -643,33 +644,6 @@ class SaleController extends Controller
         ];
     }
 
-    private function resolvePendingClosureDate(User $user, int $unitId, Carbon $today): ?Carbon
-    {
-        $lastSaleDate = VendaPagamento::query()
-            ->whereHas('vendas', function ($query) use ($user, $unitId) {
-                $query->where('id_user_caixa', $user->id)
-                    ->where('id_unidade', $unitId)
-                    ->where('status', 1);
-            })
-            ->whereDate('created_at', '<', $today)
-            ->latest('created_at')
-            ->value('created_at');
-
-        if (! $lastSaleDate) {
-            return null;
-        }
-
-        $lastSaleDay = Carbon::parse($lastSaleDate)->startOfDay();
-        $hasClosure = CashierClosure::where('user_id', $user->id)
-            ->whereDate('closed_date', $lastSaleDay)
-            ->where(function ($query) use ($unitId) {
-                $query->whereNull('unit_id')->orWhere('unit_id', $unitId);
-            })
-            ->exists();
-
-        return $hasClosure ? null : $lastSaleDay;
-    }
-
     private function buildOpenComandasPayload(Request $request): array
     {
         $unitId = $this->resolveActiveUnitId($request);
@@ -727,6 +701,33 @@ class SaleController extends Controller
             'pending_closure_date' => $restrictions['pending_closure_date'],
             'pending_comandas' => $restrictions['pending_comandas'],
         ];
+    }
+
+    private function resolvePendingClosureDate(User $user, int $unitId, Carbon $today): ?Carbon
+    {
+        $lastSaleDate = VendaPagamento::query()
+            ->whereHas('vendas', function ($query) use ($user, $unitId) {
+                $query->where('id_user_caixa', $user->id)
+                    ->where('id_unidade', $unitId)
+                    ->where('status', 1);
+            })
+            ->whereDate('created_at', '<', $today)
+            ->latest('created_at')
+            ->value('created_at');
+
+        if (! $lastSaleDate) {
+            return null;
+        }
+
+        $lastSaleDay = Carbon::parse($lastSaleDate)->startOfDay();
+        $hasClosure = CashierClosure::where('user_id', $user->id)
+            ->whereDate('closed_date', $lastSaleDay)
+            ->where(function ($query) use ($unitId) {
+                $query->whereNull('unit_id')->orWhere('unit_id', $unitId);
+            })
+            ->exists();
+
+        return $hasClosure ? null : $lastSaleDay;
     }
 
     private function getComandaItems(int $codigo, ?int $unitId = null): array

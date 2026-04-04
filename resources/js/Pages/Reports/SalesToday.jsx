@@ -1,7 +1,16 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { formatBrazilDateTime } from '@/Utils/date';
-import { Head, Link, router } from '@inertiajs/react';
+import axios from 'axios';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
+
+const PAYMENT_LABELS = {
+    dinheiro: 'Dinheiro',
+    maquina: 'Maquina',
+    vale: 'Vale',
+    refeicao: 'Refeicao',
+    faturar: 'Faturar',
+};
 
 const formatCurrency = (value) =>
     Number(value ?? 0).toLocaleString('pt-BR', {
@@ -22,6 +31,114 @@ const dayOptions = [
     { id: 'previous', label: 'Ontem' },
 ];
 
+const splitRecordsInColumns = (records) => {
+    const columns = [[], []];
+
+    records.forEach((record, index) => {
+        columns[index % 2].push(record);
+    });
+
+    return columns;
+};
+
+const resolveErrorMessage = (error, fallback) => {
+    if (error?.response?.data?.errors) {
+        const first = Object.values(error.response.data.errors).flat()[0];
+        if (first) {
+            return String(first);
+        }
+    }
+
+    if (error?.response?.data?.message) {
+        return String(error.response.data.message);
+    }
+
+    if (error?.message) {
+        return String(error.message);
+    }
+
+    return fallback;
+};
+
+const buildReceiptHtml = (receipt) => {
+    const unitInfoHtml = `
+        ${receipt.unit_address ? `<p>Endereco: ${receipt.unit_address}</p>` : ''}
+        ${receipt.unit_cnpj ? `<p>CNPJ: ${receipt.unit_cnpj}</p>` : ''}
+    `;
+
+    const itemsHtml = (receipt.items || [])
+        .map(
+            (item) => `
+                <div class="items-row">
+                    <span>${item.quantity}x ${item.product_name}</span>
+                    <span>${formatCurrency(item.unit_price)}</span>
+                </div>
+                <div class="items-row items-row-subtotal">
+                    <span>Subtotal</span>
+                    <span>${formatCurrency(item.subtotal)}</span>
+                </div>
+            `,
+        )
+        .join('');
+
+    const paymentHtml = receipt.payment
+        ? `
+                ${
+                    receipt.payment.valor_pago !== null
+                        ? `<p>Pago em dinheiro: ${formatCurrency(receipt.payment.valor_pago)}</p>`
+                        : ''
+                }
+                <p>Troco: ${formatCurrency(receipt.payment.troco ?? 0)}</p>
+                ${
+                    Number(receipt.payment.dois_pgto ?? 0) > 0
+                        ? `<p>Cartao (compl.): ${formatCurrency(receipt.payment.dois_pgto)}</p>`
+                        : ''
+                }
+            `
+        : '';
+
+    return `
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <meta charset="utf-8" />
+                <title>Cupom #${receipt.id}</title>
+                <style>
+                    * { font-family: 'Courier New', monospace; box-sizing: border-box; }
+                    body { width: 80mm; margin: 0 auto; padding: 12px; }
+                    h1 { text-align: center; font-size: 16px; margin: 0 0 10px 0; }
+                    p { font-size: 12px; margin: 4px 0; }
+                    .divider { border-top: 1px dashed #000; margin: 10px 0; }
+                    .items-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px; }
+                    .items-row-subtotal { font-style: italic; }
+                    .total { font-size: 14px; font-weight: bold; text-align: right; margin-top: 10px; }
+                </style>
+            </head>
+            <body>
+                <h1>${receipt.unit_name || 'Cupom'}</h1>
+                ${unitInfoHtml}
+                <p>Cupom: #${receipt.id}</p>
+                <p>Caixa: ${receipt.cashier_name || '---'}</p>
+                ${
+                    receipt.vale_user_name
+                        ? `<p>Vale: ${receipt.vale_user_name}${
+                              receipt.vale_type === 'refeicao' ? ' (Refeicao)' : ''
+                          }</p>`
+                        : ''
+                }
+                <p>Data: ${formatDate(receipt.date_time)}</p>
+                <div class="divider"></div>
+                ${itemsHtml}
+                <div class="divider"></div>
+                <p>Pagamento: ${PAYMENT_LABELS[receipt.tipo_pago] ?? receipt.tipo_pago}</p>
+                ${paymentHtml}
+                <div class="total">Total: ${formatCurrency(receipt.total)}</div>
+                <p style="text-align:center;margin-top:12px;">Obrigado pela preferencia</p>
+            </body>
+        </html>
+    `;
+};
+
 export default function SalesToday({
     meta,
     chartData,
@@ -32,12 +149,18 @@ export default function SalesToday({
     selectedUnitId = null,
     selectedDay = 'current',
 }) {
+    const { auth } = usePage().props;
+    const isMaster = Number(auth?.user?.funcao ?? -1) === 0;
     const initialType = useMemo(() => {
         const withValue = chartData.find((item) => item.total > 0);
         return withValue?.type ?? 'dinheiro';
     }, [chartData]);
 
     const [selectedType, setSelectedType] = useState(initialType);
+    const [selectedReceipt, setSelectedReceipt] = useState(null);
+    const [printError, setPrintError] = useState('');
+    const [deleteError, setDeleteError] = useState('');
+    const [deletingReceiptId, setDeletingReceiptId] = useState(null);
 
     const unitOptions = useMemo(() => {
         const base = [{ id: null, name: 'Todas as unidades' }];
@@ -87,6 +210,10 @@ export default function SalesToday({
     };
 
     const totalSum = chartData.reduce((sum, item) => sum + item.total, 0);
+    const selectedDetails = details[selectedType] ?? [];
+    const selectedMeta = meta[selectedType] ?? { label: selectedType, color: '#111827' };
+    const selectedTotal = totals[selectedType] ?? 0;
+    const detailColumns = useMemo(() => splitRecordsInColumns(selectedDetails), [selectedDetails]);
 
     const pieStyle = useMemo(() => {
         if (totalSum <= 0) {
@@ -112,28 +239,62 @@ export default function SalesToday({
         };
     }, [chartData, totalSum]);
 
-    const selectedDetails = details[selectedType] ?? [];
-    const selectedMeta = meta[selectedType] ?? { label: selectedType, color: '#111827' };
-    const selectedTotal = totals[selectedType] ?? 0;
+    const handlePrint = (receipt) => {
+        setPrintError('');
 
-    const observations = (record) => {
-        if (record.origin === 'dinheiro' && selectedType === 'maquina') {
-            return 'Complemento no cartao';
+        const printWindow = window.open('', '_blank', 'width=400,height=600');
+
+        if (!printWindow) {
+            setPrintError('Permita pop-ups para imprimir o cupom.');
+            return;
         }
 
-        if (record.origin === 'dinheiro') {
-            return 'Venda em dinheiro (pode conter complemento)';
+        printWindow.document.write(buildReceiptHtml(receipt));
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+        printWindow.close();
+    };
+
+    const handleDeleteReceipt = async (receiptId) => {
+        if (!isMaster || deletingReceiptId) {
+            return;
         }
 
-        if (record.origin === 'refeicao') {
-            return 'Vale refei\u00e7\u00e3o';
+        const confirmed = window.confirm(`Deseja realmente excluir o cupom #${receiptId}?`);
+        if (!confirmed) {
+            return;
         }
 
-        if (record.origin === 'vale') {
-            return 'Vale tradicional';
-        }
+        setDeleteError('');
+        setDeletingReceiptId(receiptId);
 
-        return 'Pagamento direto';
+        try {
+            await axios.delete(route('reports.sales.today.destroy', receiptId));
+
+            if (Number(selectedReceipt?.id ?? 0) === Number(receiptId)) {
+                setSelectedReceipt(null);
+            }
+
+            router.reload({
+                only: [
+                    'meta',
+                    'chartData',
+                    'details',
+                    'totals',
+                    'dateLabel',
+                    'filterUnits',
+                    'selectedUnitId',
+                    'selectedDay',
+                ],
+                preserveScroll: true,
+                preserveState: true,
+            });
+        } catch (error) {
+            setDeleteError(resolveErrorMessage(error, 'Nao foi possivel excluir o cupom.'));
+        } finally {
+            setDeletingReceiptId(null);
+        }
     };
 
     const headerContent = (
@@ -174,10 +335,22 @@ export default function SalesToday({
 
             <div className="py-12">
                 <div className="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
+                    {printError && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+                            {printError}
+                        </div>
+                    )}
+
+                    {deleteError && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+                            {deleteError}
+                        </div>
+                    )}
+
                     <div className="rounded-2xl bg-white p-6 shadow dark:bg-gray-800">
                         <div className="flex flex-col gap-6">
                             <div className="flex flex-col gap-2">
-                                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">Período</p>
+                                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">Periodo</p>
                                 <div className="flex flex-wrap gap-2">
                                     {dayOptions.map((option) => {
                                         const isActive = option.id === selectedDay;
@@ -297,82 +470,193 @@ export default function SalesToday({
                                     Selecione uma forma de pagamento para listar as vendas.
                                 </p>
                             </div>
-                            <div className="flex flex-wrap items-center gap-3">
-                                <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-indigo-700 shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200">
-                                    <p className="text-[10px] font-semibold uppercase tracking-wide">
-                                        Total em {selectedMeta.label}
-                                    </p>
-                                    <p className="text-sm font-bold">
-                                        {formatCurrency(selectedTotal)}
-                                    </p>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    {chartData.map((item) => (
-                                        <button
-                                            type="button"
-                                            key={item.type}
-                                            onClick={() => setSelectedType(item.type)}
-                                            className={`rounded-full px-4 py-2 text-sm font-semibold text-white shadow ${
-                                                selectedType === item.type
-                                                    ? 'ring-2 ring-offset-2 ring-offset-gray-50 dark:ring-offset-gray-800'
-                                                    : 'opacity-70'
-                                            }`}
-                                            style={{ backgroundColor: item.color }}
-                                        >
-                                            {item.label}
-                                        </button>
-                                    ))}
-                                </div>
+                            <div className="flex flex-wrap gap-3">
+                                {chartData.map((item) => (
+                                    <button
+                                        type="button"
+                                        key={item.type}
+                                        onClick={() => setSelectedType(item.type)}
+                                        className={`rounded-2xl px-4 py-3 text-left text-white shadow transition ${
+                                            selectedType === item.type
+                                                ? 'ring-2 ring-offset-2 ring-offset-gray-50 dark:ring-offset-gray-800'
+                                                : 'opacity-80 hover:opacity-100'
+                                        }`}
+                                        style={{ backgroundColor: item.color }}
+                                    >
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-white/80">
+                                            Total em {item.label}
+                                        </p>
+                                        <p className="text-lg font-bold leading-tight">
+                                            {formatCurrency(item.total)}
+                                        </p>
+                                    </button>
+                                ))}
                             </div>
                         </div>
 
-                        <div className="mt-6 overflow-x-auto">
+                        <div className="mt-6">
                             {selectedDetails.length === 0 ? (
                                 <p className="rounded-xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-300">
                                     Nenhuma venda registrada nesta forma de pagamento hoje.
                                 </p>
                             ) : (
-                                <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
-                                    <thead className="bg-gray-100 dark:bg-gray-900/60">
-                                        <tr>
-                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
-                                                ID
-                                            </th>
-                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
-                                                Data/Hora
-                                            </th>
-                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
-                                                Valor considerado
-                                            </th>
-                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
-                                                Observacao
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                                        {selectedDetails.map((record) => (
-                                            <tr key={`${record.tb4_id}-${record.origin}-${record.applied_total}`}>
-                                                <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
-                                                    #{record.tb4_id}
-                                                </td>
-                                                <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
-                                                    {formatDate(record.created_at)}
-                                                </td>
-                                                <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
-                                                    {formatCurrency(record.applied_total)}
-                                                </td>
-                                                <td className="px-3 py-2 text-gray-600 dark:text-gray-300">
-                                                    {observations(record)}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                <div className="grid gap-4 lg:grid-cols-2">
+                                    {detailColumns.map((column, columnIndex) => (
+                                        <div key={`detail-column-${columnIndex}`} className="space-y-4">
+                                            {column.map((record) => (
+                                                <div
+                                                    key={`${record.tb4_id}-${record.origin}-${record.applied_total}`}
+                                                    className="rounded-3xl border border-gray-200 bg-white px-5 py-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/60"
+                                                >
+                                                    <div className="flex items-center justify-between gap-4">
+                                                        <div>
+                                                            <p className="text-[15px] font-semibold text-gray-900 dark:text-white">
+                                                                Cupom{' '}
+                                                                {isMaster ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleDeleteReceipt(record.tb4_id)}
+                                                                        disabled={deletingReceiptId === record.tb4_id}
+                                                                        className="font-bold text-red-600 transition hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                    >
+                                                                        #{record.tb4_id}
+                                                                    </button>
+                                                                ) : (
+                                                                    <span className="font-bold text-gray-900 dark:text-white">
+                                                                        #{record.tb4_id}
+                                                                    </span>
+                                                                )}
+                                                            </p>
+                                                            <p className="text-[15px] text-gray-500 dark:text-gray-300">
+                                                                {formatDate(record.created_at)}
+                                                            </p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                                                                Valor considerado
+                                                            </p>
+                                                            <p className="text-2xl font-bold leading-none text-gray-900 dark:text-white">
+                                                                {formatCurrency(record.applied_total)}
+                                                            </p>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSelectedReceipt(record.receipt)}
+                                                            className="inline-flex shrink-0 items-center rounded-full border border-gray-200 px-3 py-1 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-100 dark:border-gray-600 dark:text-gray-100"
+                                                        >
+                                                            Abrir cupom
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </div>
                     </div>
                 </div>
             </div>
+
+            {selectedReceipt && (
+                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4 py-6">
+                    <div className="flex max-h-[calc(100vh-3rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-900">
+                        <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                                    Cupom #{selectedReceipt.id}
+                                </h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-300">
+                                    {formatDate(selectedReceipt.date_time)}
+                                </p>
+                                <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                                    Loja: {selectedReceipt.unit_name ?? '---'}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedReceipt(null)}
+                                className="text-sm font-semibold text-gray-500 hover:text-gray-800 dark:text-gray-300 dark:hover:text-white"
+                            >
+                                Fechar
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto px-6 py-4">
+                            <div className="space-y-2 text-sm text-gray-700 dark:text-gray-200">
+                                <p>
+                                    <span className="font-medium">Pagamento:</span>{' '}
+                                    {PAYMENT_LABELS[selectedReceipt.tipo_pago] ?? selectedReceipt.tipo_pago}
+                                </p>
+                                <p>
+                                    <span className="font-medium">Caixa:</span> {selectedReceipt.cashier_name}
+                                </p>
+                                {selectedReceipt.vale_user_name && (
+                                    <p>
+                                        <span className="font-medium">Cliente Vale:</span> {selectedReceipt.vale_user_name}
+                                        {selectedReceipt.vale_type === 'refeicao' && (
+                                            <span className="ml-1 text-xs text-amber-600 dark:text-amber-200">
+                                                (Refeicao)
+                                            </span>
+                                        )}
+                                    </p>
+                                )}
+                                <p className="text-lg font-bold text-indigo-600">
+                                    Total: {formatCurrency(selectedReceipt.total)}
+                                </p>
+                            </div>
+
+                            <div className="mt-6 rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+                                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                                    Itens
+                                </h4>
+                                <div className="mt-3 space-y-3 text-sm">
+                                    {(selectedReceipt.items || []).map((item) => (
+                                        <div
+                                            key={item.id}
+                                            className="flex items-center justify-between rounded-xl bg-white/80 px-3 py-2 shadow-sm dark:bg-gray-800/70"
+                                        >
+                                            <div>
+                                                <p className="font-medium text-gray-900 dark:text-gray-100">
+                                                    {item.quantity}x {item.product_name}
+                                                </p>
+                                                <p className="text-xs text-gray-500 dark:text-gray-300">
+                                                    {formatCurrency(item.unit_price)} cada
+                                                </p>
+                                                {item.comanda && (
+                                                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                                                        Comanda: {item.comanda}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <p className="font-semibold text-gray-900 dark:text-white">
+                                                {formatCurrency(item.subtotal)}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-gray-200 px-6 py-4 dark:border-gray-700">
+                            <button
+                                type="button"
+                                onClick={() => handlePrint(selectedReceipt)}
+                                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-700"
+                            >
+                                Imprimir
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedReceipt(null)}
+                                className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                            >
+                                Fechar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </AuthenticatedLayout>
     );
 }

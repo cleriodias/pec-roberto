@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class SupportTicketTest extends TestCase
@@ -157,11 +158,146 @@ class SupportTicketTest extends TestCase
         ]);
 
         $this->actingAs($author)->delete(route('support.tickets.destroy', $ticket))->assertForbidden();
+
         $this->actingAs($master)->delete(route('support.tickets.destroy', $ticket))->assertRedirect(route('support.tickets.index'));
 
         $this->assertDatabaseMissing('tb18_chamados', ['id' => $ticket->id]);
         $this->assertFalse(Storage::disk('local')->exists('support-tickets/base.webm'));
         $this->assertFalse(Storage::disk('local')->exists('support-ticket-images/img.png'));
+    }
+
+    public function test_master_sees_pending_counts_of_all_tickets_in_menu_summary(): void
+    {
+        [$unitA, $master] = $this->makeUserWithUnit(0);
+        [$unitB, $author] = $this->makeUserWithUnit(5);
+
+        SupportTicket::create([
+            'user_id' => $author->id,
+            'unit_id' => $unitA->tb2_id,
+            'title' => 'Chamado aberto',
+            'description' => 'Descricao',
+            'video_path' => 'support-tickets/a.webm',
+            'video_original_name' => 'a.webm',
+            'video_mime_type' => 'video/webm',
+            'video_size' => 10,
+            'status' => 'aberto',
+        ]);
+
+        SupportTicket::create([
+            'user_id' => $author->id,
+            'unit_id' => $unitB->tb2_id,
+            'title' => 'Chamado em analise',
+            'description' => 'Descricao',
+            'video_path' => 'support-tickets/b.webm',
+            'video_original_name' => 'b.webm',
+            'video_mime_type' => 'video/webm',
+            'video_size' => 10,
+            'status' => 'em_analise',
+        ]);
+
+        SupportTicket::create([
+            'user_id' => $author->id,
+            'unit_id' => $unitB->tb2_id,
+            'title' => 'Chamado aguardando',
+            'description' => 'Descricao',
+            'video_path' => 'support-tickets/c.webm',
+            'video_original_name' => 'c.webm',
+            'video_mime_type' => 'video/webm',
+            'video_size' => 10,
+            'status' => 'aguardando_usuario',
+        ]);
+
+        SupportTicket::create([
+            'user_id' => $author->id,
+            'unit_id' => $unitB->tb2_id,
+            'title' => 'Chamado resolvido',
+            'description' => 'Descricao',
+            'video_path' => 'support-tickets/d.webm',
+            'video_original_name' => 'd.webm',
+            'video_mime_type' => 'video/webm',
+            'video_size' => 10,
+            'status' => 'resolvido',
+        ]);
+
+        $this
+            ->actingAs($master)
+            ->get(route('support.tickets.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Support/TicketIndex')
+                ->where('supportTicketsMenu.can_view', true)
+                ->where('supportTicketsMenu.counts.aberto', 1)
+                ->where('supportTicketsMenu.counts.em_analise', 1)
+                ->where('supportTicketsMenu.counts.aguardando_usuario', 1));
+    }
+
+    public function test_requester_sees_only_own_pending_counts_in_menu_summary(): void
+    {
+        [$unit, $author] = $this->makeUserWithUnit(5);
+        [, $otherUser] = $this->makeUserWithUnit(5);
+
+        SupportTicket::create([
+            'user_id' => $author->id,
+            'unit_id' => $unit->tb2_id,
+            'title' => 'Meu chamado aberto',
+            'description' => 'Descricao',
+            'video_path' => 'support-tickets/e.webm',
+            'video_original_name' => 'e.webm',
+            'video_mime_type' => 'video/webm',
+            'video_size' => 10,
+            'status' => 'aberto',
+        ]);
+
+        SupportTicket::create([
+            'user_id' => $author->id,
+            'unit_id' => $unit->tb2_id,
+            'title' => 'Meu chamado aguardando',
+            'description' => 'Descricao',
+            'video_path' => 'support-tickets/f.webm',
+            'video_original_name' => 'f.webm',
+            'video_mime_type' => 'video/webm',
+            'video_size' => 10,
+            'status' => 'aguardando_usuario',
+        ]);
+
+        SupportTicket::create([
+            'user_id' => $otherUser->id,
+            'unit_id' => $unit->tb2_id,
+            'title' => 'Chamado de outro usuario',
+            'description' => 'Descricao',
+            'video_path' => 'support-tickets/g.webm',
+            'video_original_name' => 'g.webm',
+            'video_mime_type' => 'video/webm',
+            'video_size' => 10,
+            'status' => 'em_analise',
+        ]);
+
+        $this
+            ->actingAs($author)
+            ->get(route('support.tickets.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Support/TicketIndex')
+                ->where('supportTicketsMenu.can_view', true)
+                ->where('supportTicketsMenu.counts.aberto', 1)
+                ->where('supportTicketsMenu.counts.em_analise', 0)
+                ->where('supportTicketsMenu.counts.aguardando_usuario', 1));
+    }
+
+    public function test_user_without_ticket_does_not_receive_menu_indicator_permission(): void
+    {
+        [, $user] = $this->makeUserWithUnit(5);
+
+        $this
+            ->actingAs($user)
+            ->get(route('support.tickets.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Support/TicketIndex')
+                ->where('supportTicketsMenu.can_view', false)
+                ->where('supportTicketsMenu.counts.aberto', 0)
+                ->where('supportTicketsMenu.counts.em_analise', 0)
+                ->where('supportTicketsMenu.counts.aguardando_usuario', 0));
     }
 
     private function makeUserWithUnit(int $role): array

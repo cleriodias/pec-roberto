@@ -15,8 +15,10 @@ use App\Support\DiscardAlertService;
 use App\Support\ManagementScope;
 use Carbon\Carbon;
 use Carbon\Exceptions\InvalidFormatException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -1195,8 +1197,11 @@ class SalesReportController extends Controller
         $this->ensureManager($request);
         $user = $request->user();
         $availableUnits = $this->availableUnits($user);
+        $fallbackUnitId = $this->resolveUnitId($request);
         $requestedUnitId = $request->query('unit_id');
-        $filterUnitId = $requestedUnitId !== null && $requestedUnitId !== '' ? (int) $requestedUnitId : null;
+        $filterUnitId = $requestedUnitId !== null && $requestedUnitId !== ''
+            ? (int) $requestedUnitId
+            : ($fallbackUnitId > 0 ? $fallbackUnitId : null);
 
         if ($filterUnitId && !$availableUnits->contains(fn ($unit) => $unit['id'] === $filterUnitId)) {
             $filterUnitId = null;
@@ -1231,6 +1236,25 @@ class SalesReportController extends Controller
             'selectedUnitId' => $filterUnitId,
             'selectedUnit' => $selectedUnit,
             'selectedDay' => $dayFilter,
+        ]);
+    }
+
+    public function destroyTodayReceipt(Request $request, VendaPagamento $payment): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user || (int) $user->funcao !== 0) {
+            abort(403);
+        }
+
+        DB::transaction(function () use ($payment) {
+            Venda::query()->where('tb4_id', $payment->tb4_id)->delete();
+            $payment->delete();
+        });
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Cupom excluido com sucesso.',
         ]);
     }
 
@@ -2012,6 +2036,28 @@ class SalesReportController extends Controller
     private function fetchPayments(Carbon $start, Carbon $end, ?int $unitId = null): Collection
     {
         $query = VendaPagamento::query()
+            ->with([
+                'vendas' => function ($subQuery) {
+                    $subQuery->select([
+                        'tb3_id',
+                        'tb4_id',
+                        'tb1_id',
+                        'id_comanda',
+                        'produto_nome',
+                        'valor_unitario',
+                        'quantidade',
+                        'valor_total',
+                        'data_hora',
+                        'id_user_caixa',
+                        'id_user_vale',
+                        'id_unidade',
+                        'tipo_pago',
+                    ])->orderBy('tb3_id');
+                },
+                'vendas.caixa:id,name',
+                'vendas.valeUser:id,name',
+                'vendas.unidade:tb2_id,tb2_nome,tb2_endereco,tb2_cnpj',
+            ])
             ->whereBetween('created_at', [$start, $end]);
 
         if ($unitId) {
@@ -2061,6 +2107,7 @@ class SalesReportController extends Controller
                 'dois_pgto' => $payment->dois_pgto,
                 'created_at' => $payment->created_at->toIso8601String(),
                 'origin' => $type,
+                'receipt' => $this->buildReceiptPayload($payment),
             ];
 
             if ($type === 'dinheiro') {
@@ -2097,6 +2144,50 @@ class SalesReportController extends Controller
         $chartData = $this->buildChartData($totals);
 
         return [$totals, $details, $chartData];
+    }
+
+    private function buildReceiptPayload(VendaPagamento $payment): array
+    {
+        $sales = $payment->vendas->values();
+        $firstSale = $sales->first();
+        $saleDateTime = $firstSale?->data_hora ?? $payment->created_at;
+
+        return [
+            'id' => $payment->tb4_id,
+            'total' => round((float) $payment->valor_total, 2),
+            'date_time' => $saleDateTime?->toIso8601String(),
+            'tipo_pago' => $payment->tipo_pagamento,
+            'cashier_name' => $firstSale?->caixa?->name ?? '---',
+            'unit_name' => $firstSale?->unidade?->tb2_nome ?? '---',
+            'unit_address' => $firstSale?->unidade?->tb2_endereco,
+            'unit_cnpj' => $firstSale?->unidade?->tb2_cnpj,
+            'vale_user_name' => $firstSale?->valeUser?->name,
+            'vale_type' => in_array($payment->tipo_pagamento, ['vale', 'refeicao'], true)
+                ? $payment->tipo_pagamento
+                : null,
+            'payment' => [
+                'id' => $payment->tb4_id,
+                'valor_total' => round((float) $payment->valor_total, 2),
+                'valor_pago' => $payment->valor_pago !== null ? round((float) $payment->valor_pago, 2) : null,
+                'troco' => $payment->troco !== null ? round((float) $payment->troco, 2) : null,
+                'dois_pgto' => $payment->dois_pgto !== null ? round((float) $payment->dois_pgto, 2) : null,
+                'tipo_pagamento' => $payment->tipo_pagamento,
+            ],
+            'items' => $sales
+                ->map(function (Venda $sale) {
+                    return [
+                        'id' => $sale->tb3_id,
+                        'product_id' => $sale->tb1_id,
+                        'product_name' => $sale->produto_nome,
+                        'quantity' => (int) $sale->quantidade,
+                        'unit_price' => round((float) $sale->valor_unitario, 2),
+                        'subtotal' => round((float) $sale->valor_total, 2),
+                        'comanda' => $sale->id_comanda,
+                    ];
+                })
+                ->values()
+                ->all(),
+        ];
     }
 
     private function parseDate(?string $value, string $format, Carbon $fallback): Carbon

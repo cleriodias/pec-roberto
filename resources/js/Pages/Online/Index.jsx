@@ -1,11 +1,10 @@
 import AlertMessage from '@/Components/Alert/AlertMessage';
+import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import {
     formatRoleBadgeLabel,
     formatUnitBadgeLabel,
-    getRoleBadgeClassName,
     getRoleBadgeStyle,
-    getUnitBadgeClassName,
     getUnitBadgeStyle,
     getUserNameBadgeClassName,
 } from '@/Utils/brandBadges';
@@ -46,7 +45,7 @@ const replaceColorTag = (value) =>
             return content;
         }
 
-        return content;
+        return `<span style="color:${normalized}">${content}</span>`;
     });
 
 const renderMessage = (value) => {
@@ -86,23 +85,34 @@ const resolveErrorMessage = (error, fallback) => {
     return fallback;
 };
 
+const resolveDraftKey = (userId) => String(userId ?? '');
+
+const COMPACT_BADGE_CLASSNAME =
+    'inline-flex shrink-0 items-center justify-center rounded-full border font-semibold uppercase tracking-wide whitespace-nowrap';
+
 export default function OnlineIndex({
     onlineUsers: initialOnlineUsers = [],
+    offlineUsers: initialOfflineUsers = [],
     selectedUserId: initialSelectedUserId = null,
     messages: initialMessages = [],
     currentUser = null,
 }) {
     const { flash } = usePage().props;
     const [onlineUsers, setOnlineUsers] = useState(initialOnlineUsers);
+    const [offlineUsers, setOfflineUsers] = useState(initialOfflineUsers);
     const [selectedUserId, setSelectedUserId] = useState(initialSelectedUserId);
     const [messages, setMessages] = useState(initialMessages);
-    const [draftMessage, setDraftMessage] = useState('');
+    const [draftMessages, setDraftMessages] = useState({});
     const [loadingSnapshot, setLoadingSnapshot] = useState(false);
     const [refreshingSnapshot, setRefreshingSnapshot] = useState(false);
     const [sendingMessage, setSendingMessage] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
-    const [lastSyncAt, setLastSyncAt] = useState(() => new Date().toISOString());
+    const [editingMessageId, setEditingMessageId] = useState(null);
+    const [editDraftMessage, setEditDraftMessage] = useState('');
+    const [savingEditMessage, setSavingEditMessage] = useState(false);
+    const [editErrorMessage, setEditErrorMessage] = useState('');
     const textareaRef = useRef(null);
+    const editTextareaRef = useRef(null);
     const messagesEndRef = useRef(null);
     const messagesContainerRef = useRef(null);
     const selectedUserIdRef = useRef(initialSelectedUserId);
@@ -113,10 +123,22 @@ export default function OnlineIndex({
 
     const selectedUser = useMemo(
         () =>
-            onlineUsers.find((user) => Number(user.id) === Number(selectedUserId)) ??
+            [...onlineUsers, ...offlineUsers].find((user) => Number(user.id) === Number(selectedUserId)) ??
             onlineUsers[0] ??
+            offlineUsers[0] ??
             null,
-        [onlineUsers, selectedUserId],
+        [onlineUsers, offlineUsers, selectedUserId],
+    );
+
+    const editingMessage = useMemo(
+        () =>
+            messages.find((message) => Number(message.id) === Number(editingMessageId)) ?? null,
+        [messages, editingMessageId],
+    );
+
+    const draftMessage = useMemo(
+        () => draftMessages[resolveDraftKey(selectedUserId)] ?? '',
+        [draftMessages, selectedUserId],
     );
 
     useEffect(() => {
@@ -156,20 +178,31 @@ export default function OnlineIndex({
         setErrorMessage('');
     }, [selectedUser?.id]);
 
+    useEffect(() => {
+        if (editingMessageId) {
+            window.requestAnimationFrame(() => {
+                editTextareaRef.current?.focus();
+            });
+        }
+    }, [editingMessageId]);
+
     const applySnapshot = (payload, requestedUserId = null) => {
         const nextUsers = Array.isArray(payload?.onlineUsers) ? payload.onlineUsers : [];
-        const availableIds = nextUsers.map((user) => Number(user.id));
+        const nextOfflineUsers = Array.isArray(payload?.offlineUsers) ? payload.offlineUsers : [];
+        const availableIds = nextUsers
+            .map((user) => Number(user.id))
+            .concat(nextOfflineUsers.map((user) => Number(user.id)));
         const nextSelectedUserId =
             requestedUserId && availableIds.includes(Number(requestedUserId))
                 ? Number(requestedUserId)
                 : payload?.selectedUserId && availableIds.includes(Number(payload.selectedUserId))
                   ? Number(payload.selectedUserId)
-                  : nextUsers[0]?.id ?? null;
+                  : nextUsers[0]?.id ?? nextOfflineUsers[0]?.id ?? null;
 
         setOnlineUsers(nextUsers);
+        setOfflineUsers(nextOfflineUsers);
         setSelectedUserId(nextSelectedUserId);
         setMessages(Array.isArray(payload?.messages) ? payload.messages : []);
-        setLastSyncAt(new Date().toISOString());
     };
 
     const loadSnapshot = async (requestedUserId = null, silent = false) => {
@@ -212,7 +245,15 @@ export default function OnlineIndex({
     const wrapSelection = (prefix, suffix = prefix) => {
         const textarea = textareaRef.current;
         if (!textarea) {
-            setDraftMessage((current) => `${current}${prefix}${suffix}`);
+            setDraftMessages((current) => {
+                const draftKey = resolveDraftKey(selectedUserId);
+                const currentMessage = current[draftKey] ?? '';
+
+                return {
+                    ...current,
+                    [draftKey]: `${currentMessage}${prefix}${suffix}`,
+                };
+            });
             return;
         }
 
@@ -226,7 +267,10 @@ export default function OnlineIndex({
             suffix +
             draftMessage.slice(end);
 
-        setDraftMessage(nextValue);
+        setDraftMessages((current) => ({
+            ...current,
+            [resolveDraftKey(selectedUserId)]: nextValue,
+        }));
 
         window.requestAnimationFrame(() => {
             textarea.focus();
@@ -239,9 +283,7 @@ export default function OnlineIndex({
         loadSnapshot(userId);
     };
 
-    const handleSendMessage = async (event) => {
-        event.preventDefault();
-
+    const submitMessage = async () => {
         if (!selectedUser || sendingMessage) {
             return;
         }
@@ -261,7 +303,10 @@ export default function OnlineIndex({
             });
 
             applySnapshot(response.data ?? {}, selectedUser.id);
-            setDraftMessage('');
+            setDraftMessages((current) => ({
+                ...current,
+                [resolveDraftKey(selectedUser.id)]: '',
+            }));
             setErrorMessage('');
             textareaRef.current?.focus();
         } catch (error) {
@@ -271,18 +316,130 @@ export default function OnlineIndex({
         }
     };
 
+    const handleSendMessage = async (event) => {
+        event.preventDefault();
+        await submitMessage();
+    };
+
+    const openEditModal = (message) => {
+        if (!message?.is_mine) {
+            return;
+        }
+
+        setEditingMessageId(message.id);
+        setEditDraftMessage(String(message.message ?? ''));
+        setEditErrorMessage('');
+    };
+
+    const closeEditModal = () => {
+        if (savingEditMessage) {
+            return;
+        }
+
+        setEditingMessageId(null);
+        setEditDraftMessage('');
+        setEditErrorMessage('');
+    };
+
+    const handleUpdateMessage = async (event) => {
+        event.preventDefault();
+
+        if (!editingMessage || savingEditMessage) {
+            return;
+        }
+
+        const nextMessage = editDraftMessage.trim();
+        if (!nextMessage) {
+            setEditErrorMessage('Digite uma mensagem antes de salvar.');
+            return;
+        }
+
+        setSavingEditMessage(true);
+
+        try {
+            const response = await axios.put(route('online.messages.update', editingMessage.id), {
+                message: nextMessage,
+            });
+
+            applySnapshot(response.data ?? {}, selectedUserIdRef.current);
+            setEditingMessageId(null);
+            setEditDraftMessage('');
+            setEditErrorMessage('');
+            setErrorMessage('');
+        } catch (error) {
+            setEditErrorMessage(resolveErrorMessage(error, 'Nao foi possivel atualizar a mensagem.'));
+        } finally {
+            setSavingEditMessage(false);
+        }
+    };
+
+    const renderContactButton = (user, offline = false) => {
+        const isSelected = Number(user.id) === Number(selectedUser?.id);
+        const hasUnread = Number(user.unread_count ?? 0) > 0;
+
+        return (
+            <button
+                type="button"
+                key={`${offline ? 'offline' : 'online'}-${user.id}`}
+                onClick={() => handleSelectUser(user.id)}
+                className={`flex w-full items-center gap-2 overflow-hidden border-b border-gray-100 px-4 py-4 text-left transition last:border-b-0 dark:border-gray-800 ${
+                    isSelected
+                        ? hasUnread
+                            ? 'border-l-4 border-l-emerald-500 bg-slate-100 dark:border-l-emerald-400 dark:bg-slate-800/80'
+                            : 'bg-slate-100 dark:bg-slate-800/80'
+                        : hasUnread
+                          ? 'border-l-4 border-l-emerald-500 bg-emerald-50/80 hover:bg-emerald-100/70 dark:border-l-emerald-400 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/15'
+                          : offline
+                            ? 'bg-gray-50/80 hover:bg-gray-100 dark:bg-gray-900/40 dark:hover:bg-gray-800/60'
+                            : 'hover:bg-gray-50 dark:hover:bg-gray-800/70'
+                }`}
+            >
+                <span
+                    className={`inline-flex min-w-[72px] max-w-[108px] items-center justify-center ${getUserNameBadgeClassName()}`}
+                >
+                    <span className="truncate">
+                        {String(user.name ?? '').toUpperCase()}
+                    </span>
+                </span>
+                <span
+                    className={COMPACT_BADGE_CLASSNAME}
+                    style={{
+                        ...getRoleBadgeStyle(user.role_label),
+                        padding: '0 6px',
+                        fontSize: '9px',
+                        lineHeight: '12px',
+                        minHeight: '16px',
+                    }}
+                >
+                    {formatRoleBadgeLabel(user.role_label)}
+                </span>
+                <span
+                    className={COMPACT_BADGE_CLASSNAME}
+                    style={{
+                        ...getUnitBadgeStyle(user.unit_name),
+                        padding: '0 6px',
+                        fontSize: '9px',
+                        lineHeight: '12px',
+                        minHeight: '16px',
+                        minWidth: '52px',
+                    }}
+                >
+                    {formatUnitBadgeLabel(user.unit_name)}
+                </span>
+                {hasUnread && (
+                    <span className="ms-auto -mt-3 shrink-0 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm">
+                        {user.unread_count}
+                    </span>
+                )}
+            </button>
+        );
+    };
+
     return (
         <AuthenticatedLayout
             header={(
                 <div className="flex flex-col gap-1">
                     <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Usuarios On-Line</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-300">
-                        Lista apenas usuarios ativos agora, com funcao e loja da sessao atual.
-                    </p>
-                    <p className="text-sm text-gray-500 dark:text-gray-300">
-                        Seu perfil atual: <span className="font-semibold text-gray-700 dark:text-gray-100">{currentUser?.role_label ?? '---'}</span>
-                        {' '}| Loja ativa: <span className="font-semibold text-gray-700 dark:text-gray-100">{currentUser?.unit_name ?? '---'}</span>
-                    </p>
                 </div>
             )}
         >
@@ -292,9 +449,9 @@ export default function OnlineIndex({
                 <div className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8">
                     <AlertMessage message={flash} />
 
-                    {(errorMessage || loadingSnapshot) && (
+                    {errorMessage && (
                         <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
-                            {loadingSnapshot ? 'Atualizando usuarios on-line...' : errorMessage}
+                            {errorMessage}
                         </div>
                     )}
 
@@ -307,100 +464,51 @@ export default function OnlineIndex({
                                         <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
                                             {onlineUsers.length} usuario(s)
                                         </h3>
-                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                            Atualizacao automatica a cada 15 segundos.
-                                        </p>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        {refreshingSnapshot && (
-                                            <span className="text-[11px] font-semibold uppercase text-emerald-600 dark:text-emerald-300">
-                                                Sincronizando
-                                            </span>
-                                        )}
-                                        <button
-                                            type="button"
-                                            onClick={() => loadSnapshot(selectedUserIdRef.current)}
-                                            className="rounded-full border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 transition hover:border-indigo-400 hover:text-indigo-600 dark:border-gray-600 dark:text-gray-200"
-                                        >
-                                            Atualizar
-                                        </button>
-                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => loadSnapshot(selectedUserIdRef.current)}
+                                        disabled={loadingSnapshot || refreshingSnapshot}
+                                        className="rounded-full border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 transition hover:border-indigo-400 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-70 dark:border-gray-600 dark:text-gray-200"
+                                    >
+                                        {loadingSnapshot || refreshingSnapshot ? 'Atualizando...' : 'Atualizar'}
+                                    </button>
                                 </div>
-                                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                    Ultima sincronizacao: {formatBrazilDateTime(lastSyncAt)}
-                                </p>
                             </div>
 
                             <div className="max-h-[68vh] overflow-y-auto">
-                                {onlineUsers.length === 0 ? (
+                                {onlineUsers.length === 0 && offlineUsers.length === 0 ? (
                                     <div className="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">
-                                        Nenhum usuario visivel on-line neste momento.
+                                        Nenhum usuario visivel neste momento.
                                     </div>
                                 ) : (
-                                    onlineUsers.map((user) => {
-                                        const isSelected = Number(user.id) === Number(selectedUser?.id);
-                                        const hasUnread = Number(user.unread_count ?? 0) > 0;
+                                    <>
+                                        {onlineUsers.length > 0 && onlineUsers.map((user) => renderContactButton(user))}
 
-                                        return (
-                                            <button
-                                                type="button"
-                                                key={user.id}
-                                                onClick={() => handleSelectUser(user.id)}
-                                                className={`flex w-full items-center gap-2 overflow-hidden border-b border-gray-100 px-4 py-4 text-left transition last:border-b-0 dark:border-gray-800 ${
-                                                    isSelected
-                                                        ? hasUnread
-                                                            ? 'border-l-4 border-l-emerald-500 bg-slate-100 dark:border-l-emerald-400 dark:bg-slate-800/80'
-                                                            : 'bg-slate-100 dark:bg-slate-800/80'
-                                                        : hasUnread
-                                                          ? 'border-l-4 border-l-emerald-500 bg-emerald-50/80 hover:bg-emerald-100/70 dark:border-l-emerald-400 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/15'
-                                                          : 'hover:bg-gray-50 dark:hover:bg-gray-800/70'
-                                                }`}
-                                            >
-                                                <span
-                                                    className={`inline-flex min-w-[72px] max-w-[108px] items-center justify-center ${getUserNameBadgeClassName()}`}
-                                                >
-                                                    <span className="truncate">
-                                                        {String(user.name ?? '').toUpperCase()}
-                                                    </span>
-                                                </span>
-                                                <span
-                                                    className={`inline-flex shrink-0 items-center justify-center uppercase tracking-wide ${getRoleBadgeClassName()}`}
-                                                    style={getRoleBadgeStyle(user.role_label)}
-                                                >
-                                                    {formatRoleBadgeLabel(user.role_label)}
-                                                </span>
-                                                <span
-                                                    className={`inline-flex min-w-[88px] shrink-0 items-center justify-center uppercase tracking-wide ${getUnitBadgeClassName()}`}
-                                                    style={getUnitBadgeStyle(user.unit_name)}
-                                                >
-                                                    {formatUnitBadgeLabel(user.unit_name)}
-                                                </span>
-                                                {hasUnread && (
-                                                    <span className="ms-auto -mt-3 shrink-0 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm">
-                                                        {user.unread_count}
-                                                    </span>
-                                                )}
-                                            </button>
-                                        );
-                                    })
+                                        {offlineUsers.length > 0 && (
+                                            <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+                                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                                    Offline
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {offlineUsers.length > 0 && offlineUsers.map((user) => renderContactButton(user, true))}
+                                    </>
                                 )}
                             </div>
                         </div>
+
                         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
                             <div className="border-b border-gray-200 px-5 py-4 dark:border-gray-700">
                                 {selectedUser ? (
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="flex flex-col gap-1">
-                                            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
-                                                Conversa com {selectedUser.name}
-                                            </h3>
-                                            <p className="text-sm text-gray-500 dark:text-gray-300">
-                                                {selectedUser.role_label} | Loja: {selectedUser.unit_name ?? '---'}
-                                            </p>
-                                        </div>
-                                        <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-900/20 dark:text-emerald-200">
-                                            Ao vivo
-                                        </div>
+                                    <div className="flex flex-col gap-1">
+                                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                                            {selectedUser.name}
+                                        </h3>
+                                        <p className="text-sm text-gray-500 dark:text-gray-300">
+                                            {selectedUser.role_label} | Loja: {selectedUser.unit_name ?? '---'}
+                                        </p>
                                     </div>
                                 ) : (
                                     <div>
@@ -431,11 +539,13 @@ export default function OnlineIndex({
                                                     className={`flex ${message.is_mine ? 'justify-end' : 'justify-start'}`}
                                                 >
                                                     <div
+                                                        onClick={message.is_mine ? () => openEditModal(message) : undefined}
                                                         className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
                                                             message.is_mine
-                                                                ? 'bg-slate-300 text-slate-800 dark:bg-slate-600 dark:text-slate-100'
+                                                                ? 'cursor-pointer bg-slate-300 text-slate-800 transition hover:bg-slate-400 dark:bg-slate-600 dark:text-slate-100 dark:hover:bg-slate-500'
                                                                 : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-100'
                                                         }`}
+                                                        title={message.is_mine ? 'Clique para editar sua mensagem' : undefined}
                                                     >
                                                         <div
                                                             className={`mb-2 text-[11px] font-semibold uppercase ${
@@ -509,13 +619,12 @@ export default function OnlineIndex({
                                             ref={textareaRef}
                                             rows={4}
                                             value={draftMessage}
-                                            onChange={(event) => setDraftMessage(event.target.value)}
-                                            onKeyDown={(event) => {
-                                                if (event.key === 'Enter' && !event.shiftKey) {
-                                                    event.preventDefault();
-                                                    handleSendMessage(event);
-                                                }
-                                            }}
+                                            onChange={(event) =>
+                                                setDraftMessages((current) => ({
+                                                    ...current,
+                                                    [resolveDraftKey(selectedUserId)]: event.target.value,
+                                                }))
+                                            }
                                             placeholder={
                                                 selectedUser
                                                     ? 'Digite sua mensagem. As marcacoes simples sao mantidas.'
@@ -526,7 +635,7 @@ export default function OnlineIndex({
                                         />
                                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                `Enter` envia, `Shift + Enter` quebra linha. Marcacoes: [b], [i], [u] e [color=#xxxxxx].
+                                                `Enter` quebra linha. Use o botao para enviar. Clique na sua mensagem para editar.
                                             </p>
                                             <button
                                                 type="submit"
@@ -543,6 +652,54 @@ export default function OnlineIndex({
                     </div>
                 </div>
             </div>
+
+            <Modal show={Boolean(editingMessage)} onClose={closeEditModal} maxWidth="xl" tone="light">
+                <form onSubmit={handleUpdateMessage} className="space-y-4 p-6">
+                    <div>
+                        <h3 className="text-lg font-semibold text-gray-900">Editar mensagem</h3>
+                        <p className="mt-1 text-sm text-gray-500">
+                            Ajuste o texto e salve quando terminar.
+                        </p>
+                    </div>
+
+                    {editErrorMessage && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                            {editErrorMessage}
+                        </div>
+                    )}
+
+                    <textarea
+                        ref={editTextareaRef}
+                        rows={6}
+                        value={editDraftMessage}
+                        onChange={(event) => setEditDraftMessage(event.target.value)}
+                        onKeyDown={(event) => {
+                            if (event.key === 'Enter' && !event.shiftKey) {
+                                event.stopPropagation();
+                            }
+                        }}
+                        className="w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm text-gray-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                    />
+
+                    <div className="flex items-center justify-end gap-3">
+                        <button
+                            type="button"
+                            onClick={closeEditModal}
+                            disabled={savingEditMessage}
+                            className="rounded-full border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-indigo-400 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={savingEditMessage}
+                            className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {savingEditMessage ? 'Salvando...' : 'Salvar'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
         </AuthenticatedLayout>
     );
 }

@@ -155,7 +155,7 @@ export default function Terminal() {
             const data = await response.json();
             setAccessUser(data);
             goToStep(2);
-        } catch {
+        } catch (err) {
             setAccessError('Falha ao validar codigo. Tente novamente.');
             setAccessUser(null);
         }
@@ -216,8 +216,8 @@ export default function Terminal() {
             if (!resp.ok) throw new Error();
             const data = await resp.json();
             setComandaItems(Array.isArray(data?.items) ? data.items.map(normalizeComandaItem) : []);
-        } catch {
-            // Silencioso: lista nao atualizada.
+        } catch (err) {
+            // silencioso: lista não atualizada
         }
     };
 
@@ -257,7 +257,7 @@ export default function Terminal() {
             setSuggestions([]);
             setSearchError('');
             searchRef.current?.focus();
-        } catch {
+        } catch (err) {
             setSearchError('Falha ao adicionar item.');
         }
     };
@@ -267,14 +267,18 @@ export default function Terminal() {
 
         if (!normalizedLookupTerm) return;
 
-        setSearchLoading(true);
-        setSearchError('');
         const weightedBarcodeData = parseWeightedBarcode(normalizedLookupTerm);
         const lookupIsBarcode = isBarcodeTerm(normalizedLookupTerm);
-
-        fetch(route('products.search', { q: weightedBarcodeData ? weightedBarcodeData.productId : normalizedLookupTerm }), {
-            headers: { Accept: 'application/json' },
-        })
+        setSearchLoading(true);
+        setSearchError('');
+        fetch(
+            route('products.search', {
+                q: weightedBarcodeData ? weightedBarcodeData.productId : normalizedLookupTerm,
+            }),
+            {
+                headers: { Accept: 'application/json' },
+            },
+        )
             .then((resp) => {
                 if (!resp.ok) throw new Error();
                 return resp.json();
@@ -301,7 +305,6 @@ export default function Terminal() {
                     setSearchError('Produto nao encontrado.');
                     return;
                 }
-
                 addItemFromProduct(product, {
                     unitPrice: weightedBarcodeData?.unitPrice ?? null,
                     barcode: weightedBarcodeData?.barcode ?? null,
@@ -375,7 +378,7 @@ export default function Terminal() {
             }
             const data = await resp.json();
             setComandaItems(Array.isArray(data?.items) ? data.items.map(normalizeComandaItem) : []);
-        } catch {
+        } catch (err) {
             setSearchError('Falha ao atualizar item.');
         }
     };
@@ -404,7 +407,7 @@ export default function Terminal() {
                 <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
                     <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-xl">
-                            T
+                            🍔
                         </div>
                         <div>
                             <p className="text-sm font-semibold text-amber-700">Lanchonete</p>
@@ -555,7 +558,8 @@ export default function Terminal() {
                                                             {item.tb1_nome}
                                                         </p>
                                                         <p className="text-gray-500">
-                                                            ID: {item.tb1_id} | R$ {Number(item.tb1_vlr_venda ?? 0).toFixed(2)}
+                                                            ID: {item.tb1_id} • R${' '}
+                                                            {Number(item.tb1_vlr_venda ?? 0).toFixed(2)}
                                                         </p>
                                                     </div>
                                                     <span className="text-xs rounded-full bg-green-100 px-2 py-1 text-green-700">
@@ -602,7 +606,7 @@ export default function Terminal() {
                                             <div>
                                                 <p className="font-semibold text-gray-800">{item.name}</p>
                                                 <p className="text-gray-500">
-                                                    ID: {item.product_id} | R$ {Number(item.price).toFixed(2)}
+                                                    ID: {item.product_id} • R$ {Number(item.price).toFixed(2)}
                                                 </p>
                                                 {item.lanc_user_name && (
                                                     <p className="text-xs font-semibold text-gray-600">

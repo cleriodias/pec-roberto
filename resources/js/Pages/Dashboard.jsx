@@ -1964,62 +1964,66 @@ export default function Dashboard() {
             )}
             {showReceipt && receiptData && (
                 <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4 py-6">
-                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900">
-                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
-                            Cupom pronto para impressao
-                        </h3>
-                        <div className="mt-4 space-y-2 text-sm text-gray-700 dark:text-gray-200">
-                            {(receiptData.items || []).map((item) => (
-                                <div key={item.product_id} className="flex items-center justify-between">
-                                    <div>
-                                        <p className="font-medium">
-                                            {item.quantity}x {item.product_name}
-                                        </p>
-                                        <p className="text-xs text-gray-500">
-                                            {formatCurrency(item.unit_price)} cada
-                                        </p>
-                                    </div>
-                                    <p className="font-semibold">{formatCurrency(item.subtotal)}</p>
-                                </div>
-                            ))}
-                            <p>
-                                <span className="font-medium">Pagamento:</span> {receiptData.payment_label}
-                            </p>
-                            {receiptData.payment?.valor_pago !== null && (
-                                <p>
-                                    <span className="font-medium">Valor pago:</span>{' '}
-                                    {formatCurrency(receiptData.payment.valor_pago)}
-                                </p>
-                            )}
-                            <p>
-                                <span className="font-medium">Troco:</span>{' '}
-                                {formatCurrency(receiptData.payment?.troco ?? 0)}
-                            </p>
-                            {receiptData.payment?.dois_pgto > 0 && (
-                                <p>
-                                    <span className="font-medium">Cartao (compl.):</span>{' '}
-                                    {formatCurrency(receiptData.payment.dois_pgto)}
-                                </p>
-                            )}
-                            <p>
-                                <span className="font-medium">Caixa:</span> {receiptData.cashier_name}
-                            </p>
-                            {receiptData.vale_user_name && (
-                                <p>
-                                    <span className="font-medium">Cliente Vale:</span> {receiptData.vale_user_name}
-                                    {receiptData.vale_type === 'refeicao' && (
-                                        <span className="ml-1 text-xs text-amber-600 dark:text-amber-200">(Refeição)</span>
-                                    )}
-                                </p>
-                            )}
-                            <p>
-                                <span className="font-medium">Data:</span> {formatDateTime(receiptData.date_time)}
-                            </p>
-                            <p className="text-lg font-bold text-indigo-600">
-                                Total: {formatCurrency(receiptData.total)}
-                            </p>
+                    <div className="flex max-h-[calc(100vh-3rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-900">
+                        <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+                            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                                Cupom pronto para impressao
+                            </h3>
                         </div>
-                        <div className="mt-6 flex justify-end gap-3">
+                        <div className="flex-1 overflow-y-auto px-6 py-4">
+                            <div className="space-y-2 text-sm text-gray-700 dark:text-gray-200">
+                                {(receiptData.items || []).map((item) => (
+                                    <div key={item.product_id} className="flex items-center justify-between">
+                                        <div>
+                                            <p className="font-medium">
+                                                {item.quantity}x {item.product_name}
+                                            </p>
+                                            <p className="text-xs text-gray-500">
+                                                {formatCurrency(item.unit_price)} cada
+                                            </p>
+                                        </div>
+                                        <p className="font-semibold">{formatCurrency(item.subtotal)}</p>
+                                    </div>
+                                ))}
+                                <p>
+                                    <span className="font-medium">Pagamento:</span> {receiptData.payment_label}
+                                </p>
+                                {receiptData.payment?.valor_pago !== null && (
+                                    <p>
+                                        <span className="font-medium">Valor pago:</span>{' '}
+                                        {formatCurrency(receiptData.payment.valor_pago)}
+                                    </p>
+                                )}
+                                <p>
+                                    <span className="font-medium">Troco:</span>{' '}
+                                    {formatCurrency(receiptData.payment?.troco ?? 0)}
+                                </p>
+                                {receiptData.payment?.dois_pgto > 0 && (
+                                    <p>
+                                        <span className="font-medium">Cartao (compl.):</span>{' '}
+                                        {formatCurrency(receiptData.payment.dois_pgto)}
+                                    </p>
+                                )}
+                                <p>
+                                    <span className="font-medium">Caixa:</span> {receiptData.cashier_name}
+                                </p>
+                                {receiptData.vale_user_name && (
+                                    <p>
+                                        <span className="font-medium">Cliente Vale:</span> {receiptData.vale_user_name}
+                                        {receiptData.vale_type === 'refeicao' && (
+                                            <span className="ml-1 text-xs text-amber-600 dark:text-amber-200">(Refeição)</span>
+                                        )}
+                                    </p>
+                                )}
+                                <p>
+                                    <span className="font-medium">Data:</span> {formatDateTime(receiptData.date_time)}
+                                </p>
+                                <p className="text-lg font-bold text-indigo-600">
+                                    Total: {formatCurrency(receiptData.total)}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4 dark:border-gray-700">
                             <button
                                 type="button"
                                 className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"

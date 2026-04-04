@@ -1,16 +1,9 @@
 import AlertMessage from '@/Components/Alert/AlertMessage';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { formatBrazilDateTime } from '@/Utils/date';
+import { getSupportTicketStatusStyle } from '@/Utils/supportTicketStatus';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-
-const statusTone = {
-    aberto: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-100',
-    em_analise: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-100',
-    aguardando_usuario: 'bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-100',
-    resolvido: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-100',
-    fechado: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
-};
 
 const preferredMimeTypes = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
 
@@ -32,7 +25,10 @@ const resolveMimeType = () => {
 const resolveExtension = (mimeType) => ((mimeType ?? '').includes('mp4') ? 'mp4' : 'webm');
 
 const Badge = ({ status, label }) => (
-    <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase ${statusTone[status] ?? statusTone.aberto}`}>
+    <span
+        className="rounded-full border px-3 py-1 text-[11px] font-semibold uppercase"
+        style={getSupportTicketStatusStyle(status)}
+    >
         {label}
     </span>
 );

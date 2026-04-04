@@ -19,14 +19,6 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class SupportTicketController extends Controller
 {
-    private const STATUS_LABELS = [
-        'aberto' => 'Aberto',
-        'em_analise' => 'Em analise',
-        'aguardando_usuario' => 'Aguardando usuario',
-        'resolvido' => 'Resolvido',
-        'fechado' => 'Fechado',
-    ];
-
     public function index(Request $request): Response
     {
         $user = $request->user();
@@ -58,7 +50,7 @@ class SupportTicketController extends Controller
             'activeUnit' => $this->resolveActiveUnit($request),
             'maxUploadMb' => $this->maxUploadMegabytes(),
             'maxImageUploadMb' => $this->maxImageUploadMegabytes(),
-            'statusOptions' => collect(self::STATUS_LABELS)
+            'statusOptions' => collect(SupportTicket::STATUS_LABELS)
                 ->map(fn (string $label, string $value) => [
                     'value' => $value,
                     'label' => $label,
@@ -161,7 +153,7 @@ class SupportTicketController extends Controller
         $this->ensureMaster($request->user());
 
         $data = $request->validate([
-            'status' => ['required', 'string', Rule::in(array_keys(self::STATUS_LABELS))],
+            'status' => ['required', 'string', Rule::in(array_keys(SupportTicket::STATUS_LABELS))],
         ]);
 
         $ticket->update([
@@ -246,7 +238,7 @@ class SupportTicketController extends Controller
             'title' => $ticket->title,
             'description' => $ticket->description,
             'status' => $ticket->status,
-            'status_label' => self::STATUS_LABELS[$ticket->status] ?? $ticket->status,
+            'status_label' => SupportTicket::STATUS_LABELS[$ticket->status] ?? $ticket->status,
             'video_size' => (int) $ticket->video_size,
             'video_original_name' => $ticket->video_original_name,
             'created_at' => optional($ticket->created_at)->toIso8601String(),

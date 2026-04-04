@@ -7,18 +7,21 @@ const MENU_KEYS = [
     'users',
     'units',
     'products',
-    'boletos',
     'support_tickets',
-    'salary_advances',
-    'expenses',
-    'notices',
-    'cashier_close',
     'reports_control',
     'reports_cash',
+    'cashier_close',
+    'reports_hoje',
+    'discard',
+    'expenses',
+    'boletos',
     'reports_sales_today',
-    'reports_sales_period',
-    'reports_sales_detailed',
     'reports_lanchonete',
+    'reports_sales_period',
+    'reports_descarte_consolidado',
+    'reports_sales_detailed',
+    'salary_advances',
+    'notices',
     'reports_comandas_aberto',
     'reports_vale',
     'reports_refeicao',
@@ -28,9 +31,6 @@ const MENU_KEYS = [
     'supplier_disputes',
     'reports_gastos',
     'reports_descarte',
-    'reports_descarte_consolidado',
-    'reports_hoje',
-    'discard',
     'switch_unit',
     'settings',
     'lanchonete_terminal',
@@ -66,15 +66,53 @@ const LABELS = {
     salary_advances: 'Adiantamento',
     discard: 'Descarte',
     switch_unit: 'Trocar',
-    settings: 'Farrammentas',
+    settings: 'Ferramentas',
     lanchonete_terminal: 'Terminal Lanchonete',
 };
 
 const STORAGE_KEY = 'menuOrderConfig';
+const MENU_ORDER_PRIORITY = [
+    'dashboard',
+    'products',
+    'support_tickets',
+    'reports_control',
+    'reports_cash',
+    'cashier_close',
+    'lanchonete_terminal',
+    'reports_hoje',
+    'discard',
+    'expenses',
+    'boletos',
+    'reports_sales_today',
+    'reports_lanchonete',
+    'reports_sales_period',
+    'reports_descarte_consolidado',
+    'reports_sales_detailed',
+    'settings',
+];
+
+const normalizeMenuOrder = (order) => {
+    const source = Array.isArray(order) ? order : [];
+    const uniqueKeys = source.filter((key, index) => MENU_KEYS.includes(key) && source.indexOf(key) === index);
+    const merged = [...uniqueKeys, ...MENU_KEYS.filter((key) => !uniqueKeys.includes(key))];
+    const priorityMap = MENU_ORDER_PRIORITY.reduce((acc, key, index) => {
+        acc[key] = index;
+        return acc;
+    }, {});
+
+    return [...merged].sort((left, right) => {
+        const leftPriority =
+            priorityMap[left] !== undefined ? priorityMap[left] : 1000 + merged.indexOf(left);
+        const rightPriority =
+            priorityMap[right] !== undefined ? priorityMap[right] : 1000 + merged.indexOf(right);
+
+        return leftPriority - rightPriority;
+    });
+};
 
 export default function MenuOrder() {
     const { auth } = usePage().props;
-    const [order, setOrder] = useState(MENU_KEYS);
+    const [order, setOrder] = useState(() => normalizeMenuOrder(MENU_KEYS));
 
     useEffect(() => {
         if (typeof window === 'undefined') {
@@ -85,12 +123,9 @@ export default function MenuOrder() {
             try {
                 const parsed = JSON.parse(raw);
                 if (Array.isArray(parsed) && parsed.length > 0) {
-                    const filtered = parsed.filter((key) => MENU_KEYS.includes(key));
-                    const merged = [
-                        ...filtered,
-                        ...MENU_KEYS.filter((key) => !filtered.includes(key)),
-                    ];
-                    setOrder(merged);
+                    const normalized = normalizeMenuOrder(parsed);
+                    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+                    setOrder(normalized);
                 }
             } catch (err) {
                 console.error('Failed to parse menuOrderConfig', err);

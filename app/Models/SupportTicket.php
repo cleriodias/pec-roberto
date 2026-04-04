@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ManagementScope;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +11,20 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class SupportTicket extends Model
 {
     use HasFactory;
+
+    public const STATUS_LABELS = [
+        'aberto' => 'Aberto',
+        'em_analise' => 'Em analise',
+        'aguardando_usuario' => 'Aguardando usuario',
+        'resolvido' => 'Resolvido',
+        'fechado' => 'Fechado',
+    ];
+
+    public const MENU_STATUSES = [
+        'aberto',
+        'em_analise',
+        'aguardando_usuario',
+    ];
 
     protected $table = 'tb18_chamados';
 
@@ -44,5 +59,41 @@ class SupportTicket extends Model
     public function interactions(): HasMany
     {
         return $this->hasMany(SupportTicketInteraction::class);
+    }
+
+    public static function menuSummaryFor($user): array
+    {
+        $counts = collect(self::MENU_STATUSES)
+            ->mapWithKeys(fn (string $status) => [$status => 0])
+            ->all();
+
+        if (! $user) {
+            return [
+                'can_view' => false,
+                'counts' => $counts,
+            ];
+        }
+
+        $isMaster = ManagementScope::isMaster($user);
+        $query = self::query();
+
+        if (! $isMaster) {
+            $query->where('user_id', $user->id);
+        }
+
+        $resolvedCounts = $query
+            ->selectRaw('status, COUNT(*) as total')
+            ->whereIn('status', self::MENU_STATUSES)
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        foreach ($resolvedCounts as $status => $total) {
+            $counts[$status] = (int) $total;
+        }
+
+        return [
+            'can_view' => $isMaster || self::query()->where('user_id', $user->id)->exists(),
+            'counts' => $counts,
+        ];
     }
 }

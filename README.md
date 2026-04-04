@@ -483,43 +483,15 @@ sudo apt remove nodejs
 
 # Install azure CLI
 https://learn.microsoft.com/en-us/cli/azure/install-azure-cli-windows?view=azure-cli-latest&pivots=msi
+# deploy
+https://learn.microsoft.com/en-us/azure/app-service/quickstart-php?tabs=cli&pivots=platform-linux
 
-# Deploy Azure (GitHub Actions + OIDC)
-Este repositorio usa login OIDC com `azure/login@v2`.
-Nao usa `AZURE_WEBAPP_PUBLISH_PROFILE`.
-
-## 1) Secrets obrigatorios no GitHub (repositorio pec-roberto)
-Ir em `GitHub -> Settings -> Secrets and variables -> Actions -> New repository secret` e cadastrar:
-- `AZURE_CLIENT_ID`
-- `AZURE_TENANT_ID`
-- `AZURE_SUBSCRIPTION_ID`
-- `LARAVEL_APP_KEY`
-- `APP_URL`
-- `DB_CONNECTION`
-- `DB_HOST`
-- `DB_PORT`
-- `DB_DATABASE`
-- `DB_USERNAME`
-- `DB_PASSWORD`
-
-Gerar uma APP_KEY nova (nao reutilizar da PEC83):
-```
-php -r "echo 'base64:'.base64_encode(random_bytes(32)).PHP_EOL;"
-```
-
-## 2) Credencial federada no Microsoft Entra ID
-Em `App registrations` no app `github-actions-pec`, criar uma nova `Federated credential`:
-- `Issuer`: `https://token.actions.githubusercontent.com`
-- `Audience`: `api://AzureADTokenExchange`
-- `Subject identifier`: `repo:cleriodias/pec-roberto:ref:refs/heads/main`
-
-Sem essa credencial, o workflow do `pec-roberto` falha no `azure/login`.
-
-## 3) Ordem de execucao do pipeline
-1. Executar `workflow_dispatch` para provisionar/configurar o `PEC84` no Azure.
-2. Depois usar `push` na branch `main` para os proximos deploys.
-
-## 4) Alvos esperados do deploy
-- Resource Group: `rg-pec-roberto`
-- Web App: `PEC84`
-- Plano App Service reutilizado: `sp-rodrigo-pec`
+# GitHub action deploy
+1. to Enable authentication to to `Configuration`→ `SCM Basic Auth Publishing Credentials` and enable it.
+2. Restart app
+3. Refresh the page
+4. Download publish profile in application `Overview` menu
+5. Go to `GitHub` → `Settings` → `Secrets and variables` → `Actions` → `New repository secret`
+  Name: AZURE_WEBAPP_PUBLISH_PROFILE
+  Value: cole o conteúdo inteiro do arquivo PublishSettings.
+6. Run the workflow again.

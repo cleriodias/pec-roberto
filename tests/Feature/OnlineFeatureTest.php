@@ -127,7 +127,7 @@ class OnlineFeatureTest extends TestCase
         foreach ([5 => 'funcionario', 6 => 'cliente'] as $role => $username) {
             User::factory()->create([
                 'name' => ucfirst($username),
-                'email' => $username . '@paoecafepremium.com.br',
+                'email' => $username . '@paoecafe83.com.br',
                 'password' => Hash::make('1234'),
                 'funcao' => $role,
                 'funcao_original' => $role,

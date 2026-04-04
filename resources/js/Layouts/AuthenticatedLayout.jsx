@@ -2,14 +2,39 @@ import ApplicationLogo from '@/Components/ApplicationLogo';
 import Dropdown from '@/Components/Dropdown';
 import NavLink from '@/Components/NavLink';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
-import axios from 'axios';
+import {
+    buildSupportTicketMenuCounters,
+    getSupportTicketStatusStyle,
+} from '@/Utils/supportTicketStatus';
 import { Link, router, usePage } from '@inertiajs/react';
+import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
 
-const MenuLabel = ({ icon, text, attention = false }) => (
-    <span className="inline-flex items-center gap-2">
+const SupportTicketCounters = ({ items = [] }) => {
+    if (!items.length) {
+        return null;
+    }
+
+    return (
+        <span className="inline-flex flex-wrap items-center gap-1">
+            {items.map((item) => (
+                <span
+                    key={item.status}
+                    className="inline-flex min-w-[20px] items-center justify-center rounded-full border px-1.5 py-0.5 text-[10px] font-bold leading-none"
+                    style={getSupportTicketStatusStyle(item.status)}
+                    title={`${item.label}: ${item.count}`}
+                >
+                    {item.count}
+                </span>
+            ))}
+        </span>
+    );
+};
+
+const MenuLabel = ({ icon, text, attention = false, trailing = null, textClassName = '' }) => (
+    <span className="inline-flex flex-wrap items-center gap-2">
         <i className={`${icon} text-base`} aria-hidden="true"></i>
-        <span>{text}</span>
+        <span className={textClassName}>{text}</span>
         {attention && (
             <i
                 className="bi bi-exclamation-triangle-fill text-amber-500"
@@ -17,6 +42,7 @@ const MenuLabel = ({ icon, text, attention = false }) => (
                 title="Alerta de discarte"
             ></i>
         )}
+        {trailing}
     </span>
 );
 
@@ -51,17 +77,86 @@ const DEFAULT_MENU_KEYS = [
     'salary_advances',
     'expenses',
     'support_tickets',
+    'online_users',
     'notices',
     'settings',
-    'online_users',
     'lanchonete_terminal',
 ];
+const MENU_ORDER_PRIORITY = [
+    'dashboard',
+    'products',
+    'support_tickets',
+    'reports_control',
+    'reports_cash',
+    'cashier_close',
+    'lanchonete_terminal',
+    'reports_hoje',
+    'discard',
+    'expenses',
+    'boletos',
+    'reports_sales_today',
+    'reports_lanchonete',
+    'reports_sales_period',
+    'reports_descarte_consolidado',
+    'reports_sales_detailed',
+    'online_users',
+    'settings',
+];
+
+const normalizeMenuOrder = (order, allowedKeys) => {
+    const allowedSet = new Set(allowedKeys);
+    const source = Array.isArray(order) ? order : [];
+    const uniqueKeys = source.filter((key, index) => allowedSet.has(key) && source.indexOf(key) === index);
+    const merged = [...uniqueKeys, ...allowedKeys.filter((key) => !uniqueKeys.includes(key))];
+    const priorityMap = MENU_ORDER_PRIORITY.reduce((acc, key, index) => {
+        acc[key] = index;
+        return acc;
+    }, {});
+
+    return [...merged].sort((left, right) => {
+        const leftPriority =
+            priorityMap[left] !== undefined ? priorityMap[left] : 1000 + merged.indexOf(left);
+        const rightPriority =
+            priorityMap[right] !== undefined ? priorityMap[right] : 1000 + merged.indexOf(right);
+
+        return leftPriority - rightPriority;
+    });
+};
+
+const normalizeMenuAccessConfig = (config, allowedKeys) => {
+    if (!config || typeof config !== 'object') {
+        return config;
+    }
+
+    let changed = false;
+    const normalized = { ...config };
+
+    Object.entries(normalized).forEach(([role, value]) => {
+        if (!Array.isArray(value)) {
+            return;
+        }
+
+        const filtered = value.filter((key, index) => allowedKeys.includes(key) && value.indexOf(key) === index);
+        const missingKeys = allowedKeys.filter((key) => !filtered.includes(key));
+
+        if (missingKeys.length > 0 || filtered.length !== value.length) {
+            normalized[role] = [...filtered, ...missingKeys];
+            changed = true;
+        }
+    });
+
+    return {
+        changed,
+        config: normalized,
+    };
+};
 
 export default function AuthenticatedLayout({ header, headerClassName = '', children }) {
     const pageProps = usePage().props;
     const user = pageProps.auth.user;
     const activeUnitName = pageProps.auth.unit?.name ?? 'Dashboard';
     const discardAlert = pageProps.discardAlert ?? null;
+    const supportTicketsMenu = pageProps.supportTicketsMenu ?? null;
     const effectiveRole = user ? Number(user.funcao) : null;
     const originalRole = user ? Number(user.funcao_original ?? user.funcao) : null;
     const roleLabels = {
@@ -108,32 +203,14 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
             const raw = window.localStorage.getItem(ACCESS_STORAGE_KEY);
             if (raw) {
                 const parsed = JSON.parse(raw);
-                const allKeys = new Set();
-                Object.values(parsed ?? {}).forEach((value) => {
-                    if (Array.isArray(value)) {
-                        value.forEach((key) => allKeys.add(key));
-                    }
-                });
-                const missingKeys = DEFAULT_MENU_KEYS.filter((key) => !allKeys.has(key));
-                if (missingKeys.length > 0) {
-                    const merged = { ...parsed };
-                    Object.entries(merged).forEach(([role, value]) => {
-                        if (!Array.isArray(value)) {
-                            return;
-                        }
-                        const next = [...value];
-                        missingKeys.forEach((key) => {
-                            if (!next.includes(key)) {
-                                next.push(key);
-                            }
-                        });
-                        merged[role] = next;
-                    });
-                    window.localStorage.setItem(ACCESS_STORAGE_KEY, JSON.stringify(merged));
-                    setMenuAccessConfig(merged);
-                } else {
-                    setMenuAccessConfig(parsed);
+                const normalizedAccess = normalizeMenuAccessConfig(parsed, DEFAULT_MENU_KEYS);
+                if (normalizedAccess?.changed) {
+                    window.localStorage.setItem(
+                        ACCESS_STORAGE_KEY,
+                        JSON.stringify(normalizedAccess.config),
+                    );
                 }
+                setMenuAccessConfig(normalizedAccess?.config ?? parsed);
             }
         } catch (err) {
             console.error('Failed to load menuAccessConfig', err);
@@ -141,37 +218,15 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
         try {
             const rawOrder = window.localStorage.getItem(ORDER_STORAGE_KEY);
             if (rawOrder) {
-                setMenuOrderConfig(JSON.parse(rawOrder));
+                const parsedOrder = JSON.parse(rawOrder);
+                const normalizedOrder = normalizeMenuOrder(parsedOrder, DEFAULT_MENU_KEYS);
+                window.localStorage.setItem(ORDER_STORAGE_KEY, JSON.stringify(normalizedOrder));
+                setMenuOrderConfig(normalizedOrder);
             }
         } catch (err) {
             console.error('Failed to load menuOrderConfig', err);
         }
     }, []);
-
-    const hasMenuAccess = useMemo(() => {
-        const defaultAllow = new Set(DEFAULT_MENU_KEYS);
-
-        return (key) => {
-            if (!menuAccessConfig || effectiveRole === null) {
-                return defaultAllow.has(key);
-            }
-            const allowed = menuAccessConfig[effectiveRole];
-            if (!allowed) {
-                return defaultAllow.has(key);
-            }
-            return Array.isArray(allowed) ? allowed.includes(key) : defaultAllow.has(key);
-        };
-    }, [menuAccessConfig, effectiveRole]);
-
-    const orderMap = useMemo(() => {
-        if (!menuOrderConfig || !Array.isArray(menuOrderConfig)) {
-            return {};
-        }
-        return menuOrderConfig.reduce((acc, key, idx) => {
-            acc[key] = idx;
-            return acc;
-        }, {});
-    }, [menuOrderConfig]);
 
     useEffect(() => {
         if (
@@ -203,24 +258,30 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
         };
     }, [effectiveRole, hasOnlineRoute, user]);
 
-    const sortMenu = (items) =>
-        items
-            .map((item, idx) => ({
-                ...item,
-                order:
-                    orderMap[item.key] ??
-                    (item.key === 'reports_hoje' && orderMap.discard !== undefined
-                        ? orderMap.discard - 0.5
-                        : 1000 + idx),
-            }))
-            .sort((a, b) => a.order - b.order);
+    const hasMenuAccess = useMemo(() => {
+        const defaultAllow = new Set(DEFAULT_MENU_KEYS);
 
+        return (key) => {
+            if (!menuAccessConfig || effectiveRole === null) {
+                return defaultAllow.has(key);
+            }
+            const allowed = menuAccessConfig[effectiveRole];
+            if (!allowed) {
+                return defaultAllow.has(key);
+            }
+            return Array.isArray(allowed) ? allowed.includes(key) : defaultAllow.has(key);
+        };
+    }, [menuAccessConfig, effectiveRole]);
     const canSeeOnline =
         user &&
         [0, 1, 2, 3, 4].includes(effectiveRole) &&
         hasOnlineRoute &&
         hasMenuAccess('online_users');
     const unreadOnlineTotal = Number(onlineSummary?.unread_total ?? 0);
+    const supportTicketCounters = useMemo(
+        () => buildSupportTicketMenuCounters(supportTicketsMenu),
+        [supportTicketsMenu],
+    );
 
     useEffect(() => {
         if (
@@ -262,6 +323,28 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
         };
     }, [canSeeOnline]);
 
+    const orderMap = useMemo(() => {
+        if (!menuOrderConfig || !Array.isArray(menuOrderConfig)) {
+            return {};
+        }
+        return menuOrderConfig.reduce((acc, key, idx) => {
+            acc[key] = idx;
+            return acc;
+        }, {});
+    }, [menuOrderConfig]);
+
+    const sortMenu = (items) =>
+        items
+            .map((item, idx) => ({
+                ...item,
+                order:
+                    orderMap[item.key] ??
+                    (item.key === 'reports_hoje' && orderMap.discard !== undefined
+                        ? orderMap.discard - 0.5
+                        : 1000 + idx),
+            }))
+            .sort((a, b) => a.order - b.order);
+
     const mainMenuItems = sortMenu(
         [
             {
@@ -289,30 +372,6 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                 ),
             },
             {
-                key: 'boletos',
-                visible: canAccessBoletos && hasMenuAccess('boletos'),
-                node: (
-                    <NavLink
-                        href={route('boletos.index')}
-                        active={route().current('boletos.index')}
-                    >
-                        <MenuLabel icon="bi bi-card-text" text="Boletos" />
-                    </NavLink>
-                ),
-            },
-            {
-                key: 'expenses',
-                visible: canSeeExpenses && hasMenuAccess('expenses'),
-                node: (
-                    <NavLink
-                        href={route('expenses.index')}
-                        active={route().current('expenses.*')}
-                    >
-                        <MenuLabel icon="bi bi-receipt" text="Gastos" />
-                    </NavLink>
-                ),
-            },
-            {
                 key: 'support_tickets',
                 visible: user && hasMenuAccess('support_tickets'),
                 node: (
@@ -320,19 +379,11 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                         href={route('support.tickets.index')}
                         active={route().current('support.tickets.*')}
                     >
-                        <MenuLabel icon="bi bi-camera-video" text="Chamados" />
-                    </NavLink>
-                ),
-            },
-            {
-                key: 'cashier_close',
-                visible: isCashier && hasMenuAccess('cashier_close'),
-                node: (
-                    <NavLink
-                        href={route('cashier.close')}
-                        active={route().current('cashier.close')}
-                    >
-                        <MenuLabel icon="bi bi-cash-stack" text="Fechar CX" />
+                        <MenuLabel
+                            icon="bi bi-camera-video"
+                            text="Chamados"
+                            trailing={<SupportTicketCounters items={supportTicketCounters} />}
+                        />
                     </NavLink>
                 ),
             },
@@ -365,6 +416,18 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                 ),
             },
             {
+                key: 'cashier_close',
+                visible: isCashier && hasMenuAccess('cashier_close'),
+                node: (
+                    <NavLink
+                        href={route('cashier.close')}
+                        active={route().current('cashier.close')}
+                    >
+                        <MenuLabel icon="bi bi-cash-stack" text="Fechar CX" />
+                    </NavLink>
+                ),
+            },
+            {
                 key: 'lanchonete_terminal',
                 visible: isLanchonete && hasMenuAccess('lanchonete_terminal') && hasLanchoneteRoute,
                 node: (
@@ -382,60 +445,6 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
     const dropdownMenuItems = sortMenu(
         [
             {
-                key: 'reports_sales_today',
-                visible: canSeeReports && hasMenuAccess('reports_sales_today'),
-                node: (
-                    <Dropdown.Link href={route('reports.sales.today')}>
-                        <MenuLabel icon="bi bi-calendar-day" text="Vendas hoje" />
-                    </Dropdown.Link>
-                ),
-            },
-            {
-                key: 'reports_sales_period',
-                visible: canSeeReports && hasMenuAccess('reports_sales_period'),
-                node: (
-                    <Dropdown.Link href={route('reports.sales.period')}>
-                        <MenuLabel icon="bi bi-calendar-range" text="Vendas periodo" />
-                    </Dropdown.Link>
-                ),
-            },
-            {
-                key: 'reports_sales_detailed',
-                visible: canSeeReports && hasMenuAccess('reports_sales_detailed'),
-                node: (
-                    <Dropdown.Link href={route('reports.sales.detailed')}>
-                        <MenuLabel icon="bi bi-card-checklist" text="Detalhado" />
-                    </Dropdown.Link>
-                ),
-            },
-            {
-                key: 'reports_lanchonete',
-                visible: canSeeReports && hasMenuAccess('reports_lanchonete'),
-                node: (
-                    <Dropdown.Link href={route('reports.lanchonete')}>
-                        <MenuLabel icon="bi bi-cup-hot" text="Relatório Lanchonete" />
-                    </Dropdown.Link>
-                ),
-            },
-            {
-                key: 'reports_descarte_consolidado',
-                visible: canSeeReports && hasMenuAccess('reports_descarte_consolidado'),
-                node: (
-                    <Dropdown.Link href={route('reports.descarte.consolidado')}>
-                        <MenuLabel icon="bi bi-bar-chart-line" text="Discarte Consolidado" />
-                    </Dropdown.Link>
-                ),
-            },
-            {
-                key: 'settings',
-                visible: isAdmin && hasMenuAccess('settings'),
-                node: (
-                    <Dropdown.Link href={route('settings.config')}>
-                        <MenuLabel icon="bi bi-gear" text="Farrammentas" />
-                    </Dropdown.Link>
-                ),
-            },
-            {
                 key: 'reports_hoje',
                 visible: isCashier && hasHojeRoute && hasMenuAccess('reports_hoje'),
                 node: (
@@ -450,6 +459,91 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                 node: (
                     <Dropdown.Link href={route('products.discard')}>
                         <MenuLabel icon="bi bi-recycle" text="Descarte" />
+                    </Dropdown.Link>
+                ),
+            },
+            {
+                key: 'expenses',
+                visible: canSeeExpenses && hasMenuAccess('expenses'),
+                node: (
+                    <Dropdown.Link href={route('expenses.index')}>
+                        <MenuLabel icon="bi bi-receipt" text="Gastos" />
+                    </Dropdown.Link>
+                ),
+            },
+            {
+                key: 'boletos',
+                visible: canAccessBoletos && hasMenuAccess('boletos'),
+                node: (
+                    <Dropdown.Link href={route('boletos.index')}>
+                        <MenuLabel icon="bi bi-card-text" text="Boletos" />
+                    </Dropdown.Link>
+                ),
+            },
+            {
+                key: 'reports_sales_today',
+                visible: canSeeReports && hasMenuAccess('reports_sales_today'),
+                node: (
+                    <Dropdown.Link href={route('reports.sales.today')}>
+                        <MenuLabel icon="bi bi-calendar-day" text="Vendas hoje" />
+                    </Dropdown.Link>
+                ),
+            },
+            {
+                key: 'reports_lanchonete',
+                visible: canSeeReports && hasMenuAccess('reports_lanchonete'),
+                node: (
+                    <Dropdown.Link href={route('reports.lanchonete')}>
+                        <MenuLabel icon="bi bi-cup-hot" text="Relatório Lanchonete" />
+                    </Dropdown.Link>
+                ),
+            },
+            {
+                key: 'reports_sales_period',
+                visible: canSeeReports && hasMenuAccess('reports_sales_period'),
+                node: (
+                    <Dropdown.Link href={route('reports.sales.period')}>
+                        <MenuLabel icon="bi bi-calendar-range" text="Vendas periodo" />
+                    </Dropdown.Link>
+                ),
+            },
+            {
+                key: 'reports_descarte_consolidado',
+                visible: canSeeReports && hasMenuAccess('reports_descarte_consolidado'),
+                node: (
+                    <Dropdown.Link href={route('reports.descarte.consolidado')}>
+                        <MenuLabel icon="bi bi-bar-chart-line" text="Discarte Consolidado" />
+                    </Dropdown.Link>
+                ),
+            },
+            {
+                key: 'reports_sales_detailed',
+                visible: canSeeReports && hasMenuAccess('reports_sales_detailed'),
+                node: (
+                    <Dropdown.Link href={route('reports.sales.detailed')}>
+                        <MenuLabel icon="bi bi-card-checklist" text="Detalhado" />
+                    </Dropdown.Link>
+                ),
+            },
+            {
+                key: 'online_users',
+                visible: canSeeOnline,
+                node: (
+                    <Dropdown.Link href={route('online.index')}>
+                        <MenuLabel icon="bi bi-broadcast-pin" text="On-Line" />
+                    </Dropdown.Link>
+                ),
+            },
+            {
+                key: 'settings',
+                visible: isAdmin && hasMenuAccess('settings'),
+                node: (
+                    <Dropdown.Link href={route('settings.config')}>
+                        <MenuLabel
+                            icon="bi bi-gear"
+                            text="Ferramentas"
+                            textClassName="font-bold"
+                        />
                     </Dropdown.Link>
                 ),
             },
@@ -546,11 +640,6 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                                         <Dropdown.Link href={route('profile.edit')}>
                                             <MenuLabel icon="bi bi-person-circle" text="Perfil" />
                                         </Dropdown.Link>
-                                        {canSeeOnline && (
-                                            <Dropdown.Link href={route('online.index')}>
-                                                <MenuLabel icon="bi bi-broadcast-pin" text="On-Line" />
-                                            </Dropdown.Link>
-                                        )}
                                         {dropdownMenuItems.map((item) => (
                                             <span key={item.key}>{item.node}</span>
                                         ))}
@@ -654,6 +743,12 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                                         Trocar
                                     </ResponsiveNavLink>
                                 )}
+                                <ResponsiveNavLink
+                                    href={route('profile.edit')}
+                                    active={route().current('profile.edit')}
+                                >
+                                    Perfil
+                                </ResponsiveNavLink>
                                 {canSeeOnline && (
                                     <ResponsiveNavLink
                                         href={route('online.index')}
@@ -662,12 +757,6 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                                         On-Line
                                     </ResponsiveNavLink>
                                 )}
-                                <ResponsiveNavLink
-                                    href={route('profile.edit')}
-                                    active={route().current('profile.edit')}
-                                >
-                                    Perfil
-                                </ResponsiveNavLink>
                                 {dropdownMenuItems.map((item) => (
                                     <div key={item.key}>{item.node}</div>
                                 ))}

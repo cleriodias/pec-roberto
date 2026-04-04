@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\SupportTicket;
 use App\Support\DiscardAlertService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -46,6 +47,7 @@ class HandleInertiaRequests extends Middleware
                 'error' => fn () => $request->session()->get('error'),
             ],
             'discardAlert' => fn () => app(DiscardAlertService::class)->forRequest($request),
+            'supportTicketsMenu' => fn () => SupportTicket::menuSummaryFor($request->user()),
             'csrf_token' => csrf_token(),
         ];
     }
