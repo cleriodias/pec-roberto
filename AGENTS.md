@@ -1,5 +1,5 @@
 IMPORTANT:
-- Sempre ler o C:\xampp\htdocs\pec-rodrigo\SYNC.md nela esta as instruçoes das disferenças a serem sincronizadas.
+- Sempre ler o C:\xampp\htdocs\pec-rodrigo\SYNC.md nele estao as instruçoes das disferenças a serem sincronizadas.
 - Este projeto é uma copia do projeto em: "C:\xampp\htdocs\pec-rodrigo" que vamos chamar de original
 - Com exeçao da conexao com o banco de dados e o dominio, todos o sistema deve ser identico, paginas, regras, etc...
 - Na tela de login o email fixado é @paoecafepremium.com.br
