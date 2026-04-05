@@ -16,6 +16,7 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
     });
 
     const isBalanceProduct = Number(data.tb1_tipo) === 1;
+    const canEditPrices = [0, 1, 2].includes(Number(auth?.user?.funcao ?? -1));
 
     const handleSubmit = (event) => {
         event.preventDefault();
@@ -75,7 +76,12 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
                                         placeholder="0,00"
                                         value={data.tb1_vlr_custo}
                                         onChange={(e) => setData("tb1_vlr_custo", e.target.value)}
-                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                        disabled={!canEditPrices}
+                                        className={`mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm ${
+                                            canEditPrices
+                                                ? "focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                                : "bg-gray-100 text-gray-500 cursor-not-allowed"
+                                        }`}
                                     />
                                     {errors.tb1_vlr_custo && <span className="text-red-600">{errors.tb1_vlr_custo}</span>}
                                 </div>
@@ -90,11 +96,22 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
                                         placeholder="0,00"
                                         value={data.tb1_vlr_venda}
                                         onChange={(e) => setData("tb1_vlr_venda", e.target.value)}
-                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                        disabled={!canEditPrices}
+                                        className={`mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm ${
+                                            canEditPrices
+                                                ? "focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                                : "bg-gray-100 text-gray-500 cursor-not-allowed"
+                                        }`}
                                     />
                                     {errors.tb1_vlr_venda && <span className="text-red-600">{errors.tb1_vlr_venda}</span>}
                                 </div>
                             </div>
+
+                            {!canEditPrices && (
+                                <p className="mb-4 text-xs text-amber-800">
+                                    Apenas Master, Gerente e Sub-Gerente podem alterar os valores de custo e venda.
+                                </p>
+                            )}
 
                             <div className="mb-4 grid gap-4 sm:grid-cols-2">
                                 <div>

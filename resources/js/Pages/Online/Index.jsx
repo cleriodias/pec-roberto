@@ -1,4 +1,4 @@
-import AlertMessage from '@/Components/Alert/AlertMessage';
+﻿import AlertMessage from '@/Components/Alert/AlertMessage';
 import Modal from '@/Components/Modal';
 import PrimaryButton from '@/Components/Button/PrimaryButton';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
@@ -88,6 +88,32 @@ const resolveErrorMessage = (error, fallback) => {
 
 const resolveDraftKey = (userId) => String(userId ?? '');
 
+const formatMessageFooterMeta = (value) => {
+    if (!value) {
+        return {
+            date: '--',
+            time: '--:--',
+        };
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return {
+            date: '--',
+            time: '--:--',
+        };
+    }
+
+    return {
+        date: date.toLocaleDateString('pt-BR'),
+        time: date.toLocaleTimeString('pt-BR', {
+            hour: '2-digit',
+            minute: '2-digit',
+        }),
+    };
+};
+
 const COMPACT_BADGE_CLASSNAME =
     'inline-flex shrink-0 items-center justify-center rounded-full border font-semibold uppercase tracking-wide whitespace-nowrap';
 
@@ -159,10 +185,7 @@ export default function OnlineIndex({
     const messagesEndRef = useRef(null);
     const messagesContainerRef = useRef(null);
     const selectedUserIdRef = useRef(initialSelectedUserId);
-    const lastMessageMetaRef = useRef({
-        selectedUserId: initialSelectedUserId,
-        count: initialMessages.length,
-    });
+    const hasInitialConversationScrollRef = useRef(false);
 
     const selectedUser = useMemo(
         () =>
@@ -196,30 +219,17 @@ export default function OnlineIndex({
     }, [selectedUserId]);
 
     useEffect(() => {
-        const container = messagesContainerRef.current;
-        const previous = lastMessageMetaRef.current;
-        const latestMessage = messages[messages.length - 1] ?? null;
-        const selectedChanged =
-            Number(previous.selectedUserId ?? 0) !== Number(selectedUser?.id ?? 0);
-        const countIncreased = messages.length > Number(previous.count ?? 0);
-        const distanceFromBottom = container
-            ? container.scrollHeight - container.scrollTop - container.clientHeight
-            : 0;
-        const shouldStickToBottom =
-            selectedChanged ||
-            (countIncreased && (distanceFromBottom < 120 || Boolean(latestMessage?.is_mine)));
-
-        if (shouldStickToBottom) {
-            messagesEndRef.current?.scrollIntoView({
-                behavior: selectedChanged ? 'auto' : 'smooth',
-            });
+        if (hasInitialConversationScrollRef.current || !selectedUser) {
+            return;
         }
 
-        lastMessageMetaRef.current = {
-            selectedUserId: selectedUser?.id ?? null,
-            count: messages.length,
-        };
-    }, [messages, selectedUser?.id]);
+        hasInitialConversationScrollRef.current = true;
+        window.requestAnimationFrame(() => {
+            messagesEndRef.current?.scrollIntoView({
+                behavior: 'auto',
+            });
+        });
+    }, [selectedUser]);
 
     useEffect(() => {
         if (selectedUser) {
@@ -236,7 +246,7 @@ export default function OnlineIndex({
         }
     }, [editingMessageId]);
 
-    const applySnapshot = (payload, requestedUserId = null) => {
+    const applySnapshot = (payload, requestedUserId = null, shouldAutoScroll = false) => {
         const nextUsers = Array.isArray(payload?.onlineUsers) ? payload.onlineUsers : [];
         const nextOfflineUsers = Array.isArray(payload?.offlineUsers) ? payload.offlineUsers : [];
         const availableIds = nextUsers
@@ -248,6 +258,9 @@ export default function OnlineIndex({
                 : payload?.selectedUserId && availableIds.includes(Number(payload.selectedUserId))
                   ? Number(payload.selectedUserId)
                   : nextUsers[0]?.id ?? nextOfflineUsers[0]?.id ?? null;
+        const currentSelectedUserId = Number(selectedUserIdRef.current ?? 0);
+        const nextSelectedUserIdNumber = Number(nextSelectedUserId ?? 0);
+        const selectedConversationChanged = currentSelectedUserId !== nextSelectedUserIdNumber;
 
         setOnlineUsers(nextUsers);
         setOfflineUsers(nextOfflineUsers);
@@ -256,9 +269,17 @@ export default function OnlineIndex({
         if (payload?.currentUser) {
             setCurrentViewer(payload.currentUser);
         }
+
+        if ((shouldAutoScroll || selectedConversationChanged) && nextSelectedUserId) {
+            window.requestAnimationFrame(() => {
+                messagesEndRef.current?.scrollIntoView({
+                    behavior: 'auto',
+                });
+            });
+        }
     };
 
-    const loadSnapshot = async (requestedUserId = null, silent = false) => {
+    const loadSnapshot = async (requestedUserId = null, silent = false, shouldAutoScroll = false) => {
         if (!silent) {
             setLoadingSnapshot(true);
         } else {
@@ -270,7 +291,7 @@ export default function OnlineIndex({
                 params: requestedUserId ? { selected_user_id: requestedUserId } : {},
             });
 
-            applySnapshot(response.data ?? {}, requestedUserId);
+            applySnapshot(response.data ?? {}, requestedUserId, shouldAutoScroll);
             setErrorMessage('');
         } catch (error) {
             if (!silent) {
@@ -333,7 +354,7 @@ export default function OnlineIndex({
 
     const handleSelectUser = (userId) => {
         setSelectedUserId(userId);
-        loadSnapshot(userId);
+        loadSnapshot(userId, false, true);
     };
 
     const closeAnyDeskModal = () => {
@@ -570,7 +591,7 @@ export default function OnlineIndex({
                 type="button"
                 key={`${offline ? 'offline' : 'online'}-${user.id}`}
                 onClick={() => handleSelectUser(user.id)}
-                className={`flex w-full items-center gap-2 overflow-hidden border-b border-gray-100 px-4 py-4 text-left transition last:border-b-0 dark:border-gray-800 ${
+                className={`flex w-full flex-col gap-1 overflow-hidden border-b border-gray-100 px-4 py-4 text-left transition last:border-b-0 dark:border-gray-800 ${
                     isSelected
                         ? hasUnread
                             ? 'border-l-4 border-l-emerald-500 bg-slate-100 dark:border-l-emerald-400 dark:bg-slate-800/80'
@@ -582,43 +603,48 @@ export default function OnlineIndex({
                             : 'hover:bg-gray-50 dark:hover:bg-gray-800/70'
                 }`}
             >
-                <span
-                    className={`inline-flex min-w-[72px] max-w-[108px] items-center justify-center ${getUserNameBadgeClassName()}`}
-                >
-                    <span className="truncate">
-                        {String(user.name ?? '').toUpperCase()}
+                <div className="flex w-full items-start gap-2">
+                    <span
+                        className={`inline-flex min-w-[72px] max-w-[108px] items-center justify-center ${getUserNameBadgeClassName()}`}
+                    >
+                        <span className="truncate">
+                            {String(user.name ?? '').toUpperCase()}
+                        </span>
                     </span>
-                </span>
-                <span
-                    className={COMPACT_BADGE_CLASSNAME}
-                    style={{
-                        ...getRoleBadgeStyle(user.role_label),
-                        padding: '0 6px',
-                        fontSize: '9px',
-                        lineHeight: '12px',
-                        minHeight: '16px',
-                    }}
-                >
-                    {formatRoleBadgeLabel(user.role_label)}
-                </span>
-                <span
-                    className={COMPACT_BADGE_CLASSNAME}
-                    style={{
-                        ...getUnitBadgeStyle(user.unit_name),
-                        padding: '0 6px',
-                        fontSize: '9px',
-                        lineHeight: '12px',
-                        minHeight: '16px',
-                        minWidth: '52px',
-                    }}
-                >
-                    {formatUnitBadgeLabel(user.unit_name)}
-                </span>
-                {hasUnread && (
-                    <span className="ms-auto -mt-3 shrink-0 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm">
-                        {user.unread_count}
+                    <span
+                        className={COMPACT_BADGE_CLASSNAME}
+                        style={{
+                            ...getRoleBadgeStyle(user.role_label),
+                            padding: '0 6px',
+                            fontSize: '9px',
+                            lineHeight: '12px',
+                            minHeight: '16px',
+                        }}
+                    >
+                        {formatRoleBadgeLabel(user.role_label)}
                     </span>
-                )}
+                    <span
+                        className={COMPACT_BADGE_CLASSNAME}
+                        style={{
+                            ...getUnitBadgeStyle(user.unit_name),
+                            padding: '0 6px',
+                            fontSize: '9px',
+                            lineHeight: '12px',
+                            minHeight: '16px',
+                            minWidth: '52px',
+                        }}
+                    >
+                        {formatUnitBadgeLabel(user.unit_name)}
+                    </span>
+                    {hasUnread && (
+                        <span className="ms-auto -mt-3 shrink-0 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm">
+                            {user.unread_count}
+                        </span>
+                    )}
+                </div>
+                <span className="block w-full truncate text-[11px] font-medium leading-4 text-gray-500 dark:text-gray-400">
+                    {String(user.last_message_preview ?? '').trim()}
+                </span>
             </button>
         );
     };
@@ -710,7 +736,7 @@ export default function OnlineIndex({
                                 )}
                             </div>
 
-                            <div className="flex min-h-[68vh] flex-col">
+                            <div className="flex h-[68vh] min-h-0 flex-col">
                                 <div
                                     ref={messagesContainerRef}
                                     className="flex-1 space-y-3 overflow-y-auto px-5 py-5"
@@ -743,7 +769,7 @@ export default function OnlineIndex({
                                                             }`}
                                                             style={message.is_mine ? { color: '#475569' } : undefined}
                                                         >
-                                                            {String(message.sender_name ?? '---').toUpperCase()} - {message.sender_role_label} | {formatBrazilDateTime(message.sent_at)}
+                                                            {String(message.sender_name ?? '---').toUpperCase()} - {message.sender_role_label}
                                                         </div>
                                                         <div
                                                             className="prose prose-sm max-w-none text-inherit prose-p:my-0 prose-strong:text-inherit prose-em:text-inherit prose-u:text-inherit"
@@ -751,6 +777,25 @@ export default function OnlineIndex({
                                                                 __html: renderMessage(message.message),
                                                             }}
                                                         />
+                                                        <div className="mt-2 flex justify-end">
+                                                            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-300">
+                                                                {formatMessageFooterMeta(message.sent_at).date}
+                                                            </span>
+                                                            <span className="ml-2 text-[11px] font-semibold text-slate-500 dark:text-slate-300">
+                                                                {formatMessageFooterMeta(message.sent_at).time}
+                                                            </span>
+                                                            {message.is_mine && (
+                                                                <span
+                                                                    className="ml-2 text-[11px] font-bold tracking-[-0.18em]"
+                                                                    style={{
+                                                                        color: message.read_at ? '#38bdf8' : '#e2e8f0',
+                                                                    }}
+                                                                    title={message.read_at ? 'Mensagem lida' : 'Mensagem entregue'}
+                                                                >
+                                                                    {'\u2713\u2713'}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))

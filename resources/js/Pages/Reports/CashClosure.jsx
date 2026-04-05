@@ -1,7 +1,8 @@
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { formatBrazilDateTime } from '@/Utils/date';
-import { Head, Link, router } from '@inertiajs/react';
+import axios from 'axios';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
 
 const paymentColumns = [
@@ -85,9 +86,19 @@ export default function CashClosure({
     discardDetails = [],
     meta = {},
 }) {
+    const { auth } = usePage().props;
+    const isMaster = Number(auth?.user?.funcao ?? -1) === 0;
     const normalizedSelectedUnit = selectedUnitId ?? null;
     const [dateInput, setDateInput] = useState(dateInputValue ?? '');
     const [unitFilter, setUnitFilter] = useState(normalizedSelectedUnit);
+    const [masterReviewModal, setMasterReviewModal] = useState({
+        open: false,
+        record: null,
+        cashAmount: '',
+        cardAmount: '',
+        error: '',
+        processing: false,
+    });
     const [discardModal, setDiscardModal] = useState({
         open: false,
         cashierName: '',
@@ -204,6 +215,34 @@ export default function CashClosure({
         });
     };
 
+    const openMasterReviewModal = (record) => {
+        const closure = record?.closure ?? null;
+
+        if (!closure?.id) {
+            return;
+        }
+
+        setMasterReviewModal({
+            open: true,
+            record,
+            cashAmount: String(closure.cash_amount ?? 0),
+            cardAmount: String(closure.card_amount ?? 0),
+            error: '',
+            processing: false,
+        });
+    };
+
+    const closeMasterReviewModal = () => {
+        setMasterReviewModal({
+            open: false,
+            record: null,
+            cashAmount: '',
+            cardAmount: '',
+            error: '',
+            processing: false,
+        });
+    };
+
     const discardModalTotals = useMemo(() => {
         const quantity = discardModal.items.reduce((sum, item) => sum + (item.quantity ?? 0), 0);
         const value = discardModal.items.reduce((sum, item) => sum + (item.value ?? 0), 0);
@@ -213,6 +252,51 @@ export default function CashClosure({
             value,
         };
     }, [discardModal.items]);
+
+    const submitMasterReview = async (event) => {
+        event.preventDefault();
+
+        const closureId = masterReviewModal.record?.closure?.id;
+        if (!closureId || masterReviewModal.processing) {
+            return;
+        }
+
+        setMasterReviewModal((current) => ({
+            ...current,
+            processing: true,
+            error: '',
+        }));
+
+        try {
+            await axios.patch(route('reports.cash.closure.master-review', closureId), {
+                cash_amount: masterReviewModal.cashAmount,
+                card_amount: masterReviewModal.cardAmount,
+            });
+
+            closeMasterReviewModal();
+            router.reload({
+                only: ['records', 'dateValue', 'dateInputValue', 'filterUnits', 'selectedUnitId', 'selectedUnit', 'discardDetails', 'meta'],
+                preserveScroll: true,
+            });
+        } catch (error) {
+            let message = 'Nao foi possivel atualizar a conferencia do Master.';
+
+            if (error.response?.data?.errors) {
+                const firstError = Object.values(error.response.data.errors).flat()[0];
+                if (firstError) {
+                    message = String(firstError);
+                }
+            } else if (error.response?.data?.message) {
+                message = String(error.response.data.message);
+            }
+
+            setMasterReviewModal((current) => ({
+                ...current,
+                processing: false,
+                error: message,
+            }));
+        }
+    };
 
     const renderSystemAlignedCell = (label, value) => (
         <div className="space-y-1 text-right">
@@ -227,7 +311,7 @@ export default function CashClosure({
                 <p className="text-sm text-transparent select-none">{formatCurrency(0)}</p>
             </div>
             <div>
-                <p className="text-xs text-transparent select-none">Diferenca</p>
+                <p className="text-xs text-transparent select-none">Diferença</p>
                 <p className="text-sm font-semibold text-transparent select-none">
                     {formatCurrency(0)}
                 </p>
@@ -312,9 +396,9 @@ export default function CashClosure({
 
     const filterCard = (
         <div className="rounded-2xl bg-white p-6 shadow">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="">
-                    <div className="mt-0">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="flex-1">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
                         <input
                             id="closure-date"
                             type="date"
@@ -322,30 +406,39 @@ export default function CashClosure({
                             onChange={(event) => handleDateChange(event.target.value)}
                             className="mt-2 w-50 rounded-xl border border-gray-300 px-3 py-3 text-gray-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                         />
+                        <div className="flex-1 lg:pl-4">
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {unitOptions.map((unit) => {
+                                    const optionId = unit.id ?? null;
+                                    const isActive = optionId === (unitFilter ?? null);
+
+                                    return (
+                                        <button
+                                            type="button"
+                                            key={`unit-filter-${optionId ?? 'all'}`}
+                                            onClick={() => handleUnitFilter(optionId)}
+                                            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                                isActive
+                                                    ? 'bg-indigo-600 text-white shadow'
+                                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                            }`}
+                                        >
+                                            {unit.name}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div className="flex-1 lg:pl-8">
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        {unitOptions.map((unit) => {
-                            const optionId = unit.id ?? null;
-                            const isActive = optionId === (unitFilter ?? null);
-
-                            return (
-                                <button
-                                    type="button"
-                                    key={`unit-filter-${optionId ?? 'all'}`}
-                                    onClick={() => handleUnitFilter(optionId)}
-                                    className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                                        isActive
-                                            ? 'bg-indigo-600 text-white shadow'
-                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                    }`}
-                                >
-                                    {unit.name}
-                                </button>
-                            );
-                        })}
-                    </div>
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-5 py-4 text-left shadow-sm xl:min-w-[190px]">
+                    <p className="text-sm text-emerald-800">Base da conferencia</p>
+                    <p className="text-2xl font-bold text-emerald-900">
+                        {formatCurrency(conferenceGrandTotal)}
+                    </p>
+                    <p className="mt-1 text-xs text-emerald-700">
+                        Somente dinheiro + cartao
+                    </p>
                 </div>
             </div>
         </div>
@@ -383,17 +476,6 @@ export default function CashClosure({
                     <p className="text-sm text-indigo-800 dark:text-indigo-200">Total de vendas</p>
                     <p className="text-2xl font-bold text-indigo-900 dark:text-white">
                         {formatCurrency(salesGrandTotal)}
-                    </p>
-                </div>
-                <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-center dark:border-emerald-500/40 dark:bg-emerald-900/30">
-                    <p className="text-sm text-emerald-800 dark:text-emerald-200">
-                        Base da conferencia
-                    </p>
-                    <p className="text-2xl font-bold text-emerald-900 dark:text-white">
-                        {formatCurrency(conferenceGrandTotal)}
-                    </p>
-                    <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-200">
-                        Somente dinheiro + cartao
                     </p>
                 </div>
             </div>
@@ -436,6 +518,7 @@ export default function CashClosure({
                             {records.map((record) => {
                                 const closure = record.closure ?? null;
                                 const closed = closure?.closed;
+                                const masterReviewed = Boolean(closure?.master_review?.reviewed);
                                 const statusClass = closed
                                     ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200'
                                     : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200';
@@ -482,12 +565,29 @@ export default function CashClosure({
                                                         : ''}
                                                 </span>
                                             </button>
-                                            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusClass}`}>
-                                                {closed ? 'Fechado' : 'Pendente'}
-                                            </span>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusClass}`}>
+                                                    {closed ? 'Fechado' : 'Pendente'}
+                                                </span>
+                                                {isMaster && closed && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openMasterReviewModal(record)}
+                                                        className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                                                    >
+                                                        Master Confere
+                                                    </button>
+                                                )}
+                                            </div>
                                             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                                 {closed ? formatDateTime(closure?.closed_at) : 'Sem registro'}
                                             </p>
+                                            {masterReviewed && (
+                                                <p className="mt-1 text-xs font-medium text-indigo-600 dark:text-indigo-300">
+                                                    Conferido por {closure?.master_review?.checked_by_name ?? 'Master'} em{' '}
+                                                    {formatDateTime(closure?.master_review?.checked_at)}
+                                                </p>
+                                            )}
                                         </td>
                                         {paymentColumns.map((column) => (
                                             <td
@@ -555,6 +655,103 @@ export default function CashClosure({
                     {tableSection}
                 </div>
             </div>
+            <Modal show={masterReviewModal.open} onClose={closeMasterReviewModal} maxWidth="lg" tone="light">
+                <div className="bg-white p-6 text-gray-800">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-900">
+                                Master Confere
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                                Ajuste os valores informados no fechamento para a segunda conferencia.
+                            </p>
+                        </div>
+                    </div>
+
+                    {masterReviewModal.record && (
+                        <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+                            <p>
+                                <span className="font-semibold">Caixa:</span> {masterReviewModal.record.cashier_name}
+                            </p>
+                            <p>
+                                <span className="font-semibold">Unidade:</span> {masterReviewModal.record.unit_name ?? '---'}
+                            </p>
+                            <p>
+                                <span className="font-semibold">Fechamento original:</span>{' '}
+                                Dinheiro {formatCurrency(masterReviewModal.record.closure?.original_cash_amount ?? 0)} ·
+                                Cartao {formatCurrency(masterReviewModal.record.closure?.original_card_amount ?? 0)}
+                            </p>
+                        </div>
+                    )}
+
+                    <form onSubmit={submitMasterReview} className="mt-6 space-y-4">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                                <label className="text-sm font-medium text-gray-700">
+                                    Dinheiro
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={masterReviewModal.cashAmount}
+                                    onChange={(event) =>
+                                        setMasterReviewModal((current) => ({
+                                            ...current,
+                                            cashAmount: event.target.value,
+                                            error: '',
+                                        }))
+                                    }
+                                    className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-gray-700">
+                                    Cartao
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={masterReviewModal.cardAmount}
+                                    onChange={(event) =>
+                                        setMasterReviewModal((current) => ({
+                                            ...current,
+                                            cardAmount: event.target.value,
+                                            error: '',
+                                        }))
+                                    }
+                                    className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                />
+                            </div>
+                        </div>
+
+                        {masterReviewModal.error && (
+                            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                                {masterReviewModal.error}
+                            </div>
+                        )}
+
+                        <div className="flex justify-end gap-3 border-t border-gray-200 pt-4">
+                            <button
+                                type="button"
+                                onClick={closeMasterReviewModal}
+                                disabled={masterReviewModal.processing}
+                                className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100 disabled:opacity-60"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={masterReviewModal.processing}
+                                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-700 disabled:opacity-60"
+                            >
+                                Salvar conferencia
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </Modal>
             <Modal show={discardModal.open} onClose={closeDiscardModal} maxWidth="xl" tone="light">
                 <div className="bg-white p-6 text-gray-800">
                     <div className="flex items-start justify-between gap-4">

@@ -254,11 +254,12 @@ class SalesReportController extends Controller
                 $sales = $payment->vendas->values();
                 $firstSale = $sales->first();
                 $saleDateTime = $firstSale?->data_hora ?? $payment->created_at;
+                $receiptComanda = $this->resolveReceiptComanda($sales);
 
                 return [
                     'id' => $payment->tb4_id,
                     'date_time' => $saleDateTime?->toIso8601String(),
-                    'comanda' => $sales->pluck('id_comanda')->filter()->unique()->implode(', '),
+                    'comanda' => $receiptComanda,
                     'items_count' => (int) $sales->sum('quantidade'),
                     'items_label' => $sales
                         ->map(function (Venda $sale) {
@@ -271,6 +272,7 @@ class SalesReportController extends Controller
                     'vale_user' => $firstSale?->valeUser?->name ?? null,
                     'receipt' => [
                         'id' => $payment->tb4_id,
+                        'comanda' => $receiptComanda,
                         'total' => round((float) $payment->valor_total, 2),
                         'date_time' => $saleDateTime?->toIso8601String(),
                         'tipo_pago' => $payment->tipo_pagamento,
@@ -635,6 +637,7 @@ class SalesReportController extends Controller
                 $saleDateTime = $firstSale?->data_hora ?? $payment->created_at;
                 $cashierId = $firstSale?->id_user_caixa ? (int) $firstSale->id_user_caixa : null;
                 $unitId = $firstSale?->id_unidade ? (int) $firstSale->id_unidade : null;
+                $receiptComanda = $this->resolveReceiptComanda($sales);
 
                 return [
                     'id' => $payment->tb4_id,
@@ -644,10 +647,11 @@ class SalesReportController extends Controller
                     'unit_id' => $unitId,
                     'unit_name' => $firstSale?->unidade?->tb2_nome ?? '---',
                     'date_time' => $saleDateTime?->toIso8601String(),
-                    'comanda' => $sales->pluck('id_comanda')->filter()->unique()->implode(', '),
+                    'comanda' => $receiptComanda,
                     'total' => round((float) $payment->valor_total, 2),
                     'receipt' => [
                         'id' => $payment->tb4_id,
+                        'comanda' => $receiptComanda,
                         'total' => round((float) $payment->valor_total, 2),
                         'date_time' => $saleDateTime?->toIso8601String(),
                         'tipo_pago' => $payment->tipo_pagamento,
@@ -1085,19 +1089,26 @@ class SalesReportController extends Controller
 
     public function hoje(Request $request): Response
     {
-        $this->ensureCashier($request);
+        $this->ensureHojeAccess($request);
 
         $unitId = $this->resolveUnitId($request);
         $unit = Unidade::find($unitId, ['tb2_id', 'tb2_nome', 'tb2_endereco', 'tb2_cnpj']);
         $start = Carbon::today()->startOfDay();
         $end = Carbon::today()->endOfDay();
+        $receiptId = $this->parseReceiptIdFilter($request->query('cupom'));
+        $comandaId = $this->parseReceiptIdFilter($request->query('comanda'));
+        $valueFilter = $this->parseCurrencyFilter($request->query('valor'));
+        $timeWindow = $this->resolveHojeTimeWindow($request->query('hora'), $start, $end);
 
         $records = VendaPagamento::query()
             ->with([
-                'vendas' => function ($query) use ($unitId) {
+                'vendas' => function ($query) use ($unitId, $start, $end) {
                     $query
                         ->with(['caixa:id,name', 'valeUser:id,name'])
-                        ->where('id_unidade', $unitId)
+                        ->whereBetween('data_hora', [$start, $end])
+                        ->when($unitId > 0, function ($salesQuery) use ($unitId) {
+                            $salesQuery->where('id_unidade', $unitId);
+                        })
                         ->orderBy('tb3_id')
                         ->select([
                             'tb3_id',
@@ -1116,13 +1127,28 @@ class SalesReportController extends Controller
                         ]);
                 },
             ])
-            ->whereBetween('created_at', [$start, $end])
-            ->when($unitId > 0, function ($query) use ($unitId) {
-                $query->whereHas('vendas', function ($subQuery) use ($unitId) {
-                    $subQuery->where('id_unidade', $unitId);
-                });
+            ->whereHas('vendas', function ($query) use ($unitId, $start, $end, $timeWindow, $comandaId) {
+                $query
+                    ->whereBetween('data_hora', [$start, $end])
+                    ->when($unitId > 0, function ($salesQuery) use ($unitId) {
+                        $salesQuery->where('id_unidade', $unitId);
+                    })
+                    ->when($comandaId !== null, function ($salesQuery) use ($comandaId) {
+                        $salesQuery->where('id_comanda', $comandaId);
+                    })
+                    ->when($timeWindow !== null, function ($salesQuery) use ($timeWindow) {
+                        $salesQuery->whereBetween('data_hora', [$timeWindow['start'], $timeWindow['end']]);
+                    });
             })
+            ->when($receiptId !== null, function ($query) use ($receiptId) {
+                $query->where('tb4_id', $receiptId);
+            })
+            ->when($valueFilter !== null, function ($query) use ($valueFilter) {
+                $query->whereBetween('valor_total', [$valueFilter - 0.005, $valueFilter + 0.005]);
+            })
+            ->orderByDesc('created_at')
             ->orderByDesc('tb4_id')
+            ->limit(10)
             ->get([
                 'tb4_id',
                 'valor_total',
@@ -1136,15 +1162,17 @@ class SalesReportController extends Controller
                 $sales = $payment->vendas->values();
                 $firstSale = $sales->first();
                 $saleDateTime = $firstSale?->data_hora ?? $payment->created_at;
+                $receiptComanda = $this->resolveReceiptComanda($sales);
 
                 return [
                     'id' => $payment->tb4_id,
                     'date' => $saleDateTime?->format('d/m/Y'),
                     'time' => $saleDateTime?->format('H:i'),
-                    'comanda' => $sales->pluck('id_comanda')->filter()->unique()->implode(', '),
+                    'comanda' => $receiptComanda,
                     'total' => round((float) $payment->valor_total, 2),
                     'receipt' => [
                         'id' => $payment->tb4_id,
+                        'comanda' => $receiptComanda,
                         'total' => round((float) $payment->valor_total, 2),
                         'date_time' => $saleDateTime?->toIso8601String(),
                         'tipo_pago' => $payment->tipo_pagamento,
@@ -1188,6 +1216,12 @@ class SalesReportController extends Controller
             'unit' => [
                 'id' => $unit?->tb2_id ?? $unitId,
                 'name' => $unit?->tb2_nome ?? '---',
+            ],
+            'filters' => [
+                'cupom' => $receiptId !== null ? (string) $receiptId : trim((string) $request->query('cupom', '')),
+                'comanda' => $comandaId !== null ? (string) $comandaId : trim((string) $request->query('comanda', '')),
+                'valor' => trim((string) $request->query('valor', '')),
+                'hora' => $timeWindow['value'] ?? trim((string) $request->query('hora', '')),
             ],
         ]);
     }
@@ -1334,8 +1368,17 @@ class SalesReportController extends Controller
             });
         }
 
-        $closures = $closureQuery
-            ->get()
+        $closuresCollection = $closureQuery->get();
+        $reviewerIds = $closuresCollection
+            ->pluck('master_checked_by')
+            ->filter()
+            ->unique()
+            ->values();
+        $reviewers = $reviewerIds->isNotEmpty()
+            ? User::whereIn('id', $reviewerIds)->get(['id', 'name'])->keyBy('id')
+            : collect();
+
+        $closures = $closuresCollection
             ->mapWithKeys(function ($closure) {
                 $unitKey = $closure->unit_id ?? 'none';
                 return [$closure->user_id . '-' . $unitKey => $closure];
@@ -1433,7 +1476,7 @@ class SalesReportController extends Controller
             });
 
         $records = collect($grouped)
-            ->map(function (array $record) use ($closures, $discardTotals, $discardAlertService, $discardThreshold) {
+            ->map(function (array $record) use ($closures, $discardTotals, $discardAlertService, $discardThreshold, $reviewers) {
                 $record['totals'] = array_map(fn ($value) => round($value, 2), $record['totals']);
                 $record['grand_total'] = round($record['grand_total'], 2);
                 $record['row_key'] = $record['row_key'] ?? ($record['cashier_id'] . '-' . ($record['unit_id'] ?? 'none'));
@@ -1448,24 +1491,47 @@ class SalesReportController extends Controller
                 if ($closure) {
                     $cashClosure = (float) $closure->cash_amount;
                     $cardClosure = (float) $closure->card_amount;
-                    $closureTotal = $cashClosure + $cardClosure;
+                    $hasMasterReview = $closure->master_checked_at !== null
+                        && $closure->master_cash_amount !== null
+                        && $closure->master_card_amount !== null;
+                    $effectiveCashClosure = $hasMasterReview
+                        ? (float) $closure->master_cash_amount
+                        : $cashClosure;
+                    $effectiveCardClosure = $hasMasterReview
+                        ? (float) $closure->master_card_amount
+                        : $cardClosure;
+                    $closureTotal = $effectiveCashClosure + $effectiveCardClosure;
 
                     $record['closure'] = [
+                        'id' => $closure->id,
                         'closed' => true,
-                        'cash_amount' => round($cashClosure, 2),
-                        'card_amount' => round($cardClosure, 2),
+                        'cash_amount' => round($effectiveCashClosure, 2),
+                        'card_amount' => round($effectiveCardClosure, 2),
                         'total_amount' => round($closureTotal, 2),
                         'unit_id' => $closure->unit_id,
                         'unit_name' => $closure->unit_name,
                         'closed_at' => optional($closure->closed_at)->toIso8601String(),
+                        'original_cash_amount' => round($cashClosure, 2),
+                        'original_card_amount' => round($cardClosure, 2),
+                        'master_review' => [
+                            'reviewed' => $hasMasterReview,
+                            'cash_amount' => $hasMasterReview ? round((float) $closure->master_cash_amount, 2) : null,
+                            'card_amount' => $hasMasterReview ? round((float) $closure->master_card_amount, 2) : null,
+                            'checked_at' => optional($closure->master_checked_at)->toIso8601String(),
+                            'checked_by' => $closure->master_checked_by,
+                            'checked_by_name' => $closure->master_checked_by
+                                ? ($reviewers[$closure->master_checked_by]->name ?? null)
+                                : null,
+                        ],
                         'differences' => [
-                            'cash' => round($cashSystem - $cashClosure, 2),
-                            'card' => round($cardSystem - $cardClosure, 2),
+                            'cash' => round($cashSystem - $effectiveCashClosure, 2),
+                            'card' => round($cardSystem - $effectiveCardClosure, 2),
                             'total' => round($systemTotal - $closureTotal, 2),
                         ],
                     ];
                 } else {
                     $record['closure'] = [
+                        'id' => null,
                         'closed' => false,
                         'cash_amount' => 0.0,
                         'card_amount' => 0.0,
@@ -1473,6 +1539,16 @@ class SalesReportController extends Controller
                         'unit_id' => null,
                         'unit_name' => null,
                         'closed_at' => null,
+                        'original_cash_amount' => 0.0,
+                        'original_card_amount' => 0.0,
+                        'master_review' => [
+                            'reviewed' => false,
+                            'cash_amount' => null,
+                            'card_amount' => null,
+                            'checked_at' => null,
+                            'checked_by' => null,
+                            'checked_by_name' => null,
+                        ],
                         'differences' => [
                             'cash' => round($cashSystem, 2),
                             'card' => round($cardSystem, 2),
@@ -1508,6 +1584,27 @@ class SalesReportController extends Controller
             'selectedUnit' => $selectedUnit,
             'discardDetails' => $discardDetails,
             'meta' => self::TYPE_META,
+        ]);
+    }
+
+    public function updateCashClosureMasterReview(Request $request, CashierClosure $closure): JsonResponse
+    {
+        $this->ensureMaster($request);
+
+        $validated = $request->validate([
+            'cash_amount' => ['required', 'numeric', 'min:0'],
+            'card_amount' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $closure->forceFill([
+            'master_cash_amount' => round((float) $validated['cash_amount'], 2),
+            'master_card_amount' => round((float) $validated['card_amount'], 2),
+            'master_checked_by' => $request->user()->id,
+            'master_checked_at' => now(),
+        ])->save();
+
+        return response()->json([
+            'message' => 'Conferencia do Master atualizada com sucesso.',
         ]);
     }
 
@@ -2024,11 +2121,29 @@ class SalesReportController extends Controller
         }
     }
 
+    private function ensureMaster(Request $request): void
+    {
+        $user = $request->user();
+
+        if (! $user || (int) $user->funcao !== 0) {
+            abort(403);
+        }
+    }
+
     private function ensureCashier(Request $request): void
     {
         $user = $request->user();
 
         if (! $user || (int) $user->funcao !== 3) {
+            abort(403);
+        }
+    }
+
+    private function ensureHojeAccess(Request $request): void
+    {
+        $user = $request->user();
+
+        if (! $user || ! in_array((int) $user->funcao, [0, 1, 2, 3], true)) {
             abort(403);
         }
     }
@@ -2151,9 +2266,11 @@ class SalesReportController extends Controller
         $sales = $payment->vendas->values();
         $firstSale = $sales->first();
         $saleDateTime = $firstSale?->data_hora ?? $payment->created_at;
+        $receiptComanda = $this->resolveReceiptComanda($sales);
 
         return [
             'id' => $payment->tb4_id,
+            'comanda' => $receiptComanda,
             'total' => round((float) $payment->valor_total, 2),
             'date_time' => $saleDateTime?->toIso8601String(),
             'tipo_pago' => $payment->tipo_pagamento,
@@ -2190,6 +2307,17 @@ class SalesReportController extends Controller
         ];
     }
 
+    private function resolveReceiptComanda(Collection $sales): ?string
+    {
+        $comanda = $sales
+            ->pluck('id_comanda')
+            ->filter(fn ($value) => $value !== null && $value !== '')
+            ->unique()
+            ->implode(', ');
+
+        return $comanda !== '' ? $comanda : null;
+    }
+
     private function parseDate(?string $value, string $format, Carbon $fallback): Carbon
     {
         if (!$value) {
@@ -2201,6 +2329,69 @@ class SalesReportController extends Controller
         } catch (InvalidFormatException $exception) {
             return $fallback;
         }
+    }
+
+    private function parseReceiptIdFilter(mixed $value): ?int
+    {
+        $digits = preg_replace('/\D+/', '', trim((string) $value));
+
+        if ($digits === null || $digits === '') {
+            return null;
+        }
+
+        $receiptId = (int) $digits;
+
+        return $receiptId > 0 ? $receiptId : null;
+    }
+
+    private function parseCurrencyFilter(mixed $value): ?float
+    {
+        $normalized = trim((string) $value);
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        $normalized = str_replace(['R$', ' '], '', $normalized);
+
+        if (str_contains($normalized, ',')) {
+            $normalized = str_replace('.', '', $normalized);
+            $normalized = str_replace(',', '.', $normalized);
+        }
+
+        if (! is_numeric($normalized)) {
+            return null;
+        }
+
+        return round((float) $normalized, 2);
+    }
+
+    private function resolveHojeTimeWindow(mixed $value, Carbon $start, Carbon $end): ?array
+    {
+        $normalized = trim((string) $value);
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (! preg_match('/^(\d{1,2}):(\d{2})$/', $normalized, $matches)) {
+            return null;
+        }
+
+        $hour = (int) $matches[1];
+        $minute = (int) $matches[2];
+
+        if ($hour < 0 || $hour > 23 || $minute < 0 || $minute > 59) {
+            return null;
+        }
+
+        $baseTime = $start->copy()->setTime($hour, $minute);
+
+        return [
+            'start' => $baseTime->copy()->subMinutes(10)->max($start->copy()),
+            'end' => $baseTime->copy()->addMinutes(10)->min($end->copy()),
+            'value' => sprintf('%02d:%02d', $hour, $minute),
+        ];
     }
 
     private function resolveUnitId(Request $request): int

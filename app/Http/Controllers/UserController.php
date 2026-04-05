@@ -342,6 +342,9 @@ class UserController extends Controller
         $safeTerm = str_replace(['%', '_'], ['\\%', '\\_'], $term);
         $monthStart = now()->startOfMonth();
         $monthEnd = now()->endOfMonth();
+        $todayStart = now()->startOfDay();
+        $todayEnd = now()->endOfDay();
+        $dailyLimit = $this->resolveRefeicaoDailyLimit(now());
 
         $users = User::query();
         ManagementScope::applyManagedUserScope($users, $request->user());
@@ -364,9 +367,19 @@ class UserController extends Controller
             ->groupBy('id_user_vale')
             ->pluck('total', 'id_user_vale');
 
-        $response = $users->map(function ($user) use ($usagePerUser) {
+        $dailyUsagePerUser = Venda::query()
+            ->selectRaw('id_user_vale, SUM(valor_total) as total')
+            ->where('tipo_pago', 'refeicao')
+            ->whereBetween('data_hora', [$todayStart, $todayEnd])
+            ->whereIn('id_user_vale', $users->pluck('id'))
+            ->groupBy('id_user_vale')
+            ->pluck('total', 'id_user_vale');
+
+        $response = $users->map(function ($user) use ($usagePerUser, $dailyUsagePerUser, $dailyLimit) {
             $used = (float) ($usagePerUser[$user->id] ?? 0);
             $balance = max(0, (float) $user->vr_cred - $used);
+            $dailyUsed = (float) ($dailyUsagePerUser[$user->id] ?? 0);
+            $dailyRemaining = max(0, $dailyLimit - $dailyUsed);
 
             return [
                 'id' => $user->id,
@@ -374,10 +387,18 @@ class UserController extends Controller
                 'vr_cred' => (float) $user->vr_cred,
                 'refeicao_used' => $used,
                 'refeicao_balance' => round($balance, 2),
+                'refeicao_daily_limit' => round($dailyLimit, 2),
+                'refeicao_daily_used' => round($dailyUsed, 2),
+                'refeicao_daily_remaining' => round($dailyRemaining, 2),
             ];
         });
 
         return response()->json($response);
+    }
+
+    private function resolveRefeicaoDailyLimit(Carbon $date): float
+    {
+        return $date->isSunday() ? 24.0 : 12.0;
     }
 
     public function destroy(User $user)

@@ -1,5 +1,6 @@
 import AlertMessage from "@/Components/Alert/AlertMessage";
 import PrimaryButton from "@/Components/Button/PrimaryButton";
+import InfoButton from "@/Components/Button/InfoButton";
 import SuccessButton from "@/Components/Button/SuccessButton";
 import WarningButton from "@/Components/Button/WarningButton";
 import ConfirmDeleteButton from "@/Components/Delete/ConfirmDeleteButton";
@@ -34,6 +35,7 @@ export default function ProductIndex({
     typeLabels,
     statusLabels,
     search = '',
+    vrCreditOnly = false,
     sort = '',
     direction = '',
 }) {
@@ -68,6 +70,10 @@ export default function ProductIndex({
         if (resolvedField) {
             query.sort = resolvedField;
             query.direction = resolvedDir;
+        }
+
+        if (vrCreditOnly) {
+            query.vr_credit = 1;
         }
 
         return query;
@@ -120,6 +126,14 @@ export default function ProductIndex({
         setSortField(field);
         setSortDirection(dir);
         applyQuery({ field, dir });
+    };
+
+    const handleVrCreditFilter = () => {
+        router.get(route('products.index'), {
+            ...(searchTerm.trim() !== '' ? { search: searchTerm.trim() } : {}),
+            ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
+            vr_credit: 1,
+        }, { preserveState: true, replace: true });
     };
 
     const renderSortHeader = (label, field, align = 'left') => {
@@ -186,6 +200,16 @@ export default function ProductIndex({
 
                             </label>
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <InfoButton
+                                    type="button"
+                                    onClick={handleVrCreditFilter}
+                                    aria-label="Mostrar produtos disponiveis para VR Credito"
+                                    title="Mostrar produtos disponiveis para VR Credito"
+                                    className="self-start sm:self-auto whitespace-nowrap"
+                                >
+                                    <i className="bi bi-credit-card me-2 text-sm" aria-hidden="true"></i>
+                                    VR Credito
+                                </InfoButton>
                                 <input
                                     id="product-search"
                                     type="text"
@@ -196,7 +220,7 @@ export default function ProductIndex({
                                 />
                                 <Link
                                     href={route("products.create")}
-                                    className="self-start sm:self-auto"
+                                    className="self-start sm:ms-auto sm:self-auto"
                                 >
                                     <SuccessButton aria-label="Cadastrar" title="Cadastrar" className="h-10 w-10 justify-center p-0">
                                         <i className="bi bi-plus-lg text-lg" aria-hidden="true"></i>
@@ -303,4 +327,3 @@ export default function ProductIndex({
         </AuthenticatedLayout>
     );
 }
-

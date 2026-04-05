@@ -1,5 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { formatBrazilDateTime } from '@/Utils/date';
+import { buildReceiptHtml } from '@/Utils/receipt';
 import { Head, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -23,85 +24,6 @@ const formatDateTime = (value) => {
     }
 
     return formatBrazilDateTime(value);
-};
-
-const buildReceiptHtml = (receipt) => {
-    const unitInfoHtml = `
-        ${receipt.unit_address ? `<p>Endereco: ${receipt.unit_address}</p>` : ''}
-        ${receipt.unit_cnpj ? `<p>CNPJ: ${receipt.unit_cnpj}</p>` : ''}
-    `;
-
-    const itemsHtml = (receipt.items || [])
-        .map(
-            (item) => `
-                <div class="items-row">
-                    <span>${item.quantity}x ${item.product_name}</span>
-                    <span>${formatCurrency(item.unit_price)}</span>
-                </div>
-                <div class="items-row items-row-subtotal">
-                    <span>Subtotal</span>
-                    <span>${formatCurrency(item.subtotal)}</span>
-                </div>
-            `,
-        )
-        .join('');
-
-    const paymentHtml = receipt.payment
-        ? `
-                ${
-                    receipt.payment.valor_pago !== null
-                        ? `<p>Pago em dinheiro: ${formatCurrency(receipt.payment.valor_pago)}</p>`
-                        : ''
-                }
-                <p>Troco: ${formatCurrency(receipt.payment.troco ?? 0)}</p>
-                ${
-                    Number(receipt.payment.dois_pgto ?? 0) > 0
-                        ? `<p>Cartao (compl.): ${formatCurrency(receipt.payment.dois_pgto)}</p>`
-                        : ''
-                }
-            `
-        : '';
-
-    return `
-        <!DOCTYPE html>
-        <html>
-            <head>
-                <meta charset="utf-8" />
-                <title>Cupom #${receipt.id}</title>
-                <style>
-                    * { font-family: 'Courier New', monospace; box-sizing: border-box; }
-                    body { width: 80mm; margin: 0 auto; padding: 12px; }
-                    h1 { text-align: center; font-size: 16px; margin: 0 0 10px 0; }
-                    p { font-size: 12px; margin: 4px 0; }
-                    .divider { border-top: 1px dashed #000; margin: 10px 0; }
-                    .items-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px; }
-                    .items-row-subtotal { font-style: italic; }
-                    .total { font-size: 14px; font-weight: bold; text-align: right; margin-top: 10px; }
-                </style>
-            </head>
-            <body>
-                <h1>${receipt.unit_name || 'Cupom'}</h1>
-                ${unitInfoHtml}
-                <p>Cupom: #${receipt.id}</p>
-                <p>Caixa: ${receipt.cashier_name || '---'}</p>
-                ${
-                    receipt.vale_user_name
-                        ? `<p>Vale: ${receipt.vale_user_name}${
-                              receipt.vale_type === 'refeicao' ? ' (Refeicao)' : ''
-                          }</p>`
-                        : ''
-                }
-                <p>Data: ${formatDateTime(receipt.date_time)}</p>
-                <div class="divider"></div>
-                ${itemsHtml}
-                <div class="divider"></div>
-                <p>Pagamento: ${PAYMENT_LABELS[receipt.tipo_pago] ?? receipt.tipo_pago}</p>
-                ${paymentHtml}
-                <div class="total">Total: ${formatCurrency(receipt.total)}</div>
-                <p style="text-align:center;margin-top:12px;">Obrigado pela preferencia</p>
-            </body>
-        </html>
-    `;
 };
 
 export default function FaturarReport({

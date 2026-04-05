@@ -172,6 +172,7 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
     const isLanchonete = user && effectiveRole === 4;
     const isMaster = user && effectiveRole === 0;
     const isAdmin = user && [0, 1].includes(effectiveRole);
+    const canSeeHojeReport = user && [0, 1, 2, 3].includes(effectiveRole);
     const canSeeUsers = user && [0, 1].includes(effectiveRole);
     const canSeeUnits = canSeeUsers;
     const canSeeReports = canSeeUnits;
@@ -446,7 +447,7 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
         [
             {
                 key: 'reports_hoje',
-                visible: isCashier && hasHojeRoute && hasMenuAccess('reports_hoje'),
+                visible: canSeeHojeReport && hasHojeRoute && hasMenuAccess('reports_hoje'),
                 node: (
                     <Dropdown.Link href={route('reports.hoje')}>
                         <MenuLabel icon="bi bi-receipt-cutoff" text="Hoje" />
