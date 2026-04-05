@@ -26,6 +26,77 @@ const formatDateTime = (value) => {
     return formatBrazilDateTime(value);
 };
 
+const escapeHtml = (value) =>
+    String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+const buildValeSummaryHtml = (rows, totalAmount) => {
+    const printedAt = formatDateTime(new Date());
+    const rowsHtml = rows
+        .map(
+            (row) => `
+                <div class="sale-row">
+                    <div class="sale-head">
+                        <span>ID ${escapeHtml(`#${row.id}`)}</span>
+                        <span>${escapeHtml(formatCurrency(row.total))}</span>
+                    </div>
+                    <div class="sale-date">${escapeHtml(formatDateTime(row.date_time))}</div>
+                    <div class="sale-user">Funcionario: ${escapeHtml(row.vale_user ?? '--')}</div>
+                </div>
+            `,
+        )
+        .join('');
+
+    return `
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <meta charset="utf-8" />
+                <title>Compras no vale</title>
+                <style>
+                    * { font-family: 'Courier New', monospace; box-sizing: border-box; }
+                    body { width: 80mm; margin: 0 auto; padding: 12px; color: #111827; }
+                    h1 { margin: 0; text-align: center; font-size: 16px; }
+                    p { margin: 4px 0; font-size: 12px; }
+                    .divider { border-top: 1px dashed #000; margin: 10px 0; }
+                    .meta { text-align: center; }
+                    .table-head,
+                    .sale-head,
+                    .total-row { display: flex; justify-content: space-between; gap: 8px; }
+                    .table-head,
+                    .total-row { font-size: 12px; font-weight: bold; }
+                    .sale-row { padding: 6px 0; border-bottom: 1px dashed #d1d5db; }
+                    .sale-head { font-size: 12px; font-weight: bold; }
+                    .sale-date { margin-top: 2px; font-size: 11px; }
+                    .sale-user { margin-top: 2px; font-size: 11px; }
+                    .total-row { font-size: 14px; }
+                </style>
+            </head>
+            <body>
+                <h1>Compras no vale</h1>
+                <p class="meta">${rows.length} registro(s)</p>
+                <p class="meta">Impresso em: ${escapeHtml(printedAt)}</p>
+                <div class="divider"></div>
+                <div class="table-head">
+                    <span>ID / Data-Hora / Funcionario</span>
+                    <span>Valor</span>
+                </div>
+                <div class="divider"></div>
+                ${rowsHtml || '<p>Nenhum registro para imprimir.</p>'}
+                <div class="divider"></div>
+                <div class="total-row">
+                    <span>Total</span>
+                    <span>${escapeHtml(formatCurrency(totalAmount))}</span>
+                </div>
+            </body>
+        </html>
+    `;
+};
+
 export default function ValeReport({
     rows = [],
     startDate,
@@ -72,6 +143,23 @@ export default function ValeReport({
         }
 
         printWindow.document.write(buildReceiptHtml(receipt));
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+        printWindow.close();
+    };
+
+    const handlePrintValeSummary = () => {
+        setPrintError('');
+
+        const printWindow = window.open('', '_blank', 'width=400,height=600');
+
+        if (!printWindow) {
+            setPrintError('Permita pop-ups para imprimir os vales.');
+            return;
+        }
+
+        printWindow.document.write(buildValeSummaryHtml(rows, totalAmount));
         printWindow.document.close();
         printWindow.focus();
         printWindow.print();
@@ -180,6 +268,14 @@ export default function ValeReport({
                                 Compras no vale
                             </h3>
                             <div className="flex flex-wrap items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={handlePrintValeSummary}
+                                    disabled={rows.length === 0}
+                                    className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    Imprimir Vales
+                                </button>
                                 <span className="text-xs font-semibold text-gray-500 dark:text-gray-300">
                                     {rows.length} registros
                                 </span>

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ChatMessage;
 use App\Models\OnlineUser;
 use App\Models\Unidade;
 use App\Models\User;
@@ -142,6 +143,94 @@ class OnlineFeatureTest extends TestCase
 
             $this->assertGuest();
         }
+    }
+
+    public function test_sender_can_only_edit_unread_messages(): void
+    {
+        $unit = $this->makeUnit('Loja Edicao');
+        $sender = $this->makeUser('Remetente', 3, $unit);
+        $recipient = $this->makeUser('Destino', 2, $unit);
+
+        $message = ChatMessage::create([
+            'sender_id' => $sender->id,
+            'recipient_id' => $recipient->id,
+            'sender_role' => 3,
+            'sender_unit_id' => $unit->tb2_id,
+            'message' => 'Texto original',
+        ]);
+
+        $session = $this->activeSessionPayload($unit, 3);
+
+        $this->actingAs($sender)
+            ->withSession($session)
+            ->put(route('online.messages.update', $message), [
+                'message' => 'Texto ajustado',
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('tb22_chat_mensagens', [
+            'id' => $message->id,
+            'message' => 'Texto ajustado',
+        ]);
+
+        $message->forceFill(['read_at' => now()])->save();
+
+        $this->actingAs($sender)
+            ->withSession($session)
+            ->put(route('online.messages.update', $message), [
+                'message' => 'Nao pode editar',
+            ])
+            ->assertSessionHasErrors('message');
+
+        $this->assertDatabaseMissing('tb22_chat_mensagens', [
+            'id' => $message->id,
+            'message' => 'Nao pode editar',
+        ]);
+    }
+
+    public function test_sender_can_only_delete_unread_messages(): void
+    {
+        $unit = $this->makeUnit('Loja Exclusao');
+        $sender = $this->makeUser('Remetente', 3, $unit);
+        $recipient = $this->makeUser('Destino', 2, $unit);
+
+        $deletableMessage = ChatMessage::create([
+            'sender_id' => $sender->id,
+            'recipient_id' => $recipient->id,
+            'sender_role' => 3,
+            'sender_unit_id' => $unit->tb2_id,
+            'message' => 'Pode excluir',
+        ]);
+
+        $readMessage = ChatMessage::create([
+            'sender_id' => $sender->id,
+            'recipient_id' => $recipient->id,
+            'sender_role' => 3,
+            'sender_unit_id' => $unit->tb2_id,
+            'message' => 'Nao pode excluir',
+            'read_at' => now(),
+        ]);
+
+        $session = $this->activeSessionPayload($unit, 3);
+
+        $this->actingAs($sender)
+            ->withSession($session)
+            ->delete(route('online.messages.destroy', $deletableMessage))
+            ->assertOk();
+
+        $this->assertDatabaseMissing('tb22_chat_mensagens', [
+            'id' => $deletableMessage->id,
+        ]);
+
+        $this->actingAs($sender)
+            ->withSession($session)
+            ->delete(route('online.messages.destroy', $readMessage))
+            ->assertSessionHasErrors('message');
+
+        $this->assertDatabaseHas('tb22_chat_mensagens', [
+            'id' => $readMessage->id,
+            'message' => 'Nao pode excluir',
+        ]);
     }
 
     private function makeUnit(string $name): Unidade

@@ -93,6 +93,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/on-line/heartbeat', [OnlineController::class, 'heartbeat'])->name('online.heartbeat');
     Route::post('/on-line/messages', [OnlineController::class, 'storeMessage'])->name('online.messages.store');
     Route::put('/on-line/messages/{message}', [OnlineController::class, 'updateMessage'])->name('online.messages.update');
+    Route::delete('/on-line/messages/{message}', [OnlineController::class, 'destroyMessage'])->name('online.messages.destroy');
     Route::get('/settings', function () {
         $user = auth()->user();
         if (! $user || ! in_array((int) $user->funcao, [0, 1], true)) {

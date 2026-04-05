@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -172,6 +173,12 @@ class OnlineController extends Controller
             abort(403);
         }
 
+        if ($message->read_at) {
+            throw ValidationException::withMessages([
+                'message' => 'Mensagens lidas nao podem ser editadas.',
+            ]);
+        }
+
         $data = $request->validate([
             'message' => ['required', 'string', 'max:2000'],
         ]);
@@ -190,6 +197,29 @@ class OnlineController extends Controller
 
         return response()->json(
             $this->buildSnapshotPayload($request, (int) $message->recipient_id)
+        );
+    }
+
+    public function destroyMessage(Request $request, ChatMessage $message): JsonResponse
+    {
+        $user = $this->ensureCanAccessOnline($request->user());
+        $this->touchPresence($request, $user);
+
+        if ((int) $message->sender_id !== (int) $user->id) {
+            abort(403);
+        }
+
+        if ($message->read_at) {
+            throw ValidationException::withMessages([
+                'message' => 'Mensagens lidas nao podem ser excluidas.',
+            ]);
+        }
+
+        $recipientId = (int) $message->recipient_id;
+        $message->delete();
+
+        return response()->json(
+            $this->buildSnapshotPayload($request, $recipientId)
         );
     }
 
@@ -338,6 +368,8 @@ class OnlineController extends Controller
             ->values()
             ->all();
 
+        $latestPreviewByContact = $this->latestPreviewByContact((int) $viewer->id, $visibleUserIds);
+
         $unreadBySender = empty($visibleUserIds)
             ? collect()
             : ChatMessage::query()
@@ -349,8 +381,9 @@ class OnlineController extends Controller
                 ->pluck('total', 'sender_id');
 
         $attachUnread = fn (Collection $contacts) => $contacts
-            ->map(function (array $contact) use ($unreadBySender) {
+            ->map(function (array $contact) use ($unreadBySender, $latestPreviewByContact) {
                 $contact['unread_count'] = (int) ($unreadBySender[(int) $contact['id']] ?? 0);
+                $contact['last_message_preview'] = $latestPreviewByContact[(int) $contact['id']] ?? '';
 
                 return $contact;
             })
@@ -381,6 +414,53 @@ class OnlineController extends Controller
         ];
     }
 
+    private function latestPreviewByContact(int $viewerId, array $visibleUserIds): array
+    {
+        if (empty($visibleUserIds)) {
+            return [];
+        }
+
+        $messages = ChatMessage::query()
+            ->select(['id', 'sender_id', 'recipient_id', 'message'])
+            ->where(function ($query) use ($viewerId, $visibleUserIds) {
+                $query->where('sender_id', $viewerId)
+                    ->whereIn('recipient_id', $visibleUserIds);
+            })
+            ->orWhere(function ($query) use ($viewerId, $visibleUserIds) {
+                $query->where('recipient_id', $viewerId)
+                    ->whereIn('sender_id', $visibleUserIds);
+            })
+            ->orderByDesc('id')
+            ->get();
+
+        $previews = [];
+
+        foreach ($messages as $message) {
+            $contactId = (int) ((int) $message->sender_id === $viewerId ? $message->recipient_id : $message->sender_id);
+
+            if (isset($previews[$contactId])) {
+                continue;
+            }
+
+            $previews[$contactId] = $this->messagePreview((string) $message->message);
+        }
+
+        return $previews;
+    }
+
+    private function messagePreview(string $message): string
+    {
+        $plainText = preg_replace('/\[color=[^\]]+\]|\[\/color\]|\[b\]|\[\/b\]|\[i\]|\[\/i\]|\[u\]|\[\/u\]/i', '', $message);
+        $plainText = preg_replace('/\s+/u', ' ', (string) $plainText);
+        $plainText = trim((string) $plainText);
+
+        if ($plainText === '') {
+            return '';
+        }
+
+        return (string) Str::limit($plainText, 35, '...');
+    }
+
     private function buildConversation(int $viewerId, int $otherUserId): array
     {
         return ChatMessage::query()
@@ -409,6 +489,7 @@ class OnlineController extends Controller
                 'sender_role' => (int) $message->sender_role,
                 'sender_role_label' => self::ROLE_LABELS[(int) $message->sender_role] ?? '---',
                 'is_mine' => (int) $message->sender_id === $viewerId,
+                'can_manage' => (int) $message->sender_id === $viewerId && $message->read_at === null,
             ])
             ->all();
     }

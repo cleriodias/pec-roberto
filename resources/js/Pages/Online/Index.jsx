@@ -88,6 +88,8 @@ const resolveErrorMessage = (error, fallback) => {
 
 const resolveDraftKey = (userId) => String(userId ?? '');
 
+const canManageMessage = (message) => Boolean(message?.is_mine && message?.can_manage);
+
 const formatMessageFooterMeta = (value) => {
     if (!value) {
         return {
@@ -171,6 +173,7 @@ export default function OnlineIndex({
     const [editingMessageId, setEditingMessageId] = useState(null);
     const [editDraftMessage, setEditDraftMessage] = useState('');
     const [savingEditMessage, setSavingEditMessage] = useState(false);
+    const [deletingMessage, setDeletingMessage] = useState(false);
     const [editErrorMessage, setEditErrorMessage] = useState('');
     const [showAnyDeskModal, setShowAnyDeskModal] = useState(false);
     const [selectedAnyDeskType, setSelectedAnyDeskType] = useState('');
@@ -200,6 +203,11 @@ export default function OnlineIndex({
         () =>
             messages.find((message) => Number(message.id) === Number(editingMessageId)) ?? null,
         [messages, editingMessageId],
+    );
+
+    const editingMessageCanBeManaged = useMemo(
+        () => canManageMessage(editingMessage),
+        [editingMessage],
     );
 
     const draftMessage = useMemo(
@@ -531,7 +539,7 @@ export default function OnlineIndex({
     };
 
     const openEditModal = (message) => {
-        if (!message?.is_mine) {
+        if (!canManageMessage(message)) {
             return;
         }
 
@@ -541,7 +549,7 @@ export default function OnlineIndex({
     };
 
     const closeEditModal = () => {
-        if (savingEditMessage) {
+        if (savingEditMessage || deletingMessage) {
             return;
         }
 
@@ -553,7 +561,7 @@ export default function OnlineIndex({
     const handleUpdateMessage = async (event) => {
         event.preventDefault();
 
-        if (!editingMessage || savingEditMessage) {
+        if (!editingMessage || !editingMessageCanBeManaged || savingEditMessage || deletingMessage) {
             return;
         }
 
@@ -579,6 +587,28 @@ export default function OnlineIndex({
             setEditErrorMessage(resolveErrorMessage(error, 'Nao foi possivel atualizar a mensagem.'));
         } finally {
             setSavingEditMessage(false);
+        }
+    };
+
+    const handleDeleteMessage = async () => {
+        if (!editingMessage || !editingMessageCanBeManaged || savingEditMessage || deletingMessage) {
+            return;
+        }
+
+        setDeletingMessage(true);
+
+        try {
+            const response = await axios.delete(route('online.messages.destroy', editingMessage.id));
+
+            applySnapshot(response.data ?? {}, selectedUserIdRef.current);
+            setEditingMessageId(null);
+            setEditDraftMessage('');
+            setEditErrorMessage('');
+            setErrorMessage('');
+        } catch (error) {
+            setEditErrorMessage(resolveErrorMessage(error, 'Nao foi possivel excluir a mensagem.'));
+        } finally {
+            setDeletingMessage(false);
         }
     };
 
@@ -753,13 +783,13 @@ export default function OnlineIndex({
                                                     className={`flex ${message.is_mine ? 'justify-end' : 'justify-start'}`}
                                                 >
                                                     <div
-                                                        onClick={message.is_mine ? () => openEditModal(message) : undefined}
+                                                        onClick={canManageMessage(message) ? () => openEditModal(message) : undefined}
                                                         className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
-                                                            message.is_mine
+                                                            canManageMessage(message)
                                                                 ? 'cursor-pointer bg-slate-300 text-slate-800 transition hover:bg-slate-400 dark:bg-slate-600 dark:text-slate-100 dark:hover:bg-slate-500'
                                                                 : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-100'
                                                         }`}
-                                                        title={message.is_mine ? 'Clique para editar sua mensagem' : undefined}
+                                                        title={canManageMessage(message) ? 'Clique para editar sua mensagem' : undefined}
                                                     >
                                                         <div
                                                             className={`mb-2 text-[11px] font-semibold uppercase ${
@@ -868,7 +898,7 @@ export default function OnlineIndex({
                                         />
                                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                `Enter` quebra linha. Use o botao para enviar. Clique na sua mensagem para editar.
+                                                `Enter` quebra linha. Use o botao para enviar. Clique na sua mensagem ainda nao lida para editar.
                                             </p>
                                             <div className="flex items-center gap-2 self-end">
                                                 <PrimaryButton
@@ -901,13 +931,19 @@ export default function OnlineIndex({
                     <div>
                         <h3 className="text-lg font-semibold text-gray-900">Editar mensagem</h3>
                         <p className="mt-1 text-sm text-gray-500">
-                            Ajuste o texto e salve quando terminar.
+                            Ajuste ou exclua a mensagem enquanto ela ainda nao foi lida.
                         </p>
                     </div>
 
                     {editErrorMessage && (
                         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                             {editErrorMessage}
+                        </div>
+                    )}
+
+                    {!editingMessageCanBeManaged && (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                            Essa mensagem ja foi lida e nao pode mais ser editada ou excluida.
                         </div>
                     )}
 
@@ -921,6 +957,7 @@ export default function OnlineIndex({
                                 event.stopPropagation();
                             }
                         }}
+                        disabled={!editingMessageCanBeManaged || savingEditMessage || deletingMessage}
                         className="w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm text-gray-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                     />
 
@@ -928,14 +965,24 @@ export default function OnlineIndex({
                         <button
                             type="button"
                             onClick={closeEditModal}
-                            disabled={savingEditMessage}
+                            disabled={savingEditMessage || deletingMessage}
                             className="rounded-full border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-indigo-400 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             Cancelar
                         </button>
+                        {editingMessageCanBeManaged && (
+                            <button
+                                type="button"
+                                onClick={handleDeleteMessage}
+                                disabled={savingEditMessage || deletingMessage}
+                                className="rounded-full border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 transition hover:border-red-400 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {deletingMessage ? 'Excluindo...' : 'Excluir'}
+                            </button>
+                        )}
                         <button
                             type="submit"
-                            disabled={savingEditMessage}
+                            disabled={!editingMessageCanBeManaged || savingEditMessage || deletingMessage}
                             className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             {savingEditMessage ? 'Salvando...' : 'Salvar'}
