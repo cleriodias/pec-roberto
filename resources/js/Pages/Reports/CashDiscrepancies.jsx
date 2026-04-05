@@ -1,6 +1,5 @@
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { formatBrazilDate, formatBrazilDateTime } from '@/Utils/date';
 import { Head, useForm } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 
@@ -26,20 +25,95 @@ const formatCurrency = (value) =>
         currency: 'BRL',
     });
 
-const formatDate = (value) => {
+const shortDateFormatter = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+});
+
+const shortDateTimeFormatter = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+});
+
+const DATE_ONLY_REGEX = /^(\d{4})-(\d{2})-(\d{2})$/;
+const DATE_TIME_REGEX = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/;
+
+const parseDateValue = (value) => {
     if (!value) {
+        return null;
+    }
+
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value;
+    }
+
+    if (typeof value !== 'string') {
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    const normalized = value.trim();
+
+    if (normalized === '') {
+        return null;
+    }
+
+    const dateOnlyMatch = normalized.match(DATE_ONLY_REGEX);
+    if (dateOnlyMatch) {
+        return new Date(
+            Date.UTC(
+                Number(dateOnlyMatch[1]),
+                Number(dateOnlyMatch[2]) - 1,
+                Number(dateOnlyMatch[3]),
+                12,
+                0,
+                0,
+            ),
+        );
+    }
+
+    const dateTimeMatch = normalized.match(DATE_TIME_REGEX);
+    if (dateTimeMatch) {
+        return new Date(
+            Date.UTC(
+                Number(dateTimeMatch[1]),
+                Number(dateTimeMatch[2]) - 1,
+                Number(dateTimeMatch[3]),
+                Number(dateTimeMatch[4]) + 3,
+                Number(dateTimeMatch[5]),
+                Number(dateTimeMatch[6] ?? 0),
+            ),
+        );
+    }
+
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatDate = (value) => {
+    const date = parseDateValue(value);
+
+    if (!date) {
         return '--';
     }
 
-    return formatBrazilDate(value);
+    return shortDateFormatter.format(date);
 };
 
 const formatDateTime = (value) => {
-    if (!value) {
+    const date = parseDateValue(value);
+
+    if (!date) {
         return '--';
     }
 
-    return formatBrazilDateTime(value);
+    return shortDateTimeFormatter.format(date);
 };
 
 const differenceTone = (value) => {
@@ -87,9 +161,48 @@ export default function CashDiscrepancies({
     };
 
     const totalDiscrepancy = useMemo(
-        () => records.reduce((sum, record) => sum + (Number(record.discrepancy) || 0), 0),
+        () =>
+            records.reduce(
+                (sum, record) => sum + Math.max(Number(record.discrepancy) || 0, 0),
+                0,
+            ),
         [records],
     );
+
+    const totalSurplus = useMemo(
+        () =>
+            records.reduce((sum, record) => {
+                const discrepancy = Number(record.discrepancy) || 0;
+                return sum + Math.abs(Math.min(discrepancy, 0));
+            }, 0),
+        [records],
+    );
+
+    const tableTotals = useMemo(() => {
+        return records.reduce(
+            (acc, record) => {
+                const next = { ...acc };
+
+                next.discrepancy += Number(record.discrepancy) || 0;
+
+                paymentColumns.forEach((column) => {
+                    next.totals[column.key] += Number(record.totals?.[column.key] ?? 0);
+                });
+
+                return next;
+            },
+            {
+                discrepancy: 0,
+                totals: paymentColumns.reduce(
+                    (acc, column) => ({
+                        ...acc,
+                        [column.key]: 0,
+                    }),
+                    {},
+                ),
+            },
+        );
+    }, [records]);
 
     const openDetails = (record) => {
         setDetailModal({
@@ -199,6 +312,14 @@ export default function CashDiscrepancies({
                                         {formatCurrency(totalDiscrepancy)}
                                     </p>
                                 </div>
+                                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-700 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wide">
+                                        Total sobra
+                                    </p>
+                                    <p className="text-sm font-bold">
+                                        {formatCurrency(totalSurplus)}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                         <p className="mt-3 text-sm text-gray-500 dark:text-gray-300">
@@ -278,6 +399,29 @@ export default function CashDiscrepancies({
                                                 </tr>
                                             );
                                         })}
+                                        <tr className="bg-gray-50/80 dark:bg-gray-900/40">
+                                            <td className="px-3 py-3 text-gray-800 dark:text-gray-100" colSpan={3}>
+                                                <span className="font-semibold">Total geral</span>
+                                            </td>
+                                            <td
+                                                className={`px-3 py-3 text-right font-semibold ${differenceTone(
+                                                    tableTotals.discrepancy,
+                                                )}`}
+                                            >
+                                                {formatCurrency(tableTotals.discrepancy)}
+                                            </td>
+                                            {paymentColumns.map((column) => (
+                                                <td
+                                                    key={`total-${column.key}`}
+                                                    className="px-3 py-3 text-right font-semibold text-gray-800 dark:text-gray-100"
+                                                >
+                                                    {formatCurrency(tableTotals.totals[column.key] ?? 0)}
+                                                </td>
+                                            ))}
+                                            <td className="px-3 py-3 text-right text-gray-500 dark:text-gray-300">
+                                                --
+                                            </td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -285,7 +429,7 @@ export default function CashDiscrepancies({
                     </div>
                 </div>
             </div>
-            <Modal show={detailModal.open} onClose={closeDetails} maxWidth="md" tone="light">
+            <Modal show={detailModal.open} onClose={closeDetails} maxWidth="2xl" tone="light">
                 <div className="bg-white p-6 text-gray-800">
                     <div className="flex items-start justify-between gap-4">
                         <div>
