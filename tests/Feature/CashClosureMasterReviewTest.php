@@ -130,6 +130,155 @@ class CashClosureMasterReviewTest extends TestCase
         );
     }
 
+    public function test_cash_closure_report_groups_small_card_complements_per_cashier_and_unit(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-04 12:00:00'));
+
+        $unit = $this->makeUnit('Setor-10');
+        $manager = $this->makeUser('Gerente', 1, $unit);
+        $cashierA = $this->makeUser('Caixa A', 3, $unit);
+        $cashierB = $this->makeUser('Caixa B', 3, $unit);
+        $product = $this->makeProduct();
+
+        $paymentA1 = VendaPagamento::create([
+            'valor_total' => 10,
+            'tipo_pagamento' => 'dinheiro',
+            'valor_pago' => 9.50,
+            'troco' => 0,
+            'dois_pgto' => 0.50,
+            'created_at' => now()->subMinutes(20),
+            'updated_at' => now()->subMinutes(20),
+        ]);
+
+        $paymentA2 = VendaPagamento::create([
+            'valor_total' => 20,
+            'tipo_pagamento' => 'dinheiro',
+            'valor_pago' => 19.25,
+            'troco' => 0,
+            'dois_pgto' => 0.75,
+            'created_at' => now()->subMinutes(10),
+            'updated_at' => now()->subMinutes(10),
+        ]);
+
+        $paymentA3 = VendaPagamento::create([
+            'valor_total' => 15,
+            'tipo_pagamento' => 'dinheiro',
+            'valor_pago' => 13.80,
+            'troco' => 0,
+            'dois_pgto' => 1.20,
+            'created_at' => now()->subMinutes(5),
+            'updated_at' => now()->subMinutes(5),
+        ]);
+
+        $paymentB1 = VendaPagamento::create([
+            'valor_total' => 8,
+            'tipo_pagamento' => 'dinheiro',
+            'valor_pago' => 7.10,
+            'troco' => 0,
+            'dois_pgto' => 0.90,
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinutes(2),
+        ]);
+
+        Venda::create([
+            'tb4_id' => $paymentA1->tb4_id,
+            'tb1_id' => $product->tb1_id,
+            'id_comanda' => '101',
+            'produto_nome' => $product->tb1_nome,
+            'valor_unitario' => 10,
+            'quantidade' => 1,
+            'valor_total' => 10,
+            'data_hora' => now()->subMinutes(20),
+            'id_user_caixa' => $cashierA->id,
+            'id_user_vale' => null,
+            'id_lanc' => null,
+            'id_unidade' => $unit->tb2_id,
+            'tipo_pago' => 'dinheiro',
+            'status_pago' => true,
+            'status' => 1,
+            'created_at' => now()->subMinutes(20),
+            'updated_at' => now()->subMinutes(20),
+        ]);
+
+        Venda::create([
+            'tb4_id' => $paymentA2->tb4_id,
+            'tb1_id' => $product->tb1_id,
+            'id_comanda' => '102',
+            'produto_nome' => $product->tb1_nome,
+            'valor_unitario' => 20,
+            'quantidade' => 1,
+            'valor_total' => 20,
+            'data_hora' => now()->subMinutes(10),
+            'id_user_caixa' => $cashierA->id,
+            'id_user_vale' => null,
+            'id_lanc' => null,
+            'id_unidade' => $unit->tb2_id,
+            'tipo_pago' => 'dinheiro',
+            'status_pago' => true,
+            'status' => 1,
+            'created_at' => now()->subMinutes(10),
+            'updated_at' => now()->subMinutes(10),
+        ]);
+
+        Venda::create([
+            'tb4_id' => $paymentA3->tb4_id,
+            'tb1_id' => $product->tb1_id,
+            'id_comanda' => '103',
+            'produto_nome' => $product->tb1_nome,
+            'valor_unitario' => 15,
+            'quantidade' => 1,
+            'valor_total' => 15,
+            'data_hora' => now()->subMinutes(5),
+            'id_user_caixa' => $cashierA->id,
+            'id_user_vale' => null,
+            'id_lanc' => null,
+            'id_unidade' => $unit->tb2_id,
+            'tipo_pago' => 'dinheiro',
+            'status_pago' => true,
+            'status' => 1,
+            'created_at' => now()->subMinutes(5),
+            'updated_at' => now()->subMinutes(5),
+        ]);
+
+        Venda::create([
+            'tb4_id' => $paymentB1->tb4_id,
+            'tb1_id' => $product->tb1_id,
+            'id_comanda' => '201',
+            'produto_nome' => $product->tb1_nome,
+            'valor_unitario' => 8,
+            'quantidade' => 1,
+            'valor_total' => 8,
+            'data_hora' => now()->subMinutes(2),
+            'id_user_caixa' => $cashierB->id,
+            'id_user_vale' => null,
+            'id_lanc' => null,
+            'id_unidade' => $unit->tb2_id,
+            'tipo_pago' => 'dinheiro',
+            'status_pago' => true,
+            'status' => 1,
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinutes(2),
+        ]);
+
+        $response = $this
+            ->actingAs($manager)
+            ->get(route('reports.cash.closure', ['date' => '2026-04-04']));
+
+        $response->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Reports/CashClosure')
+            ->has('records', 2)
+            ->where('records.0.cashier_name', 'Caixa A')
+            ->where('records.0.small_card_complements.total', 1.25)
+            ->has('records.0.small_card_complements.items', 2)
+            ->where('records.0.small_card_complements.items.0.receipt.id', $paymentA2->tb4_id)
+            ->where('records.0.small_card_complements.items.1.receipt.id', $paymentA1->tb4_id)
+            ->where('records.1.cashier_name', 'Caixa B')
+            ->where('records.1.small_card_complements.total', 0.9)
+            ->has('records.1.small_card_complements.items', 1)
+            ->where('records.1.small_card_complements.items.0.receipt.id', $paymentB1->tb4_id)
+        );
+    }
+
     private function makeUnit(string $name): Unidade
     {
         return Unidade::create([

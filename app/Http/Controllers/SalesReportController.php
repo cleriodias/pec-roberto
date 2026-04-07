@@ -1314,7 +1314,19 @@ class SalesReportController extends Controller
         $paymentsQuery = VendaPagamento::query()
             ->whereBetween('created_at', [$start, $end])
             ->with(['vendas' => function ($query) use ($filterUnitId) {
-                $query->select('tb3_id', 'tb4_id', 'id_user_caixa', 'id_unidade')
+                $query->select(
+                    'tb3_id',
+                    'tb4_id',
+                    'tb1_id',
+                    'produto_nome',
+                    'quantidade',
+                    'valor_unitario',
+                    'valor_total',
+                    'data_hora',
+                    'id_user_caixa',
+                    'id_unidade',
+                    'id_comanda',
+                )
                     ->orderBy('tb3_id');
 
                 if ($filterUnitId) {
@@ -1412,12 +1424,31 @@ class SalesReportController extends Controller
                         'faturar' => 0.0,
                     ],
                     'grand_total' => 0.0,
+                    'small_card_complements' => [
+                        'total' => 0.0,
+                        'items' => [],
+                    ],
                 ];
             }
 
             foreach ($this->breakdownPayment($payment) as $type => $amount) {
                 $grouped[$groupKey]['totals'][$type] += $amount;
                 $grouped[$groupKey]['grand_total'] += $amount;
+            }
+
+            $cardComplement = max((float) $payment->dois_pgto, 0);
+            if ($payment->tipo_pagamento === 'dinheiro' && $cardComplement >= 0.01 && $cardComplement < 1) {
+                $grouped[$groupKey]['small_card_complements']['total'] += $cardComplement;
+                $grouped[$groupKey]['small_card_complements']['items'][] = [
+                    'payment_id' => $payment->tb4_id,
+                    'comanda' => $this->resolveReceiptComanda($payment->vendas->values()),
+                    'sale_total' => round((float) $payment->valor_total, 2),
+                    'cash_paid' => $payment->valor_pago !== null ? round((float) $payment->valor_pago, 2) : null,
+                    'cash_amount' => round(max((float) $payment->valor_total - $cardComplement, 0), 2),
+                    'card_amount' => round($cardComplement, 2),
+                    'created_at' => optional($payment->created_at)->toIso8601String(),
+                    'receipt' => $this->buildReceiptPayload($payment),
+                ];
             }
         }
 
@@ -1480,6 +1511,13 @@ class SalesReportController extends Controller
                 $record['totals'] = array_map(fn ($value) => round($value, 2), $record['totals']);
                 $record['grand_total'] = round($record['grand_total'], 2);
                 $record['row_key'] = $record['row_key'] ?? ($record['cashier_id'] . '-' . ($record['unit_id'] ?? 'none'));
+                $record['small_card_complements'] = [
+                    'total' => round((float) ($record['small_card_complements']['total'] ?? 0), 2),
+                    'items' => collect($record['small_card_complements']['items'] ?? [])
+                        ->sortByDesc('created_at')
+                        ->values()
+                        ->all(),
+                ];
 
                 $cashSystem = $record['totals']['dinheiro'] ?? 0.0;
                 $cardSystem = $record['totals']['maquina'] ?? 0.0;

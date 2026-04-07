@@ -1,6 +1,6 @@
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { formatBrazilDateTime } from '@/Utils/date';
+import { buildReceiptHtml } from '@/Utils/receipt';
 import axios from 'axios';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
@@ -25,12 +25,140 @@ const formatQuantity = (value, decimals = 2) =>
         maximumFractionDigits: decimals,
     });
 
-const formatDateTime = (value) => {
+const shortDateFormatter = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+});
+
+const shortDateTimeFormatter = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+});
+
+const ISO_DATE_REGEX = /^(\d{4})-(\d{2})-(\d{2})$/;
+const ISO_DATE_TIME_REGEX = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/;
+
+const parseDateValue = (value) => {
     if (!value) {
-        return '--';
+        return null;
     }
 
-    return formatBrazilDateTime(value);
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value;
+    }
+
+    if (typeof value !== 'string') {
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    const normalized = value.trim();
+    if (normalized === '') {
+        return null;
+    }
+
+    const dateOnlyMatch = normalized.match(ISO_DATE_REGEX);
+    if (dateOnlyMatch) {
+        return new Date(
+            Date.UTC(
+                Number(dateOnlyMatch[1]),
+                Number(dateOnlyMatch[2]) - 1,
+                Number(dateOnlyMatch[3]),
+                12,
+                0,
+                0,
+            ),
+        );
+    }
+
+    const dateTimeMatch = normalized.match(ISO_DATE_TIME_REGEX);
+    if (dateTimeMatch) {
+        return new Date(
+            Date.UTC(
+                Number(dateTimeMatch[1]),
+                Number(dateTimeMatch[2]) - 1,
+                Number(dateTimeMatch[3]),
+                Number(dateTimeMatch[4]) + 3,
+                Number(dateTimeMatch[5]),
+                Number(dateTimeMatch[6] ?? 0),
+            ),
+        );
+    }
+
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatShortDate = (value) => {
+    const date = parseDateValue(value);
+    return date ? shortDateFormatter.format(date) : '--';
+};
+
+const formatDateTime = (value) => {
+    const date = parseDateValue(value);
+    return date ? shortDateTimeFormatter.format(date) : '--';
+};
+
+const isoDateToShortInput = (value) => {
+    if (!value || typeof value !== 'string') {
+        return '';
+    }
+
+    const match = value.match(ISO_DATE_REGEX);
+    if (!match) {
+        return '';
+    }
+
+    return `${match[3]}/${match[2]}/${match[1].slice(-2)}`;
+};
+
+const normalizeShortDateInput = (value) => {
+    const digits = String(value ?? '')
+        .replace(/\D/g, '')
+        .slice(0, 6);
+
+    if (digits.length <= 2) {
+        return digits;
+    }
+
+    if (digits.length <= 4) {
+        return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+};
+
+const shortInputToIsoDate = (value) => {
+    const match = String(value ?? '').match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
+    if (!match) {
+        return null;
+    }
+
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = 2000 + Number(match[3]);
+
+    if (month < 1 || month > 12 || day < 1 || day > 31) {
+        return null;
+    }
+
+    const date = new Date(year, month - 1, day);
+    if (
+        Number.isNaN(date.getTime()) ||
+        date.getFullYear() !== year ||
+        date.getMonth() !== month - 1 ||
+        date.getDate() !== day
+    ) {
+        return null;
+    }
+
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
 const differenceTone = (value) => {
@@ -89,7 +217,7 @@ export default function CashClosure({
     const { auth } = usePage().props;
     const isMaster = Number(auth?.user?.funcao ?? -1) === 0;
     const normalizedSelectedUnit = selectedUnitId ?? null;
-    const [dateInput, setDateInput] = useState(dateInputValue ?? '');
+    const [dateInput, setDateInput] = useState(isoDateToShortInput(dateInputValue ?? ''));
     const [unitFilter, setUnitFilter] = useState(normalizedSelectedUnit);
     const [masterReviewModal, setMasterReviewModal] = useState({
         open: false,
@@ -105,9 +233,18 @@ export default function CashClosure({
         items: [],
         rowKey: null,
     });
+    const [cardComplementModal, setCardComplementModal] = useState({
+        open: false,
+        cashierName: '',
+        unitName: '',
+        items: [],
+        total: 0,
+    });
+    const [selectedReceipt, setSelectedReceipt] = useState(null);
+    const [printError, setPrintError] = useState('');
 
     useEffect(() => {
-        setDateInput(dateInputValue ?? '');
+        setDateInput(isoDateToShortInput(dateInputValue ?? ''));
     }, [dateInputValue]);
 
     useEffect(() => {
@@ -185,14 +322,24 @@ export default function CashClosure({
     };
 
     const handleDateChange = (value) => {
-        setDateInput(value);
-        applyFilters(value, unitFilter);
+        const normalized = normalizeShortDateInput(value);
+        setDateInput(normalized);
+
+        if (normalized === '') {
+            applyFilters('', unitFilter);
+            return;
+        }
+
+        const isoDate = shortInputToIsoDate(normalized);
+        if (isoDate) {
+            applyFilters(isoDate, unitFilter);
+        }
     };
 
     const handleUnitFilter = (optionId) => {
         const normalized = optionId ?? null;
         setUnitFilter(normalized);
-        applyFilters(dateInput, normalized);
+        applyFilters(shortInputToIsoDate(dateInput) ?? '', normalized);
     };
 
     const openDiscardModal = (record) => {
@@ -213,6 +360,62 @@ export default function CashClosure({
             items: [],
             rowKey: null,
         });
+    };
+
+    const openCardComplementModal = (record) => {
+        const smallCardComplements = record?.small_card_complements ?? {
+            total: 0,
+            items: [],
+        };
+
+        setCardComplementModal({
+            open: true,
+            cashierName: record?.cashier_name ?? '',
+            unitName: record?.unit_name ?? '---',
+            items: smallCardComplements.items ?? [],
+            total: smallCardComplements.total ?? 0,
+        });
+    };
+
+    const closeCardComplementModal = () => {
+        setCardComplementModal({
+            open: false,
+            cashierName: '',
+            unitName: '',
+            items: [],
+            total: 0,
+        });
+    };
+
+    const openReceiptDetails = (receipt) => {
+        if (!receipt) {
+            return;
+        }
+
+        setPrintError('');
+        setSelectedReceipt(receipt);
+    };
+
+    const closeReceiptDetails = () => {
+        setSelectedReceipt(null);
+        setPrintError('');
+    };
+
+    const handlePrintReceipt = (receipt) => {
+        setPrintError('');
+
+        const printWindow = window.open('', '_blank', 'width=400,height=600');
+
+        if (!printWindow) {
+            setPrintError('Permita pop-ups para imprimir o cupom.');
+            return;
+        }
+
+        printWindow.document.write(buildReceiptHtml(receipt));
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+        printWindow.close();
     };
 
     const openMasterReviewModal = (record) => {
@@ -319,7 +522,7 @@ export default function CashClosure({
         </div>
     );
 
-    const renderPaymentCell = (record, column) => {
+    const renderPaymentCell = (record, column, options = {}) => {
         const systemValue = record.totals?.[column.key] ?? 0;
 
         if (!['dinheiro', 'maquina'].includes(column.key)) {
@@ -336,6 +539,10 @@ export default function CashClosure({
                 ? closure?.differences?.cash ?? systemValue
                 : closure?.differences?.card ?? systemValue;
         const diffClass = differenceTone(diffValue);
+        const showCardComplementLink =
+            column.key === 'maquina' &&
+            options.showCardDifferenceLink &&
+            Number(record?.small_card_complements?.total ?? 0) > 0;
 
         return (
             <div className="space-y-1 text-right">
@@ -356,6 +563,15 @@ export default function CashClosure({
                     <p className={`text-sm font-semibold ${diffClass}`}>
                         {formatCurrency(diffValue)}
                     </p>
+                    {showCardComplementLink && (
+                        <button
+                            type="button"
+                            onClick={() => openCardComplementModal(record)}
+                            className="mt-1 inline-flex text-xs font-semibold text-indigo-600 transition hover:text-indigo-800"
+                        >
+                            {formatCurrency(record?.small_card_complements?.total ?? 0)}
+                        </button>
+                    )}
                 </div>
             </div>
         );
@@ -401,7 +617,10 @@ export default function CashClosure({
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
                         <input
                             id="closure-date"
-                            type="date"
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="DD/MM/AA"
+                            maxLength={8}
                             value={dateInput}
                             onChange={(event) => handleDateChange(event.target.value)}
                             className="mt-2 w-50 rounded-xl border border-gray-300 px-3 py-3 text-gray-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
@@ -485,7 +704,7 @@ export default function CashClosure({
     const tableSection = (
         <div className="rounded-2xl bg-white p-6 shadow dark:bg-gray-800">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Totais por caixa ({selectedUnit?.name ?? 'Todas as unidades'}) - Data do fechamento: {dateValue || '---'}
+                Totais por caixa ({selectedUnit?.name ?? 'Todas as unidades'}) - Data do fechamento: {formatShortDate(dateInputValue)}
             </h3>
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-300">
                 A diferenca do caixa considera somente dinheiro e cartao. Vale, refeicao e faturar aparecem apenas como informativos de venda.
@@ -594,7 +813,9 @@ export default function CashClosure({
                                                 key={`${record.cashier_id}-${column.key}`}
                                                 className="px-3 py-2 text-right text-gray-700 dark:text-gray-200 align-top"
                                             >
-                                                {renderPaymentCell(record, column)}
+                                                {renderPaymentCell(record, column, {
+                                                    showCardDifferenceLink: true,
+                                                })}
                                             </td>
                                         ))}
                                         <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-200 align-top">
@@ -614,8 +835,9 @@ export default function CashClosure({
     );
 
     const discrepancyParams = {};
-    if (dateInput) {
-        discrepancyParams.date = dateInput;
+    const normalizedDateFilter = shortInputToIsoDate(dateInput);
+    if (normalizedDateFilter) {
+        discrepancyParams.date = normalizedDateFilter;
     }
     if (unitFilter !== null && unitFilter !== undefined) {
         discrepancyParams.unit_id = unitFilter;
@@ -750,6 +972,187 @@ export default function CashClosure({
                             </button>
                         </div>
                     </form>
+                </div>
+            </Modal>
+            <Modal show={cardComplementModal.open} onClose={closeCardComplementModal} maxWidth="2xl" tone="light">
+                <div className="bg-white p-6 text-gray-800">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-900">
+                                Compras com complemento em cartao menor que R$ 1,00
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                                Registros pagos em dinheiro com campo dois_pgto em cartao abaixo de R$ 1,00.
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500">
+                                Caixa: {cardComplementModal.cashierName || '---'} | Unidade: {cardComplementModal.unitName || '---'}
+                            </p>
+                        </div>
+                        <div className="text-right text-sm">
+                            <p className="font-semibold text-gray-700">
+                                Total: {formatCurrency(cardComplementModal.total)}
+                            </p>
+                            <p className="text-gray-500">
+                                Registros: {cardComplementModal.items.length}
+                            </p>
+                        </div>
+                    </div>
+
+                    {!cardComplementModal.items.length ? (
+                        <p className="mt-6 text-sm text-gray-500">
+                            Nenhuma compra com complemento em cartao abaixo de R$ 1,00 para este fechamento.
+                        </p>
+                    ) : (
+                        <div className="mt-6 max-h-96 overflow-y-auto">
+                            <table className="min-w-full divide-y divide-gray-200 text-sm">
+                                <thead className="bg-gray-50 text-gray-600">
+                                    <tr>
+                                        <th className="px-3 py-2 text-left font-medium">Cupom</th>
+                                        <th className="px-3 py-2 text-left font-medium">Comanda</th>
+                                        <th className="px-3 py-2 text-left font-medium">Data/Hora</th>
+                                        <th className="px-3 py-2 text-right font-medium">Total compra</th>
+                                        <th className="px-3 py-2 text-right font-medium">Dinheiro</th>
+                                        <th className="px-3 py-2 text-right font-medium">Cartao compl.</th>
+                                        <th className="px-3 py-2 text-right font-medium">Cupom</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {cardComplementModal.items.map((item) => (
+                                        <tr key={item.payment_id}>
+                                            <td className="px-3 py-2 text-gray-800">
+                                                #{item.payment_id}
+                                            </td>
+                                            <td className="px-3 py-2 text-gray-700">
+                                                {item.comanda ?? '--'}
+                                            </td>
+                                            <td className="px-3 py-2 text-gray-600">
+                                                {formatDateTime(item.created_at)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right text-gray-700">
+                                                {formatCurrency(item.sale_total)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right text-gray-700">
+                                                {formatCurrency(item.cash_paid ?? item.cash_amount)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-semibold text-indigo-700">
+                                                {formatCurrency(item.card_amount)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right">
+                                                {item.receipt ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openReceiptDetails(item.receipt)}
+                                                        className="rounded-full border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-50"
+                                                    >
+                                                        Detalhar cupom
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-xs text-gray-400">--</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </Modal>
+            <Modal show={Boolean(selectedReceipt)} onClose={closeReceiptDetails} maxWidth="lg" tone="light">
+                <div className="bg-white p-6 text-gray-800">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-900">
+                                {selectedReceipt?.id ? `Cupom #${selectedReceipt.id}` : 'Cupom'}
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                                {formatDateTime(selectedReceipt?.date_time)}
+                            </p>
+                            {selectedReceipt?.comanda && (
+                                <p className="text-xs font-semibold text-gray-600">
+                                    Comanda: {selectedReceipt.comanda}
+                                </p>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => handlePrintReceipt(selectedReceipt)}
+                                disabled={!selectedReceipt}
+                                className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow transition hover:bg-indigo-700 disabled:opacity-60"
+                            >
+                                Imprimir
+                            </button>
+                            <button
+                                type="button"
+                                onClick={closeReceiptDetails}
+                                className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-100"
+                            >
+                                Fechar
+                            </button>
+                        </div>
+                    </div>
+
+                    {printError && (
+                        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                            {printError}
+                        </div>
+                    )}
+
+                    {selectedReceipt && (
+                        <>
+                            <div className="mt-4 space-y-2 text-sm text-gray-700">
+                                <p>
+                                    <span className="font-medium">Pagamento:</span> {selectedReceipt.tipo_pago ?? '---'}
+                                </p>
+                                <p>
+                                    <span className="font-medium">Total:</span> {formatCurrency(selectedReceipt.total)}
+                                </p>
+                                <p>
+                                    <span className="font-medium">Caixa:</span> {selectedReceipt.cashier_name ?? '---'}
+                                </p>
+                                {selectedReceipt.payment?.valor_pago !== null && (
+                                    <p>
+                                        <span className="font-medium">Dinheiro pago:</span> {formatCurrency(selectedReceipt.payment.valor_pago)}
+                                    </p>
+                                )}
+                                {Number(selectedReceipt.payment?.troco ?? 0) > 0 && (
+                                    <p>
+                                        <span className="font-medium">Troco:</span> {formatCurrency(selectedReceipt.payment.troco)}
+                                    </p>
+                                )}
+                                {Number(selectedReceipt.payment?.dois_pgto ?? 0) > 0 && (
+                                    <p>
+                                        <span className="font-medium">Cartao (compl.):</span> {formatCurrency(selectedReceipt.payment.dois_pgto)}
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="mt-6 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                                <h4 className="text-sm font-semibold text-gray-700">Itens</h4>
+                                <div className="mt-3 space-y-3 text-sm">
+                                    {(selectedReceipt.items ?? []).map((item) => (
+                                        <div
+                                            key={`${selectedReceipt.id ?? 'receipt'}-${item.id}`}
+                                            className="flex items-center justify-between rounded-xl bg-white px-3 py-2 shadow-sm"
+                                        >
+                                            <div>
+                                                <p className="font-medium text-gray-900">
+                                                    {item.quantity}x {item.product_name}
+                                                </p>
+                                                <p className="text-xs text-gray-500">
+                                                    {formatCurrency(item.unit_price)} cada
+                                                </p>
+                                            </div>
+                                            <p className="font-semibold text-gray-900">
+                                                {formatCurrency(item.subtotal)}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </div>
             </Modal>
             <Modal show={discardModal.open} onClose={closeDiscardModal} maxWidth="xl" tone="light">

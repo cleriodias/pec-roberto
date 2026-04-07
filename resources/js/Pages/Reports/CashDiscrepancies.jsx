@@ -1,6 +1,6 @@
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, Link, useForm } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 
 const paymentColumns = [
@@ -218,16 +218,34 @@ export default function CashDiscrepancies({
         });
     };
 
+    const valeShortcutParams = {
+        start_date: data.date,
+        end_date: data.date,
+        unit_id: data.unit_id,
+    };
+
     return (
         <AuthenticatedLayout
             header={
-                <div>
-                    <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">
-                        Fechamentos com discrepancia
-                    </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-300">
-                        Fechamentos de caixa com diferencas entre sistema e fechamento. A discrepancia considera somente dinheiro e cartao.
-                    </p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">
+                            Fechamentos com discrepancia
+                        </h2>
+                        <p className="text-sm text-gray-500 dark:text-gray-300">
+                            Fechamentos de caixa com diferencas entre sistema e fechamento. A discrepancia considera somente dinheiro e cartao.
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Link
+                            href={route('reports.vale', valeShortcutParams)}
+                            className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200"
+                            aria-label="Atalho para relatorio de vales"
+                        >
+                            <i className="bi bi-exclamation-triangle" aria-hidden="true"></i>
+                            <span>Vales</span>
+                        </Link>
+                    </div>
                 </div>
             }
         >
