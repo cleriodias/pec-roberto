@@ -6,6 +6,7 @@ import { Head, Link, usePage } from "@inertiajs/react";
 export default function UnitShow({ auth, unit }) {
 
     const { flash } = usePage().props;
+    const isActive = Number(unit.tb2_status) === 1;
 
     return (
         <AuthenticatedLayout
@@ -58,6 +59,19 @@ export default function UnitShow({ auth, unit }) {
                         <div className="mb-4">
                             <p className="text-md font-semibold text-gray-700 dark:text-gray-200">CNPJ</p>
                             <p className="text-gray-600 dark:text-gray-400">{unit.tb2_cnpj}</p>
+                        </div>
+
+                        <div className="mb-4">
+                            <p className="text-md font-semibold text-gray-700 dark:text-gray-200">Status</p>
+                            <span
+                                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                    isActive
+                                        ? 'bg-emerald-100 text-emerald-700'
+                                        : 'bg-red-100 text-red-700'
+                                }`}
+                            >
+                                {isActive ? 'Ativa' : 'Inativa'}
+                            </span>
                         </div>
 
                         <div className="mb-4">

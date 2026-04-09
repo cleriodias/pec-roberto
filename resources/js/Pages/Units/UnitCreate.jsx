@@ -12,6 +12,7 @@ export default function UnitCreate({ auth }) {
         tb2_fone: '',
         tb2_cnpj: '',
         tb2_localizacao: '',
+        tb2_status: '1',
     });
 
     const handleSubmit = (e) => {
@@ -123,6 +124,20 @@ export default function UnitCreate({ auth }) {
                                     </p>
                                     {errors.tb2_localizacao && <span className="text-red-600">{errors.tb2_localizacao}</span>}
                                 </div>
+                            </div>
+
+                            <div className="mb-4">
+                                <label htmlFor="tb2_status" className="block text-sm font-medium text-gray-700">Status</label>
+                                <select
+                                    id="tb2_status"
+                                    value={data.tb2_status}
+                                    onChange={(e) => setData('tb2_status', e.target.value)}
+                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                >
+                                    <option value="1">Ativa</option>
+                                    <option value="0">Inativa</option>
+                                </select>
+                                {errors.tb2_status && <span className="text-red-600">{errors.tb2_status}</span>}
                             </div>
 
                             <div className="flex justify-end">

@@ -9,6 +9,21 @@ import { Head, Link, usePage } from "@inertiajs/react";
 
 export default function UnitIndex({ auth, units, canCreate = false }) {
     const { flash } = usePage().props;
+    const renderStatus = (status) => {
+        const isActive = Number(status) === 1;
+
+        return (
+            <span
+                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                    isActive
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-red-100 text-red-700'
+                }`}
+            >
+                {isActive ? 'Ativa' : 'Inativa'}
+            </span>
+        );
+    };
 
     return (
         <AuthenticatedLayout
@@ -43,6 +58,7 @@ export default function UnitIndex({ auth, units, canCreate = false }) {
                                 <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">CEP</td>
                                 <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">Telefone</td>
                                 <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">CNPJ</td>
+                                <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">Status</td>
                                 <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">{'Localiza\u00E7\u00E3o'}</td>
                                 <td className="px-4 py-3 text-center text-sm font-medium text-gray-500 tracking-wider">{'A\u00E7\u00F5es'}</td>
                             </tr>
@@ -67,6 +83,9 @@ export default function UnitIndex({ auth, units, canCreate = false }) {
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
                                         {unit.tb2_cnpj}
+                                    </td>
+                                    <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
+                                        {renderStatus(unit.tb2_status)}
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
                                         <a

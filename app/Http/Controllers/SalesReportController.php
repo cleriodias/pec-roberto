@@ -175,6 +175,7 @@ class SalesReportController extends Controller
     {
         $this->ensureManager($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
+        $allowedUnitIds = $this->reportUnitIds($filterUnits);
         [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
         $selectedUserId = $this->resolveReportUserId($request->query('user_id'));
 
@@ -203,14 +204,21 @@ class SalesReportController extends Controller
             $selectedUserId = null;
         }
 
+        $applySaleFilters = function ($query) use ($filterUnitId, $allowedUnitIds) {
+            if ($filterUnitId) {
+                $query->where('id_unidade', $filterUnitId);
+            } elseif ($allowedUnitIds->isNotEmpty()) {
+                $query->whereIn('id_unidade', $allowedUnitIds);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        };
+
         $rows = VendaPagamento::query()
             ->with([
-                'vendas' => function ($query) use ($filterUnitId) {
+                'vendas' => function ($query) use ($applySaleFilters) {
                     $query
                         ->with(['unidade:tb2_id,tb2_nome,tb2_endereco,tb2_cnpj', 'caixa:id,name', 'valeUser:id,name'])
-                        ->when($filterUnitId, function ($salesQuery) use ($filterUnitId) {
-                            $salesQuery->where('id_unidade', $filterUnitId);
-                        })
                         ->orderBy('tb3_id')
                         ->select([
                             'tb3_id',
@@ -226,13 +234,13 @@ class SalesReportController extends Controller
                             'id_user_caixa',
                             'id_user_vale',
                         ]);
+
+                    $applySaleFilters($query);
                 },
             ])
             ->where('tipo_pagamento', 'vale')
-            ->when($filterUnitId, function ($query) use ($filterUnitId) {
-                $query->whereHas('vendas', function ($subQuery) use ($filterUnitId) {
-                    $subQuery->where('id_unidade', $filterUnitId);
-                });
+            ->whereHas('vendas', function ($subQuery) use ($applySaleFilters) {
+                $applySaleFilters($subQuery);
             })
             ->when($selectedUserId, function ($query) use ($selectedUserId) {
                 $query->whereHas('vendas', function ($subQuery) use ($selectedUserId) {
@@ -324,6 +332,7 @@ class SalesReportController extends Controller
     {
         $this->ensureManager($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
+        $allowedUnitIds = $this->reportUnitIds($filterUnits);
         [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
         $selectedUserId = $this->resolveReportUserId($request->query('user_id'));
 
@@ -362,6 +371,12 @@ class SalesReportController extends Controller
             ->where('status', 0)
             ->when($filterUnitId, function ($query) use ($filterUnitId) {
                 $query->where('id_unidade', $filterUnitId);
+            }, function ($query) use ($allowedUnitIds) {
+                if ($allowedUnitIds->isNotEmpty()) {
+                    $query->whereIn('id_unidade', $allowedUnitIds);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
             })
             ->when($selectedUserId, function ($query) use ($selectedUserId) {
                 $query->where(function ($subQuery) use ($selectedUserId) {
@@ -475,6 +490,7 @@ class SalesReportController extends Controller
     {
         $this->ensureManager($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
+        $allowedUnitIds = $this->reportUnitIds($filterUnits);
         [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
 
         $rows = Venda::query()
@@ -482,6 +498,12 @@ class SalesReportController extends Controller
             ->where('tipo_pago', 'refeicao')
             ->when($filterUnitId, function ($query) use ($filterUnitId) {
                 $query->where('id_unidade', $filterUnitId);
+            }, function ($query) use ($allowedUnitIds) {
+                if ($allowedUnitIds->isNotEmpty()) {
+                    $query->whereIn('id_unidade', $allowedUnitIds);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
             })
             ->whereBetween('data_hora', [$start, $end])
             ->orderByDesc('data_hora')
@@ -738,6 +760,7 @@ class SalesReportController extends Controller
     {
         $this->ensureManager($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
+        $allowedUnitIds = $this->reportUnitIds($filterUnits);
         [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
 
         $filteredAdvances = SalaryAdvance::query()
@@ -758,6 +781,26 @@ class SalesReportController extends Controller
                                         $userQuery->where('tb2_id', $filterUnitId);
                                     })->orWhereHas('user.units', function ($unitQuery) use ($filterUnitId) {
                                         $unitQuery->where('tb2_unidades.tb2_id', $filterUnitId);
+                                    });
+                                });
+                        });
+                });
+            }, function ($query) use ($allowedUnitIds) {
+                if ($allowedUnitIds->isEmpty()) {
+                    $query->whereRaw('1 = 0');
+
+                    return;
+                }
+
+                $query->where(function ($sub) use ($allowedUnitIds) {
+                    $sub->whereIn('unit_id', $allowedUnitIds)
+                        ->orWhere(function ($legacy) use ($allowedUnitIds) {
+                            $legacy->whereNull('unit_id')
+                                ->where(function ($legacyUnit) use ($allowedUnitIds) {
+                                    $legacyUnit->whereHas('user', function ($userQuery) use ($allowedUnitIds) {
+                                        $userQuery->whereIn('tb2_id', $allowedUnitIds);
+                                    })->orWhereHas('user.units', function ($unitQuery) use ($allowedUnitIds) {
+                                        $unitQuery->whereIn('tb2_unidades.tb2_id', $allowedUnitIds);
                                     });
                                 });
                         });
@@ -785,6 +828,23 @@ class SalesReportController extends Controller
                 ->with(['user:id,name,tb2_id', 'unit:tb2_id,tb2_nome'])
                 ->whereBetween('advance_date', [$startDate, $endDate])
                 ->whereIn('user_id', $userIds)
+                ->when($allowedUnitIds->isNotEmpty(), function ($query) use ($allowedUnitIds) {
+                    $query->where(function ($sub) use ($allowedUnitIds) {
+                        $sub->whereIn('unit_id', $allowedUnitIds)
+                            ->orWhere(function ($legacy) use ($allowedUnitIds) {
+                                $legacy->whereNull('unit_id')
+                                    ->where(function ($legacyUnit) use ($allowedUnitIds) {
+                                        $legacyUnit->whereHas('user', function ($userQuery) use ($allowedUnitIds) {
+                                            $userQuery->whereIn('tb2_id', $allowedUnitIds);
+                                        })->orWhereHas('user.units', function ($unitQuery) use ($allowedUnitIds) {
+                                            $unitQuery->whereIn('tb2_unidades.tb2_id', $allowedUnitIds);
+                                        });
+                                    });
+                            });
+                    });
+                }, function ($query) {
+                    $query->whereRaw('1 = 0');
+                })
                 ->orderBy('advance_date')
                 ->orderBy('id')
                 ->get([
@@ -851,12 +911,21 @@ class SalesReportController extends Controller
     {
         $this->ensureManager($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
+        $allowedUnitIds = $this->reportUnitIds($filterUnits);
 
         $suppliers = Supplier::query()
             ->when($filterUnitId, function ($query) use ($filterUnitId) {
                 $query->whereHas('expenses', function ($expenseQuery) use ($filterUnitId) {
                     $expenseQuery->where('unit_id', $filterUnitId);
                 });
+            }, function ($query) use ($allowedUnitIds) {
+                if ($allowedUnitIds->isNotEmpty()) {
+                    $query->whereHas('expenses', function ($expenseQuery) use ($allowedUnitIds) {
+                        $expenseQuery->whereIn('unit_id', $allowedUnitIds);
+                    });
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
             })
             ->orderBy('name')
             ->get([
@@ -889,6 +958,7 @@ class SalesReportController extends Controller
     {
         $this->ensureManager($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
+        $allowedUnitIds = $this->reportUnitIds($filterUnits);
         [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
 
         $rows = Expense::query()
@@ -896,6 +966,12 @@ class SalesReportController extends Controller
             ->whereBetween('expense_date', [$startDate, $endDate])
             ->when($filterUnitId, function ($query) use ($filterUnitId) {
                 $query->where('unit_id', $filterUnitId);
+            }, function ($query) use ($allowedUnitIds) {
+                if ($allowedUnitIds->isNotEmpty()) {
+                    $query->whereIn('unit_id', $allowedUnitIds);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
             })
             ->orderByDesc('expense_date')
             ->get([
@@ -934,6 +1010,7 @@ class SalesReportController extends Controller
     {
         $this->ensureManager($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
+        $allowedUnitIds = $this->reportUnitIds($filterUnits);
         [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
 
         $rows = ProductDiscard::query()
@@ -949,6 +1026,26 @@ class SalesReportController extends Controller
                                         $userQuery->where('tb2_id', $filterUnitId);
                                     })->orWhereHas('user.units', function ($unitQuery) use ($filterUnitId) {
                                         $unitQuery->where('tb2_unidades.tb2_id', $filterUnitId);
+                                    });
+                                });
+                        });
+                });
+            }, function ($query) use ($allowedUnitIds) {
+                if ($allowedUnitIds->isEmpty()) {
+                    $query->whereRaw('1 = 0');
+
+                    return;
+                }
+
+                $query->where(function ($subQuery) use ($allowedUnitIds) {
+                    $subQuery->whereIn('unit_id', $allowedUnitIds)
+                        ->orWhere(function ($legacy) use ($allowedUnitIds) {
+                            $legacy->whereNull('unit_id')
+                                ->where(function ($legacyUnit) use ($allowedUnitIds) {
+                                    $legacyUnit->whereHas('user', function ($userQuery) use ($allowedUnitIds) {
+                                        $userQuery->whereIn('tb2_id', $allowedUnitIds);
+                                    })->orWhereHas('user.units', function ($unitQuery) use ($allowedUnitIds) {
+                                        $unitQuery->whereIn('tb2_unidades.tb2_id', $allowedUnitIds);
                                     });
                                 });
                         });
@@ -1167,6 +1264,8 @@ class SalesReportController extends Controller
                         ->whereBetween('data_hora', [$start, $end])
                         ->when($unitId > 0, function ($salesQuery) use ($unitId) {
                             $salesQuery->where('id_unidade', $unitId);
+                        }, function ($salesQuery) {
+                            $salesQuery->whereRaw('1 = 0');
                         })
                         ->orderBy('tb3_id')
                         ->select([
@@ -1191,6 +1290,8 @@ class SalesReportController extends Controller
                     ->whereBetween('data_hora', [$start, $end])
                     ->when($unitId > 0, function ($salesQuery) use ($unitId) {
                         $salesQuery->where('id_unidade', $unitId);
+                    }, function ($salesQuery) {
+                        $salesQuery->whereRaw('1 = 0');
                     })
                     ->when($comandaId !== null, function ($salesQuery) use ($comandaId) {
                         $salesQuery->where('id_comanda', $comandaId);
@@ -1290,6 +1391,7 @@ class SalesReportController extends Controller
         $this->ensureManager($request);
         $user = $request->user();
         $availableUnits = $this->availableUnits($user);
+        $allowedUnitIds = $this->reportUnitIds($availableUnits);
         $requestedUnitId = $request->query('unit_id');
         $filterUnitId = $requestedUnitId !== null && $requestedUnitId !== '' && $requestedUnitId !== 'all'
             ? (int) $requestedUnitId
@@ -1309,9 +1411,9 @@ class SalesReportController extends Controller
         $start = $baseDate->copy()->startOfDay();
         $end = $baseDate->copy()->endOfDay();
 
-        $payments = $this->fetchPayments($start, $end, $filterUnitId);
+        $payments = $this->fetchPayments($start, $end, $filterUnitId, $allowedUnitIds);
         [$totals, $details, $chartData] = $this->summarizePayments($payments);
-        [$totals, $details] = $this->applyGlobalValeTotals($start, $end, $totals, $details, $filterUnitId);
+        [$totals, $details] = $this->applyGlobalValeTotals($start, $end, $totals, $details, $filterUnitId, $allowedUnitIds);
         $chartData = $this->buildChartData($totals);
 
         $selectedUnit = $filterUnitId
@@ -1355,6 +1457,7 @@ class SalesReportController extends Controller
         $this->ensureManager($request);
         $user = $request->user();
         $availableUnits = $this->availableUnits($user);
+        $allowedUnitIds = $this->reportUnitIds($availableUnits);
         $discardThreshold = $discardAlertService->thresholdPercentage();
 
         $requestedUnitId = $request->query('unit_id');
@@ -1372,7 +1475,7 @@ class SalesReportController extends Controller
 
         $paymentsQuery = VendaPagamento::query()
             ->whereBetween('created_at', [$start, $end])
-            ->with(['vendas' => function ($query) use ($filterUnitId) {
+            ->with(['vendas' => function ($query) use ($filterUnitId, $allowedUnitIds) {
                 $query->select(
                     'tb3_id',
                     'tb4_id',
@@ -1390,6 +1493,10 @@ class SalesReportController extends Controller
 
                 if ($filterUnitId) {
                     $query->where('id_unidade', $filterUnitId);
+                } elseif ($allowedUnitIds->isNotEmpty()) {
+                    $query->whereIn('id_unidade', $allowedUnitIds);
+                } else {
+                    $query->whereRaw('1 = 0');
                 }
             }]);
 
@@ -1397,6 +1504,12 @@ class SalesReportController extends Controller
             $paymentsQuery->whereHas('vendas', function ($query) use ($filterUnitId) {
                 $query->where('id_unidade', $filterUnitId);
             });
+        } elseif ($allowedUnitIds->isNotEmpty()) {
+            $paymentsQuery->whereHas('vendas', function ($query) use ($allowedUnitIds) {
+                $query->whereIn('id_unidade', $allowedUnitIds);
+            });
+        } else {
+            $paymentsQuery->whereRaw('1 = 0');
         }
 
         $payments = $paymentsQuery->get([
@@ -1512,10 +1625,37 @@ class SalesReportController extends Controller
         }
 
         $dateKey = $date->toDateString();
-        $expenseData = $this->groupExpenseDataByCashierUnit($dateKey, $filterUnitId);
+        $expenseData = $this->groupExpenseDataByCashierUnit($dateKey, $filterUnitId, $allowedUnitIds);
         $discardEntries = ProductDiscard::query()
             ->with(['product:tb1_id,tb1_nome,tb1_vlr_venda', 'user:id,tb2_id'])
             ->whereDate('created_at', $dateKey)
+            ->when($filterUnitId, function ($query) use ($filterUnitId) {
+                $query->where(function ($subQuery) use ($filterUnitId) {
+                    $subQuery->where('unit_id', $filterUnitId)
+                        ->orWhereHas('user', function ($userQuery) use ($filterUnitId) {
+                            $userQuery->where('tb2_id', $filterUnitId);
+                        })
+                        ->orWhereHas('user.units', function ($unitQuery) use ($filterUnitId) {
+                            $unitQuery->where('tb2_unidades.tb2_id', $filterUnitId);
+                        });
+                });
+            }, function ($query) use ($allowedUnitIds) {
+                if ($allowedUnitIds->isEmpty()) {
+                    $query->whereRaw('1 = 0');
+
+                    return;
+                }
+
+                $query->where(function ($subQuery) use ($allowedUnitIds) {
+                    $subQuery->whereIn('unit_id', $allowedUnitIds)
+                        ->orWhereHas('user', function ($userQuery) use ($allowedUnitIds) {
+                            $userQuery->whereIn('tb2_id', $allowedUnitIds);
+                        })
+                        ->orWhereHas('user.units', function ($unitQuery) use ($allowedUnitIds) {
+                            $unitQuery->whereIn('tb2_unidades.tb2_id', $allowedUnitIds);
+                        });
+                });
+            })
             ->orderByDesc('created_at')
             ->get();
 
@@ -1926,6 +2066,7 @@ class SalesReportController extends Controller
     {
         $this->ensureManager($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
+        $allowedUnitIds = $this->reportUnitIds($filterUnits);
 
         $mode = $request->query('mode', 'month') === 'day' ? 'day' : 'month';
         $dateValue = $request->query('date');
@@ -1942,9 +2083,9 @@ class SalesReportController extends Controller
             $dateValue = $month->format('Y-m');
         }
 
-        $payments = $this->fetchPayments($start, $end, $filterUnitId);
+        $payments = $this->fetchPayments($start, $end, $filterUnitId, $allowedUnitIds);
         [$totals, $details, $chartData] = $this->summarizePayments($payments);
-        [$totals, $details] = $this->applyGlobalValeTotals($start, $end, $totals, $details, $filterUnitId);
+        [$totals, $details] = $this->applyGlobalValeTotals($start, $end, $totals, $details, $filterUnitId, $allowedUnitIds);
         $chartData = $this->buildChartData($totals);
 
         $dailyTotals = $payments
@@ -1981,6 +2122,7 @@ class SalesReportController extends Controller
     {
         $this->ensureManager($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
+        $allowedUnitIds = $this->reportUnitIds($filterUnits);
 
         $dateValue = $request->query('date');
         $date = $this->parseDate($dateValue, 'Y-m-d', Carbon::today());
@@ -1988,7 +2130,7 @@ class SalesReportController extends Controller
         $end = $date->copy()->endOfDay();
         $dateValue = $date->format('Y-m-d');
 
-        $payments = VendaPagamento::with(['vendas' => function ($query) use ($filterUnitId) {
+        $payments = VendaPagamento::with(['vendas' => function ($query) use ($filterUnitId, $allowedUnitIds) {
             $query->orderBy('tb3_id')->select([
                 'tb3_id',
                 'tb4_id',
@@ -2003,6 +2145,10 @@ class SalesReportController extends Controller
 
             if ($filterUnitId) {
                 $query->where('id_unidade', $filterUnitId);
+            } elseif ($allowedUnitIds->isNotEmpty()) {
+                $query->whereIn('id_unidade', $allowedUnitIds);
+            } else {
+                $query->whereRaw('1 = 0');
             }
         }])
             ->whereBetween('created_at', [$start, $end])
@@ -2010,6 +2156,14 @@ class SalesReportController extends Controller
                 $query->whereHas('vendas', function ($subQuery) use ($filterUnitId) {
                     $subQuery->where('id_unidade', $filterUnitId);
                 });
+            }, function ($query) use ($allowedUnitIds) {
+                if ($allowedUnitIds->isNotEmpty()) {
+                    $query->whereHas('vendas', function ($subQuery) use ($allowedUnitIds) {
+                        $subQuery->whereIn('id_unidade', $allowedUnitIds);
+                    });
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
             })
             ->orderByDesc('tb4_id')
             ->get([
@@ -2074,6 +2228,7 @@ class SalesReportController extends Controller
     {
         $this->ensureManager($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
+        $allowedUnitIds = $this->reportUnitIds($filterUnits);
         $dateValue = $request->query('date');
         $date = $this->parseDate($dateValue, 'Y-m-d', Carbon::today());
         $start = $date->copy()->startOfDay();
@@ -2085,6 +2240,12 @@ class SalesReportController extends Controller
             ->whereBetween('id_comanda', [3000, 3100])
             ->when($filterUnitId, function ($query) use ($filterUnitId) {
                 $query->where('id_unidade', $filterUnitId);
+            }, function ($query) use ($allowedUnitIds) {
+                if ($allowedUnitIds->isNotEmpty()) {
+                    $query->whereIn('id_unidade', $allowedUnitIds);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
             })
             ->whereBetween('data_hora', [$start, $end])
             ->orderByDesc('data_hora')
@@ -2263,11 +2424,26 @@ class SalesReportController extends Controller
         }
     }
 
-    private function fetchPayments(Carbon $start, Carbon $end, ?int $unitId = null): Collection
+    private function fetchPayments(
+        Carbon $start,
+        Carbon $end,
+        ?int $unitId = null,
+        ?Collection $allowedUnitIds = null
+    ): Collection
     {
+        $applyUnitFilters = function ($query) use ($unitId, $allowedUnitIds) {
+            if ($unitId) {
+                $query->where('id_unidade', $unitId);
+            } elseif ($allowedUnitIds instanceof Collection && $allowedUnitIds->isNotEmpty()) {
+                $query->whereIn('id_unidade', $allowedUnitIds);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        };
+
         $query = VendaPagamento::query()
             ->with([
-                'vendas' => function ($subQuery) {
+                'vendas' => function ($subQuery) use ($applyUnitFilters) {
                     $subQuery->select([
                         'tb3_id',
                         'tb4_id',
@@ -2283,6 +2459,8 @@ class SalesReportController extends Controller
                         'id_unidade',
                         'tipo_pago',
                     ])->orderBy('tb3_id');
+
+                    $applyUnitFilters($subQuery);
                 },
                 'vendas.caixa:id,name',
                 'vendas.valeUser:id,name',
@@ -2290,11 +2468,9 @@ class SalesReportController extends Controller
             ])
             ->whereBetween('created_at', [$start, $end]);
 
-        if ($unitId) {
-            $query->whereHas('vendas', function ($subQuery) use ($unitId) {
-                $subQuery->where('id_unidade', $unitId);
-            });
-        }
+        $query->whereHas('vendas', function ($subQuery) use ($applyUnitFilters) {
+            $applyUnitFilters($subQuery);
+        });
 
         return $query
             ->orderByDesc('tb4_id')
@@ -2514,10 +2690,20 @@ class SalesReportController extends Controller
         $unit = $request->session()->get('active_unit');
 
         if (isset($unit['id'])) {
-            return (int) $unit['id'];
+            $unitId = (int) $unit['id'];
+
+            if ($unitId > 0 && Unidade::active()->where('tb2_id', $unitId)->exists()) {
+                return $unitId;
+            }
         }
 
-        return (int) ($request->user()?->tb2_id ?? 0);
+        $userUnitId = (int) ($request->user()?->tb2_id ?? 0);
+
+        if ($userUnitId > 0 && Unidade::active()->where('tb2_id', $userUnitId)->exists()) {
+            return $userUnitId;
+        }
+
+        return 0;
     }
 
     private function valeBreakdown(Carbon $start, Carbon $end, ?int $unitId = null): array
@@ -2547,12 +2733,19 @@ class SalesReportController extends Controller
         return $totals;
     }
 
-    private function applyGlobalValeTotals(Carbon $start, Carbon $end, array $totals, array $details, ?int $unitId = null): array
+    private function applyGlobalValeTotals(
+        Carbon $start,
+        Carbon $end,
+        array $totals,
+        array $details,
+        ?int $unitId = null,
+        ?Collection $allowedUnitIds = null
+    ): array
     {
-        $valeIds = $this->valeSaleIds($start, $end, 'vale', $unitId);
-        $refeicaoIds = $this->valeSaleIds($start, $end, 'refeicao', $unitId);
+        $valeIds = $this->valeSaleIds($start, $end, 'vale', $unitId, $allowedUnitIds);
+        $refeicaoIds = $this->valeSaleIds($start, $end, 'refeicao', $unitId, $allowedUnitIds);
 
-        $globalPayments = $this->fetchPayments($start, $end, $unitId);
+        $globalPayments = $this->fetchPayments($start, $end, $unitId, $allowedUnitIds);
 
         $valePayments = $valeIds->isEmpty()
             ? collect()
@@ -2597,7 +2790,13 @@ class SalesReportController extends Controller
         return [$totals, $details];
     }
 
-    private function valeSaleIds(Carbon $start, Carbon $end, string $type, ?int $unitId = null): Collection
+    private function valeSaleIds(
+        Carbon $start,
+        Carbon $end,
+        string $type,
+        ?int $unitId = null,
+        ?Collection $allowedUnitIds = null
+    ): Collection
     {
         $query = Venda::query()
             ->where('tipo_pago', $type)
@@ -2606,6 +2805,10 @@ class SalesReportController extends Controller
 
         if ($unitId) {
             $query->where('id_unidade', $unitId);
+        } elseif ($allowedUnitIds instanceof Collection && $allowedUnitIds->isNotEmpty()) {
+            $query->whereIn('id_unidade', $allowedUnitIds);
+        } else {
+            $query->whereRaw('1 = 0');
         }
 
         return $query->pluck('tb4_id')->unique()->values();
@@ -2869,14 +3072,25 @@ class SalesReportController extends Controller
         return $userId > 0 ? $userId : null;
     }
 
+    private function reportUnitIds(iterable $units): Collection
+    {
+        return collect($units)
+            ->pluck('id')
+            ->map(fn ($value) => (int) $value)
+            ->filter(fn (int $value) => $value > 0)
+            ->unique()
+            ->values();
+    }
+
     private function availableUnits(User $user): Collection
     {
         $units = $user->units()
             ->select('tb2_unidades.tb2_id', 'tb2_unidades.tb2_nome')
+            ->where('tb2_unidades.tb2_status', 1)
             ->get();
 
         if ($user->tb2_id && !$units->contains('tb2_id', $user->tb2_id)) {
-            $primary = Unidade::find($user->tb2_id, ['tb2_id', 'tb2_nome']);
+            $primary = Unidade::active()->find($user->tb2_id, ['tb2_id', 'tb2_nome']);
             if ($primary) {
                 $units->push($primary);
             }

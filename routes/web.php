@@ -39,7 +39,7 @@ Route::get('/', function (Request $request) {
         'laravelVersion' => Application::VERSION,
         'phpVersion' => PHP_VERSION,
         'selectedUnitId' => $requestedUnitId > 0 ? $requestedUnitId : null,
-        'units' => Unidade::orderBy('tb2_nome')->get([
+        'units' => Unidade::active()->orderBy('tb2_nome')->get([
             'tb2_id',
             'tb2_nome',
             'tb2_endereco',
