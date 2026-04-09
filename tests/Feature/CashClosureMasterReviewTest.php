@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\CashierClosure;
+use App\Models\Expense;
 use App\Models\Produto;
+use App\Models\Supplier;
 use App\Models\Unidade;
 use App\Models\User;
 use App\Models\Venda;
@@ -279,6 +281,164 @@ class CashClosureMasterReviewTest extends TestCase
         );
     }
 
+    public function test_cash_closure_report_deducts_expenses_from_cash_conference_base(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-08 12:00:00'));
+
+        $unit = $this->makeUnit('Setor-20');
+        $manager = $this->makeUser('Gerente', 1, $unit);
+        $cashier = $this->makeUser('Caixa', 3, $unit);
+        $otherCashier = $this->makeUser('Outro Caixa', 3, $unit);
+        $product = $this->makeProduct();
+        $supplier = $this->makeSupplier();
+
+        $payment = VendaPagamento::create([
+            'valor_total' => 100,
+            'tipo_pagamento' => 'dinheiro',
+            'valor_pago' => 100,
+            'troco' => 0,
+            'dois_pgto' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Venda::create([
+            'tb4_id' => $payment->tb4_id,
+            'tb1_id' => $product->tb1_id,
+            'id_comanda' => '301',
+            'produto_nome' => $product->tb1_nome,
+            'valor_unitario' => 100,
+            'quantidade' => 1,
+            'valor_total' => 100,
+            'data_hora' => now(),
+            'id_user_caixa' => $cashier->id,
+            'id_user_vale' => null,
+            'id_lanc' => null,
+            'id_unidade' => $unit->tb2_id,
+            'tipo_pago' => 'dinheiro',
+            'status_pago' => true,
+            'status' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        CashierClosure::create([
+            'user_id' => $cashier->id,
+            'unit_id' => $unit->tb2_id,
+            'unit_name' => $unit->tb2_nome,
+            'cash_amount' => 80,
+            'card_amount' => 0,
+            'closed_date' => '2026-04-08',
+            'closed_at' => now(),
+        ]);
+
+        Expense::create([
+            'supplier_id' => $supplier->id,
+            'unit_id' => $unit->tb2_id,
+            'user_id' => $cashier->id,
+            'expense_date' => '2026-04-08',
+            'amount' => 20,
+            'notes' => 'Gasto do caixa',
+        ]);
+
+        Expense::create([
+            'supplier_id' => $supplier->id,
+            'unit_id' => $unit->tb2_id,
+            'user_id' => $otherCashier->id,
+            'expense_date' => '2026-04-08',
+            'amount' => 15,
+            'notes' => 'Gasto de outro caixa',
+        ]);
+
+        $response = $this
+            ->actingAs($manager)
+            ->get(route('reports.cash.closure', ['date' => '2026-04-08']));
+
+        $response->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Reports/CashClosure')
+            ->has('records', 1)
+            ->where('records.0.cashier_name', 'Caixa')
+            ->where('records.0.expense_total', 20.0)
+            ->has('records.0.expense_details', 1)
+            ->where('records.0.expense_details.0.supplier', 'Fornecedor teste')
+            ->where('records.0.expense_details.0.amount', 20.0)
+            ->where('records.0.expense_details.0.notes', 'Gasto do caixa')
+            ->where('records.0.conference_base_cash', 80.0)
+            ->where('records.0.conference_base_total', 80.0)
+            ->where('records.0.closure.differences.cash', 0.0)
+            ->where('records.0.closure.differences.total', 0.0)
+        );
+    }
+
+    public function test_cash_discrepancies_report_ignores_shortage_when_expense_balances_cash(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-08 12:00:00'));
+
+        $unit = $this->makeUnit('Setor-21');
+        $manager = $this->makeUser('Gerente', 1, $unit);
+        $cashier = $this->makeUser('Caixa', 3, $unit);
+        $product = $this->makeProduct();
+        $supplier = $this->makeSupplier();
+
+        $payment = VendaPagamento::create([
+            'valor_total' => 100,
+            'tipo_pagamento' => 'dinheiro',
+            'valor_pago' => 100,
+            'troco' => 0,
+            'dois_pgto' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Venda::create([
+            'tb4_id' => $payment->tb4_id,
+            'tb1_id' => $product->tb1_id,
+            'id_comanda' => '401',
+            'produto_nome' => $product->tb1_nome,
+            'valor_unitario' => 100,
+            'quantidade' => 1,
+            'valor_total' => 100,
+            'data_hora' => now(),
+            'id_user_caixa' => $cashier->id,
+            'id_user_vale' => null,
+            'id_lanc' => null,
+            'id_unidade' => $unit->tb2_id,
+            'tipo_pago' => 'dinheiro',
+            'status_pago' => true,
+            'status' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        CashierClosure::create([
+            'user_id' => $cashier->id,
+            'unit_id' => $unit->tb2_id,
+            'unit_name' => $unit->tb2_nome,
+            'cash_amount' => 80,
+            'card_amount' => 0,
+            'closed_date' => '2026-04-08',
+            'closed_at' => now(),
+        ]);
+
+        Expense::create([
+            'supplier_id' => $supplier->id,
+            'unit_id' => $unit->tb2_id,
+            'user_id' => $cashier->id,
+            'expense_date' => '2026-04-08',
+            'amount' => 20,
+            'notes' => 'Gasto do caixa',
+        ]);
+
+        $response = $this
+            ->actingAs($manager)
+            ->get(route('reports.cash.discrepancies', ['date' => '2026-04-08']));
+
+        $response->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Reports/CashDiscrepancies')
+            ->has('records', 0)
+        );
+    }
+
     private function makeUnit(string $name): Unidade
     {
         return Unidade::create([
@@ -315,6 +475,15 @@ class CashClosureMasterReviewTest extends TestCase
             'tb1_codbar' => fake()->unique()->numerify('############'),
             'tb1_tipo' => 0,
             'tb1_status' => 1,
+        ]);
+    }
+
+    private function makeSupplier(): Supplier
+    {
+        return Supplier::create([
+            'name' => 'Fornecedor teste',
+            'dispute' => false,
+            'access_code' => '1234',
         ]);
     }
 }

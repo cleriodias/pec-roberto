@@ -175,13 +175,16 @@ export default function ExpenseIndex({ suppliers = [], expenses = [], activeUnit
                                                 Fornecedor
                                             </th>
                                             <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                                                Loja
+                                            </th>
+                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                                                Usuario
+                                            </th>
+                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
                                                 Data
                                             </th>
                                             <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
                                                 Valor
-                                            </th>
-                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
-                                                Observacao
                                             </th>
                                             <th className="px-3 py-2 text-center font-medium text-gray-600 dark:text-gray-300">
                                                 Acoes
@@ -190,9 +193,15 @@ export default function ExpenseIndex({ suppliers = [], expenses = [], activeUnit
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                                         {expenses.map((expense) => (
-                                            <tr key={expense.id}>
+                                            <tr key={expense.id} title={expense.notes ?? ''}>
                                                 <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
                                                     {expense.supplier?.name ?? '---'}
+                                                </td>
+                                                <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
+                                                    {expense.unit?.tb2_nome ?? '---'}
+                                                </td>
+                                                <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
+                                                    {expense.user?.name ?? '---'}
                                                 </td>
                                                 <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
                                                     {formatDate(expense.expense_date)}
@@ -200,17 +209,20 @@ export default function ExpenseIndex({ suppliers = [], expenses = [], activeUnit
                                                 <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
                                                     {formatCurrency(expense.amount)}
                                                 </td>
-                                                <td className="px-3 py-2 text-gray-600 dark:text-gray-300">
-                                                    {expense.notes ?? '--'}
-                                                </td>
                                                 <td className="px-3 py-2 text-center">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleDelete(expense.id)}
-                                                        className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200 dark:border-red-500/60 dark:text-red-300 dark:hover:bg-red-500/10"
-                                                    >
-                                                        Excluir
-                                                    </button>
+                                                    {expense.can_delete ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDelete(expense.id)}
+                                                            className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200 dark:border-red-500/60 dark:text-red-300 dark:hover:bg-red-500/10"
+                                                        >
+                                                            Excluir
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                                                            --
+                                                        </span>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}

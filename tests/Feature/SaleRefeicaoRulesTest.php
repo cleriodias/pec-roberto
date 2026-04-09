@@ -115,8 +115,10 @@ class SaleRefeicaoRulesTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-04-06 12:00:00'));
 
         $unit = $this->makeUnit('Loja Centro');
+        $otherUnit = $this->makeUnit('Loja Sul');
         $cashier = $this->makeUser('Caixa', 3, $unit);
         $employee = $this->makeUser('Clerio', 3, $unit, 200);
+        $otherEmployee = $this->makeUser('Clerio Externo', 3, $otherUnit, 200);
         $product = $this->makeProduct('Prato Feito', 6.00, true);
 
         Venda::create([
@@ -141,6 +143,7 @@ class SaleRefeicaoRulesTest extends TestCase
 
         $response = $this
             ->actingAs($cashier)
+            ->withSession($this->activeSessionPayload($unit, 3))
             ->getJson(route('users.search', ['q' => 'cler']));
 
         $response
@@ -150,6 +153,9 @@ class SaleRefeicaoRulesTest extends TestCase
                 'refeicao_daily_limit' => 12.0,
                 'refeicao_daily_used' => 6.0,
                 'refeicao_daily_remaining' => 6.0,
+            ])
+            ->assertJsonMissing([
+                'name' => $otherEmployee->name,
             ]);
     }
 

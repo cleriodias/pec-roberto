@@ -1,6 +1,6 @@
 import AlertMessage from "@/Components/Alert/AlertMessage";
-import PrimaryButton from "@/Components/Button/PrimaryButton";
 import SuccessButton from "@/Components/Button/SuccessButton";
+import PrimaryButton from "@/Components/Button/PrimaryButton";
 import WarningButton from "@/Components/Button/WarningButton";
 import ConfirmDeleteButton from "@/Components/Delete/ConfirmDeleteButton";
 import Pagination from "@/Components/Pagination";
@@ -33,20 +33,17 @@ const formatCurrency = (value) => {
     return parsed.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };
 
-const formatUnitIds = (user) => {
-    if (user.units && user.units.length > 0) {
-        return user.units.map((unit) => unit.tb2_id).join(', ');
-    }
-
-    return user.tb2_id ?? '---';
-};
-
-export default function UserIndex({ auth, users, units = [], filters = {} }) {
+export default function UserIndex({ auth, users, units = [], filters = {}, permissions = {} }) {
     const { flash } = usePage().props;
     const currentUnit = filters.unit ?? '';
     const currentRole = filters.funcao ?? '';
     const currentSearch = filters.search ?? '';
     const [search, setSearch] = useState(currentSearch);
+    const canCreate = Boolean(permissions.canCreate);
+    const canView = Boolean(permissions.canView);
+    const canEdit = Boolean(permissions.canEdit);
+    const canDelete = Boolean(permissions.canDelete);
+    const canManageSalaryAdvances = Boolean(permissions.canManageSalaryAdvances);
 
     useEffect(() => {
         setSearch(currentSearch);
@@ -105,11 +102,13 @@ export default function UserIndex({ auth, users, units = [], filters = {} }) {
                     <div className="flex justify-between items-center m-4">
                         <h3 className="text-lg">Listar</h3>
                         <div className="flex space-x-4">
-                            <Link href={route('users.create')}>
-                                <SuccessButton aria-label="Cadastrar" title="Cadastrar">
-                                    <i className="bi bi-plus-lg text-lg" aria-hidden="true"></i>
-                                </SuccessButton>
-                            </Link>
+                            {canCreate && (
+                                <Link href={route('users.create')}>
+                                    <SuccessButton aria-label="Cadastrar" title="Cadastrar">
+                                        <i className="bi bi-plus-lg text-lg" aria-hidden="true"></i>
+                                    </SuccessButton>
+                                </Link>
+                            )}
                         </div>
                     </div>
 
@@ -169,7 +168,6 @@ export default function UserIndex({ auth, users, units = [], filters = {} }) {
                                 <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">Jornada</td>
                                 <td className="px-4 py-3 text-right text-sm font-medium text-gray-500 tracking-wider">{'Sal\u00E1rio'}</td>
                                 <td className="px-4 py-3 text-right text-sm font-medium text-gray-500 tracking-wider">{'Cr\u00E9dito VR'}</td>
-                                <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">Unidades (IDs)</td>
                                 <td className="px-4 py-3 text-center text-sm font-medium text-gray-500 tracking-wider">{'A\u00E7\u00F5es'}</td>
                             </tr>
                         </thead>
@@ -198,28 +196,47 @@ export default function UserIndex({ auth, users, units = [], filters = {} }) {
                                         {formatCurrency(user.vr_cred)}
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
-                                        {formatUnitIds(user)}
-                                    </td>
-                                    <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
-                                        <Link href={route('users.show', { user: user.id })}>
-                                            <PrimaryButton
-                                                className="ms-1"
-                                                aria-label="Visualizar"
-                                                title="Visualizar"
-                                            >
-                                                <i className="bi bi-eye text-lg" aria-hidden="true"></i>
-                                            </PrimaryButton>
-                                        </Link>
-                                        <Link href={route('users.edit', { user: user.id })}>
-                                            <WarningButton
-                                                className="ms-1"
-                                                aria-label="Editar"
-                                                title="Editar"
-                                            >
-                                                <i className="bi bi-pencil-square text-lg" aria-hidden="true"></i>
-                                            </WarningButton>
-                                        </Link>
-                                        <ConfirmDeleteButton id={user.id} routeName="users.destroy" />
+                                        <div className="flex flex-wrap justify-center gap-1">
+                                            {canManageSalaryAdvances && (
+                                                <Link href={route('salary-advances.create', { user: user.id })}>
+                                                    <SuccessButton
+                                                        className="ms-1"
+                                                        aria-label="Adiantamento salarial"
+                                                        title="Adiantamento salarial"
+                                                    >
+                                                        <i className="bi bi-cash-coin text-lg" aria-hidden="true"></i>
+                                                    </SuccessButton>
+                                                </Link>
+                                            )}
+                                            {canView && (
+                                                <Link href={route('users.show', { user: user.id })}>
+                                                    <PrimaryButton
+                                                        className="ms-1"
+                                                        aria-label="Visualizar"
+                                                        title="Visualizar"
+                                                    >
+                                                        <i className="bi bi-eye text-lg" aria-hidden="true"></i>
+                                                    </PrimaryButton>
+                                                </Link>
+                                            )}
+                                            {canEdit && (
+                                                <Link href={route('users.edit', { user: user.id })}>
+                                                    <WarningButton
+                                                        className="ms-1"
+                                                        aria-label="Editar"
+                                                        title="Editar"
+                                                    >
+                                                        <i className="bi bi-pencil-square text-lg" aria-hidden="true"></i>
+                                                    </WarningButton>
+                                                </Link>
+                                            )}
+                                            {canDelete && (
+                                                <ConfirmDeleteButton id={user.id} routeName="users.destroy" />
+                                            )}
+                                            {!canManageSalaryAdvances && !canView && !canEdit && !canDelete && (
+                                                <span className="text-xs text-gray-400">--</span>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

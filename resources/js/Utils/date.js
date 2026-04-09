@@ -9,6 +9,13 @@ const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
     timeZone: BRAZIL_TIME_ZONE,
 });
 
+const shortDateFormatter = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: BRAZIL_TIME_ZONE,
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+});
+
 const dateTimeFormatter = new Intl.DateTimeFormat('pt-BR', {
     timeZone: BRAZIL_TIME_ZONE,
     dateStyle: 'short',
@@ -87,6 +94,16 @@ export const formatBrazilDate = (value) => {
     return dateFormatter.format(date);
 };
 
+export const formatBrazilShortDate = (value) => {
+    const date = parseDateValue(value);
+
+    if (!date) {
+        return '--';
+    }
+
+    return shortDateFormatter.format(date);
+};
+
 export const formatBrazilDateTime = (value) => {
     const date = parseDateValue(value);
 
@@ -108,3 +125,54 @@ export const formatBrazilTime = (value) => {
 };
 
 export const getBrazilTodayInputValue = () => todayInputFormatter.format(new Date());
+
+export const getBrazilTodayShortInputValue = () =>
+    formatBrazilShortDate(todayInputFormatter.format(new Date()));
+
+export const normalizeBrazilShortDateInput = (value) => {
+    const digits = String(value ?? '').replace(/\D/g, '').slice(0, 6);
+
+    if (digits.length <= 2) {
+        return digits;
+    }
+
+    if (digits.length <= 4) {
+        return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 6)}`;
+};
+
+export const shortBrazilDateInputToIso = (value) => {
+    const normalized = String(value ?? '').trim();
+
+    if (!/^\d{2}\/\d{2}\/\d{2}$/.test(normalized)) {
+        return '';
+    }
+
+    const [day, month, year] = normalized.split('/').map((part) => Number(part));
+    const fullYear = 2000 + year;
+    const candidate = new Date(Date.UTC(fullYear, month - 1, day, 12));
+
+    if (
+        Number.isNaN(candidate.getTime())
+        || candidate.getUTCFullYear() !== fullYear
+        || candidate.getUTCMonth() !== month - 1
+        || candidate.getUTCDate() !== day
+    ) {
+        return '';
+    }
+
+    const isoMonth = String(month).padStart(2, '0');
+    const isoDay = String(day).padStart(2, '0');
+
+    return `${fullYear}-${isoMonth}-${isoDay}`;
+};
+
+export const isoToBrazilShortDateInput = (value) => {
+    if (!value) {
+        return '';
+    }
+
+    return formatBrazilShortDate(value);
+};

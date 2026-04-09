@@ -124,7 +124,10 @@ const differenceTone = (value) => {
 };
 
 const systemCashBase = (record) =>
-    (Number(record?.totals?.dinheiro) || 0) + (Number(record?.totals?.maquina) || 0);
+    Number(
+        record?.conference_base_total ??
+            (Number(record?.conference_base_cash) || 0) + (Number(record?.totals?.maquina) || 0),
+    );
 
 export default function CashDiscrepancies({
     records = [],
@@ -233,7 +236,7 @@ export default function CashDiscrepancies({
                             Fechamentos com discrepancia
                         </h2>
                         <p className="text-sm text-gray-500 dark:text-gray-300">
-                            Fechamentos de caixa com diferencas entre sistema e fechamento. A discrepancia considera somente dinheiro e cartao.
+                            Fechamentos de caixa com diferencas entre sistema e fechamento. A discrepancia considera somente dinheiro e cartao, com gastos do dia deduzidos do dinheiro.
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -341,7 +344,7 @@ export default function CashDiscrepancies({
                             </div>
                         </div>
                         <p className="mt-3 text-sm text-gray-500 dark:text-gray-300">
-                            O valor do sistema usado na discrepancia soma apenas dinheiro e cartao. Vale, refeicao e fatura permanecem exibidos apenas para conferencia das vendas.
+                            O valor do sistema usado na discrepancia soma apenas dinheiro e cartao, com gastos do dia deduzidos do dinheiro. Vale, refeicao e fatura permanecem exibidos apenas para conferencia das vendas.
                         </p>
 
                         {records.length === 0 ? (
@@ -494,7 +497,7 @@ export default function CashDiscrepancies({
                             <div>
                                 <p className="text-xs font-semibold uppercase text-gray-500">Valores do sistema</p>
                                 <p className="mt-1 text-sm text-gray-500">
-                                    A discrepancia abaixo considera somente dinheiro e cartao.
+                                    A discrepancia abaixo considera somente dinheiro e cartao, com gastos deduzidos do dinheiro.
                                 </p>
                                 <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                                     {systemDetailColumns.map((column) => (
@@ -521,7 +524,15 @@ export default function CashDiscrepancies({
                                             Sistema dinheiro
                                         </p>
                                         <p className="text-lg font-bold text-gray-900">
-                                            {formatCurrency(detailModal.record.totals?.dinheiro ?? 0)}
+                                            {formatCurrency(detailModal.record.conference_base_cash ?? 0)}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
+                                        <p className="text-xs font-semibold uppercase text-amber-700">
+                                            Gastos
+                                        </p>
+                                        <p className="text-lg font-bold text-amber-900">
+                                            {formatCurrency(detailModal.record.expense_total ?? 0)}
                                         </p>
                                     </div>
                                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">

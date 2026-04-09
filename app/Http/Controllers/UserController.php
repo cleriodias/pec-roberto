@@ -8,6 +8,7 @@ use App\Models\Venda;
 use App\Models\SalaryAdvance;
 use App\Support\ManagementScope;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -30,6 +31,10 @@ class UserController extends Controller
             $funcao = (int) $user->funcao;
 
             if ($funcao === 3 && $routeName === 'users.search') {
+                return $next($request);
+            }
+
+            if ($funcao === 2 && $routeName === 'users.index') {
                 return $next($request);
             }
 
@@ -82,6 +87,13 @@ class UserController extends Controller
             'users' => $users,
             'units' => $units,
             'filters' => $filters,
+            'permissions' => [
+                'canCreate' => in_array((int) $authUser->funcao, [0, 1], true),
+                'canView' => in_array((int) $authUser->funcao, [0, 1], true),
+                'canEdit' => in_array((int) $authUser->funcao, [0, 1], true),
+                'canDelete' => in_array((int) $authUser->funcao, [0, 1], true),
+                'canManageSalaryAdvances' => in_array((int) $authUser->funcao, [0, 1, 2], true),
+            ],
         ]);
     }
 
@@ -347,7 +359,25 @@ class UserController extends Controller
         $dailyLimit = $this->resolveRefeicaoDailyLimit(now());
 
         $users = User::query();
-        ManagementScope::applyManagedUserScope($users, $request->user());
+        $authUser = $request->user();
+
+        if ((int) $authUser->funcao === 3) {
+            $activeUnitId = (int) ($request->session()->get('active_unit.id') ?? $authUser->tb2_id ?? 0);
+
+            if ($activeUnitId <= 0) {
+                return response()->json([]);
+            }
+
+            $users->where(function (Builder $query) use ($activeUnitId) {
+                $query
+                    ->where('users.tb2_id', $activeUnitId)
+                    ->orWhereHas('units', function (Builder $unitQuery) use ($activeUnitId) {
+                        $unitQuery->where('tb2_unidades.tb2_id', $activeUnitId);
+                    });
+            });
+        } else {
+            ManagementScope::applyManagedUserScope($users, $authUser);
+        }
 
         $users = $users
             ->where('name', 'like', '%' . $safeTerm . '%')

@@ -20,6 +20,16 @@ class ManagementScope
         return $user instanceof User && (int) $user->funcao === 1;
     }
 
+    public static function isSubManager(?User $user): bool
+    {
+        return $user instanceof User && (int) $user->funcao === 2;
+    }
+
+    public static function isManagement(?User $user): bool
+    {
+        return $user instanceof User && in_array((int) $user->funcao, [0, 1, 2], true);
+    }
+
     public static function isAdmin(?User $user): bool
     {
         return $user instanceof User && in_array((int) $user->funcao, [0, 1], true);
@@ -62,7 +72,7 @@ class ManagementScope
 
     public static function canManageUnit(User $user, ?int $unitId): bool
     {
-        if ($unitId === null || $unitId <= 0 || ! self::isAdmin($user)) {
+        if ($unitId === null || $unitId <= 0 || ! self::isManagement($user)) {
             return false;
         }
 
@@ -93,7 +103,7 @@ class ManagementScope
 
     public static function canManageUser(User $actingUser, User $targetUser): bool
     {
-        if (! self::isAdmin($actingUser)) {
+        if (! self::isManagement($actingUser)) {
             return false;
         }
 
@@ -143,8 +153,12 @@ class ManagementScope
 
     public static function applyManagedUserScope(Builder $query, User $user): Builder
     {
-        if (! self::isManager($user)) {
+        if (self::isMaster($user)) {
             return $query;
+        }
+
+        if (! self::isManagement($user)) {
+            return $query->whereRaw('1 = 0');
         }
 
         $allowedUnitIds = self::managedUnitIds($user)->all();

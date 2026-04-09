@@ -18,7 +18,11 @@ class ExpenseController extends Controller
 
         $activeUnit = $this->resolveUnit($request);
         $suppliers = Supplier::orderBy('name')->get(['id', 'name']);
-        $expensesQuery = Expense::with('supplier:id,name')
+        $expensesQuery = Expense::with([
+            'supplier:id,name',
+            'unit:tb2_id,tb2_nome',
+            'user:id,name',
+        ])
             ->orderByDesc('expense_date')
             ->orderByDesc('id');
 
@@ -28,14 +32,21 @@ class ExpenseController extends Controller
             $expensesQuery->whereRaw('1 = 0');
         }
 
+        $currentUserId = (int) $request->user()->id;
+
         $expenses = $expensesQuery->get([
             'id',
             'supplier_id',
             'unit_id',
+            'user_id',
             'expense_date',
             'amount',
             'notes',
-        ]);
+        ])->map(function (Expense $expense) use ($currentUserId) {
+            $expense->setAttribute('can_delete', (int) $expense->user_id === $currentUserId);
+
+            return $expense;
+        });
 
         return Inertia::render('Finance/ExpenseIndex', [
             'suppliers' => $suppliers,
@@ -75,7 +86,11 @@ class ExpenseController extends Controller
         $this->ensureManager($request->user());
         $activeUnit = $this->resolveUnit($request);
 
-        if (! $activeUnit || (int) $expense->unit_id !== (int) $activeUnit['id']) {
+        if (
+            ! $activeUnit
+            || (int) $expense->unit_id !== (int) $activeUnit['id']
+            || (int) $expense->user_id !== (int) $request->user()->id
+        ) {
             abort(403);
         }
 

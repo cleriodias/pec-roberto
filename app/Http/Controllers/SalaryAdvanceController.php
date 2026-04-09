@@ -9,7 +9,6 @@ use App\Support\ManagementScope;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,7 +18,7 @@ class SalaryAdvanceController extends Controller
     public function index(Request $request): Response
     {
         $user = $request->user();
-        $this->ensureManager($user);
+        $this->ensureManagement($user);
 
         $monthParam = $request->query('month');
         $unitParam = $request->query('unit_id');
@@ -29,7 +28,7 @@ class SalaryAdvanceController extends Controller
         ];
 
         $advancesQuery = SalaryAdvance::with(['user:id,name,tb2_id', 'unit:tb2_id,tb2_nome'])
-            ->when(ManagementScope::isManager($user), function ($query) use ($user) {
+            ->when(! ManagementScope::isMaster($user), function ($query) use ($user) {
                 $allowedUnitIds = ManagementScope::managedUnitIds($user)->all();
 
                 if (empty($allowedUnitIds)) {
@@ -94,18 +93,24 @@ class SalaryAdvanceController extends Controller
             'advances' => $advances,
             'filters' => $filters,
             'units' => $units,
+            'canDeleteAdvances' => ManagementScope::isMaster($user),
         ]);
     }
 
     public function create(Request $request): Response
     {
         $user = $request->user();
-        $this->ensureManager($user);
+        $this->ensureManagement($user);
 
         $users = User::query()->orderBy('name');
         ManagementScope::applyManagedUserScope($users, $user);
         $users = $users->get(['id', 'name', 'salario']);
         $activeUnit = $this->resolveUnit($request);
+        $selectedUser = $this->resolveSelectedUser($request);
+        $currentMonthAdvances = $selectedUser
+            ? $this->currentMonthAdvancesQuery($selectedUser)->get(['id', 'advance_date', 'amount', 'reason'])
+            : collect();
+        $currentMonthTotal = round((float) $currentMonthAdvances->sum('amount'), 2);
 
         return Inertia::render('Finance/SalaryAdvanceCreate', [
             'users' => $users->map(fn ($user) => [
@@ -115,12 +120,27 @@ class SalaryAdvanceController extends Controller
                 'formatted_limit' => number_format((float) ($user->salario ?? 0), 2, ',', '.'),
             ]),
             'activeUnit' => $activeUnit,
+            'selectedUser' => $selectedUser ? [
+                'id' => $selectedUser->id,
+                'name' => $selectedUser->name,
+                'salary_limit' => (float) ($selectedUser->salario ?? 0),
+                'formatted_limit' => number_format((float) ($selectedUser->salario ?? 0), 2, ',', '.'),
+            ] : null,
+            'currentMonthAdvances' => $currentMonthAdvances->map(fn (SalaryAdvance $advance) => [
+                'id' => $advance->id,
+                'advance_date' => $advance->advance_date?->toDateString(),
+                'amount' => (float) $advance->amount,
+                'reason' => $advance->reason,
+            ])->values()->all(),
+            'currentMonthTotal' => $currentMonthTotal,
+            'currentMonthReference' => now()->format('m/Y'),
+            'canDeleteAdvances' => ManagementScope::isMaster($user),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
-        $this->ensureManager($request->user());
+        $this->ensureManagement($request->user());
 
         $activeUnit = $this->resolveUnit($request);
         if (! $activeUnit) {
@@ -129,40 +149,42 @@ class SalaryAdvanceController extends Controller
 
         $data = $request->validate([
             'user_id' => ['required', 'integer', 'exists:users,id'],
-            'advance_date' => ['required', 'date'],
+            'advance_date' => ['required', 'string'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'reason' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $user = User::select('id', 'salario', 'funcao')->findOrFail($data['user_id']);
+        $advanceDate = $this->parseAdvanceDate((string) $data['advance_date']);
+        $user = User::select('id', 'name', 'salario', 'funcao', 'tb2_id')->findOrFail($data['user_id']);
         $this->ensureCanManageUser($request->user(), $user);
 
-        $totalTaken = SalaryAdvance::where('user_id', $user->id)->sum('amount');
-        $totalDueAsVale = DB::table('tb3_vendas')
-            ->where('id_user_vale', $user->id)
-            ->where('tipo_pago', 'vale')
-            ->sum('valor_total');
-
-        $newTotal = $totalTaken + $totalDueAsVale + (float) $data['amount'];
+        $currentMonthTotal = (float) $this->currentMonthAdvancesQuery($user)->sum('amount');
+        $newTotal = $currentMonthTotal + (float) $data['amount'];
 
         if ($newTotal > (float) ($user->salario ?? 0)) {
             throw ValidationException::withMessages([
-                'amount' => 'Adiantamento excede o limite permitido para este usuario.',
+                'amount' => 'O total de adiantamentos do mes corrente excede o salario deste usuario.',
             ]);
         }
 
-        SalaryAdvance::create(array_merge($data, [
+        SalaryAdvance::create([
+            'user_id' => (int) $data['user_id'],
+            'advance_date' => $advanceDate->toDateString(),
+            'amount' => (float) $data['amount'],
+            'reason' => $this->normalizeReason($data['reason'] ?? null),
             'unit_id' => $activeUnit['id'],
-        ]));
+        ]);
 
         return redirect()
-            ->route('salary-advances.index')
+            ->back()
             ->with('success', 'Adiantamento registrado com sucesso!');
     }
 
     public function destroy(Request $request, SalaryAdvance $salaryAdvance): RedirectResponse
     {
-        $this->ensureManager($request->user());
+        if (! ManagementScope::isMaster($request->user())) {
+            abort(403);
+        }
 
         if (! $this->canManageAdvance($request->user(), $salaryAdvance)) {
             abort(403);
@@ -171,13 +193,13 @@ class SalaryAdvanceController extends Controller
         $salaryAdvance->delete();
 
         return redirect()
-            ->route('salary-advances.index')
+            ->back()
             ->with('success', 'Adiantamento excluido com sucesso!');
     }
 
-    private function ensureManager($user): void
+    private function ensureManagement($user): void
     {
-        if (! $user || ! in_array((int) $user->funcao, [0, 1], true)) {
+        if (! ManagementScope::isManagement($user)) {
             abort(403);
         }
     }
@@ -217,7 +239,7 @@ class SalaryAdvanceController extends Controller
 
     private function canManageAdvance($actingUser, SalaryAdvance $salaryAdvance): bool
     {
-        if (! $actingUser || ! ManagementScope::isAdmin($actingUser)) {
+        if (! $actingUser || ! ManagementScope::isManagement($actingUser)) {
             return false;
         }
 
@@ -233,5 +255,75 @@ class SalaryAdvanceController extends Controller
 
         return $salaryAdvance->user instanceof User
             && ManagementScope::canManageUser($actingUser, $salaryAdvance->user);
+    }
+
+    private function resolveSelectedUser(Request $request): ?User
+    {
+        $selectedUserId = (int) $request->query('user', 0);
+
+        if ($selectedUserId <= 0) {
+            return null;
+        }
+
+        $selectedUser = User::query()
+            ->with('units:tb2_id,tb2_nome')
+            ->findOrFail($selectedUserId, ['id', 'name', 'salario', 'funcao', 'tb2_id']);
+
+        $this->ensureCanManageUser($request->user(), $selectedUser);
+
+        return $selectedUser;
+    }
+
+    private function currentMonthAdvancesQuery(User $user)
+    {
+        [$monthStart, $monthEnd] = $this->currentMonthRange();
+
+        return SalaryAdvance::query()
+            ->where('user_id', $user->id)
+            ->whereBetween('advance_date', [$monthStart->toDateString(), $monthEnd->toDateString()])
+            ->orderByDesc('advance_date')
+            ->orderByDesc('id');
+    }
+
+    private function currentMonthRange(): array
+    {
+        return [
+            now()->startOfMonth(),
+            now()->endOfMonth(),
+        ];
+    }
+
+    private function parseAdvanceDate(string $value): Carbon
+    {
+        $normalized = trim($value);
+
+        if ($normalized === '') {
+            throw ValidationException::withMessages([
+                'advance_date' => 'Informe a data do adiantamento.',
+            ]);
+        }
+
+        foreach (['d/m/y', 'd/m/Y', 'Y-m-d'] as $format) {
+            try {
+                $date = Carbon::createFromFormat($format, $normalized);
+            } catch (\Throwable $e) {
+                continue;
+            }
+
+            if ($date && $date->format($format) === $normalized) {
+                return $date->startOfDay();
+            }
+        }
+
+        throw ValidationException::withMessages([
+            'advance_date' => 'Informe a data no formato DD/MM/AA.',
+        ]);
+    }
+
+    private function normalizeReason(?string $value): ?string
+    {
+        $normalized = trim((string) $value);
+
+        return $normalized === '' ? null : $normalized;
     }
 }

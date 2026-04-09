@@ -168,6 +168,15 @@ const differenceTone = (value) => {
     return (value ?? 0) > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400';
 };
 
+const resolveConferenceCashBase = (record) =>
+    Number(record?.conference_base_cash ?? record?.totals?.dinheiro ?? 0);
+
+const resolveConferenceTotal = (record) =>
+    Number(
+        record?.conference_base_total ??
+            resolveConferenceCashBase(record) + Number(record?.totals?.maquina ?? 0),
+    );
+
 const hexToRgb = (value) => {
     if (typeof value !== 'string') {
         return null;
@@ -240,6 +249,13 @@ export default function CashClosure({
         items: [],
         total: 0,
     });
+    const [expenseModal, setExpenseModal] = useState({
+        open: false,
+        cashierName: '',
+        unitName: '',
+        items: [],
+        total: 0,
+    });
     const [selectedReceipt, setSelectedReceipt] = useState(null);
     const [printError, setPrintError] = useState('');
 
@@ -285,11 +301,7 @@ export default function CashClosure({
 
     const conferenceGrandTotal = useMemo(
         () =>
-            records.reduce(
-                (sum, record) =>
-                    sum + (record.totals?.dinheiro ?? 0) + (record.totals?.maquina ?? 0),
-                0,
-            ),
+            records.reduce((sum, record) => sum + resolveConferenceTotal(record), 0),
         [records],
     );
 
@@ -379,6 +391,26 @@ export default function CashClosure({
 
     const closeCardComplementModal = () => {
         setCardComplementModal({
+            open: false,
+            cashierName: '',
+            unitName: '',
+            items: [],
+            total: 0,
+        });
+    };
+
+    const openExpenseModal = (record) => {
+        setExpenseModal({
+            open: true,
+            cashierName: record?.cashier_name ?? '',
+            unitName: record?.unit_name ?? '---',
+            items: record?.expense_details ?? [],
+            total: Number(record?.expense_total ?? 0),
+        });
+    };
+
+    const closeExpenseModal = () => {
+        setExpenseModal({
             open: false,
             cashierName: '',
             unitName: '',
@@ -523,7 +555,10 @@ export default function CashClosure({
     );
 
     const renderPaymentCell = (record, column, options = {}) => {
-        const systemValue = record.totals?.[column.key] ?? 0;
+        const systemValue =
+            column.key === 'dinheiro'
+                ? resolveConferenceCashBase(record)
+                : record.totals?.[column.key] ?? 0;
 
         if (!['dinheiro', 'maquina'].includes(column.key)) {
             return renderSystemAlignedCell('Sistema', systemValue);
@@ -543,6 +578,8 @@ export default function CashClosure({
             column.key === 'maquina' &&
             options.showCardDifferenceLink &&
             Number(record?.small_card_complements?.total ?? 0) > 0;
+        const showExpenseValue =
+            column.key === 'dinheiro' && Number(record?.expense_total ?? 0) > 0;
 
         return (
             <div className="space-y-1 text-right">
@@ -563,6 +600,15 @@ export default function CashClosure({
                     <p className={`text-sm font-semibold ${diffClass}`}>
                         {formatCurrency(diffValue)}
                     </p>
+                    {showExpenseValue && (
+                        <button
+                            type="button"
+                            onClick={() => openExpenseModal(record)}
+                            className="mt-1 inline-flex text-xs font-semibold text-amber-600 transition hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200"
+                        >
+                            {formatCurrency(-Number(record?.expense_total ?? 0))}
+                        </button>
+                    )}
                     {showCardComplementLink && (
                         <button
                             type="button"
@@ -579,9 +625,7 @@ export default function CashClosure({
 
     const renderConferenceCell = (record) => {
         const closure = record.closure ?? null;
-        const cashSystem = record.totals?.dinheiro ?? 0;
-        const cardSystem = record.totals?.maquina ?? 0;
-        const systemTotal = cashSystem + cardSystem;
+        const systemTotal = resolveConferenceTotal(record);
         const closureTotal = closure?.total_amount ?? 0;
         const diffTotal = closure?.differences?.total ?? systemTotal;
         const diffClass = differenceTone(diffTotal);
@@ -707,7 +751,7 @@ export default function CashClosure({
                 Totais por caixa ({selectedUnit?.name ?? 'Todas as unidades'}) - Data do fechamento: {formatShortDate(dateInputValue)}
             </h3>
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-300">
-                A diferenca do caixa considera somente dinheiro e cartao. Vale, refeicao e faturar aparecem apenas como informativos de venda.
+                A diferenca do caixa considera somente dinheiro e cartao. Gastos do dia deduzem o dinheiro esperado no caixa. Vale, refeicao e faturar aparecem apenas como informativos de venda.
             </p>
             <div className="mt-4 overflow-x-auto">
                 {records.length === 0 ? (
@@ -1049,6 +1093,68 @@ export default function CashClosure({
                                                 ) : (
                                                     <span className="text-xs text-gray-400">--</span>
                                                 )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </Modal>
+            <Modal show={expenseModal.open} onClose={closeExpenseModal} maxWidth="2xl" tone="light">
+                <div className="bg-white p-6 text-gray-800">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-900">
+                                Detalhe dos gastos
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                                Gastos deduzidos do dinheiro esperado no caixa para este fechamento.
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500">
+                                Caixa: {expenseModal.cashierName || '---'} | Unidade: {expenseModal.unitName || '---'}
+                            </p>
+                        </div>
+                        <div className="text-right text-sm">
+                            <p className="font-semibold text-gray-700">
+                                Total: {formatCurrency(expenseModal.total)}
+                            </p>
+                            <p className="text-gray-500">
+                                Registros: {expenseModal.items.length}
+                            </p>
+                        </div>
+                    </div>
+
+                    {!expenseModal.items.length ? (
+                        <p className="mt-6 text-sm text-gray-500">
+                            Nenhum gasto encontrado para este fechamento.
+                        </p>
+                    ) : (
+                        <div className="mt-6 max-h-96 overflow-y-auto">
+                            <table className="min-w-full divide-y divide-gray-200 text-sm">
+                                <thead className="bg-gray-50 text-gray-600">
+                                    <tr>
+                                        <th className="px-3 py-2 text-left font-medium">Fornecedor</th>
+                                        <th className="px-3 py-2 text-left font-medium">Data</th>
+                                        <th className="px-3 py-2 text-right font-medium">Valor</th>
+                                        <th className="px-3 py-2 text-left font-medium">Observacao</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {expenseModal.items.map((item) => (
+                                        <tr key={item.id}>
+                                            <td className="px-3 py-2 text-gray-800">
+                                                {item.supplier}
+                                            </td>
+                                            <td className="px-3 py-2 text-gray-600">
+                                                {formatShortDate(item.expense_date)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-semibold text-amber-700">
+                                                {formatCurrency(item.amount)}
+                                            </td>
+                                            <td className="px-3 py-2 text-gray-600">
+                                                {item.notes ?? '--'}
                                             </td>
                                         </tr>
                                     ))}

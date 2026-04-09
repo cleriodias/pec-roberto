@@ -17,7 +17,7 @@ const formatDate = (value) => {
     return formatBrazilDate(value);
 };
 
-export default function SalaryAdvanceIndex({ advances, filters = {}, units = [] }) {
+export default function SalaryAdvanceIndex({ advances, filters = {}, units = [], canDeleteAdvances = false }) {
     const createUrl = route('salary-advances.create');
 
     const handleDelete = (advanceId) => {
@@ -142,13 +142,17 @@ export default function SalaryAdvanceIndex({ advances, filters = {}, units = [] 
                                                 {advance.reason ?? '--'}
                                             </td>
                                             <td className="px-3 py-2 text-center">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDelete(advance.id)}
-                                                    className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200 dark:border-red-500/60 dark:text-red-300 dark:hover:bg-red-500/10"
-                                                >
-                                                    Excluir
-                                                </button>
+                                                {canDeleteAdvances ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDelete(advance.id)}
+                                                        className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200 dark:border-red-500/60 dark:text-red-300 dark:hover:bg-red-500/10"
+                                                    >
+                                                        Excluir
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-xs text-gray-400">Somente Master</span>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
