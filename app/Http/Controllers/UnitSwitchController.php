@@ -97,7 +97,8 @@ class UnitSwitchController extends Controller
             $unitIds->push($primaryId);
         }
 
-        return Unidade::whereIn('tb2_id', $unitIds->unique())
+        return Unidade::active()
+            ->whereIn('tb2_id', $unitIds->unique())
             ->orderBy('tb2_nome')
             ->get(['tb2_id', 'tb2_nome', 'tb2_endereco', 'tb2_cnpj']);
     }

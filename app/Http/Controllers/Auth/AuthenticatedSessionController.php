@@ -24,7 +24,7 @@ class AuthenticatedSessionController extends Controller
     public function create(Request $request): Response
     {
         $requestedUnitId = (int) $request->query('l', 0);
-        $unitsQuery = Unidade::orderBy('tb2_nome');
+        $unitsQuery = Unidade::active()->orderBy('tb2_nome');
 
         if ($requestedUnitId > 0) {
             $unitsQuery->where('tb2_id', $requestedUnitId);
@@ -89,7 +89,17 @@ class AuthenticatedSessionController extends Controller
             ]);
         }
 
-        $selectedUnit = Unidade::select('tb2_id', 'tb2_nome', 'tb2_endereco', 'tb2_cnpj')->findOrFail($unitId);
+        $selectedUnit = Unidade::active()
+            ->select('tb2_id', 'tb2_nome', 'tb2_endereco', 'tb2_cnpj')
+            ->find($unitId);
+
+        if (! $selectedUnit) {
+            Auth::logout();
+
+            throw ValidationException::withMessages([
+                'unit_id' => 'A unidade selecionada esta inativa.',
+            ]);
+        }
 
         $request->session()->put('active_unit', [
             'id' => $selectedUnit->tb2_id,

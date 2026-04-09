@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
@@ -21,7 +22,17 @@ class Unidade extends Model
         'tb2_fone',
         'tb2_cnpj',
         'tb2_localizacao',
+        'tb2_status',
     ];
+
+    protected $casts = [
+        'tb2_status' => 'integer',
+    ];
+
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('tb2_status', 1);
+    }
 
     public function users(): BelongsToMany
     {

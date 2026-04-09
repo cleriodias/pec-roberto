@@ -30,7 +30,7 @@ class AnyDesckController extends Controller
 
         return Inertia::render('Settings/AnyDesck', [
             'codes' => $codes,
-            'stores' => Unidade::orderBy('tb2_nome')->get([
+            'stores' => Unidade::active()->orderBy('tb2_nome')->get([
                 'tb2_id',
                 'tb2_nome',
             ]),

@@ -16,15 +16,18 @@ class EnsureActiveUnit
             $unitId = (int) ($user->tb2_id ?? 0);
 
             if ($unitId > 0) {
-                $unit = Unidade::select('tb2_id', 'tb2_nome', 'tb2_endereco', 'tb2_cnpj')
+                $unit = Unidade::active()
+                    ->select('tb2_id', 'tb2_nome', 'tb2_endereco', 'tb2_cnpj')
                     ->find($unitId);
 
-                $request->session()->put('active_unit', [
-                    'id' => $unit?->tb2_id ?? $unitId,
-                    'name' => $unit?->tb2_nome ?? ('Unidade #' . $unitId),
-                    'address' => $unit?->tb2_endereco ?? null,
-                    'cnpj' => $unit?->tb2_cnpj ?? null,
-                ]);
+                if ($unit) {
+                    $request->session()->put('active_unit', [
+                        'id' => $unit->tb2_id,
+                        'name' => $unit->tb2_nome,
+                        'address' => $unit->tb2_endereco,
+                        'cnpj' => $unit->tb2_cnpj,
+                    ]);
+                }
             }
         }
 

@@ -56,7 +56,9 @@ class ManagementScope
     public static function managedUnits(User $user, array $columns = ['tb2_id', 'tb2_nome']): Collection
     {
         if (self::isMaster($user)) {
-            return Unidade::orderBy('tb2_nome')->get($columns);
+            return Unidade::active()
+                ->orderBy('tb2_nome')
+                ->get($columns);
         }
 
         $unitIds = self::managedUnitIds($user);
@@ -65,7 +67,8 @@ class ManagementScope
             return collect();
         }
 
-        return Unidade::whereIn('tb2_id', $unitIds)
+        return Unidade::active()
+            ->whereIn('tb2_id', $unitIds)
             ->orderBy('tb2_nome')
             ->get($columns);
     }

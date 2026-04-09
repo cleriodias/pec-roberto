@@ -19,6 +19,7 @@ class UnitSeeder extends Seeder
                 'tb2_fone' => '(61) 9 8452-4923',
                 'tb2_cnpj' => '50.359.790/0001-74',
                 'tb2_localizacao' => 'https://maps.app.goo.gl/RamuBRPegsbk7NZZA',
+                'tb2_status' => 1,
             ],
             [
                 'tb2_id' => 2,
@@ -28,6 +29,7 @@ class UnitSeeder extends Seeder
                 'tb2_fone' => '(61) 9 8452-4923',
                 'tb2_cnpj' => '50.359.790/0001-74',
                 'tb2_localizacao' => 'https://maps.app.goo.gl/98f3uSdHqm7d5Xcm9',
+                'tb2_status' => 1,
             ],
             [
                 'tb2_id' => 3,
@@ -37,6 +39,7 @@ class UnitSeeder extends Seeder
                 'tb2_fone' => '(61) 9 8452-4923',
                 'tb2_cnpj' => '50.359.790/0001-74',
                 'tb2_localizacao' => 'https://maps.app.goo.gl/ZeCTtye7KcYZ56E88',
+                'tb2_status' => 1,
             ],
         ];
 
