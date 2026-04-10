@@ -3,6 +3,7 @@
 use App\Http\Controllers\AnyDesckController;
 use App\Http\Controllers\BoletoController;
 use App\Http\Controllers\CashierClosureController;
+use App\Http\Controllers\ControlePagamentoController;
 use App\Http\Controllers\DatabaseToolsController;
 use App\Http\Controllers\DiscardSettingsController;
 use App\Http\Controllers\ExpenseController;
@@ -134,6 +135,12 @@ Route::middleware('auth')->group(function () {
         ->name('settings.discard-config');
     Route::put('/settings/discard-config', [DiscardSettingsController::class, 'update'])
         ->name('settings.discard-config.update');
+    Route::get('/settings/controle-pagamentos', [ControlePagamentoController::class, 'index'])
+        ->name('settings.payment-control');
+    Route::post('/settings/controle-pagamentos', [ControlePagamentoController::class, 'store'])
+        ->name('settings.payment-control.store');
+    Route::delete('/settings/controle-pagamentos/{controlePagamento}', [ControlePagamentoController::class, 'destroy'])
+        ->name('settings.payment-control.destroy');
     Route::get('/settings/avisos', [NoticeController::class, 'index'])
         ->name('settings.notices');
     Route::post('/settings/avisos', [NoticeController::class, 'store'])

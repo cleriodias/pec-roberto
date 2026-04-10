@@ -51,6 +51,11 @@ export default function Config({ auth }) {
             icon: 'bi-percent',
             href: route('settings.discard-config'),
         },
+        {
+            label: 'Controle de Pagamentos',
+            icon: 'bi-cash-coin',
+            href: route('settings.payment-control'),
+        },
     ];
 
     if (isMaster) {
