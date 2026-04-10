@@ -1,11 +1,12 @@
 import AlertMessage from '@/Components/Alert/AlertMessage';
+import PrimaryButton from '@/Components/Button/PrimaryButton';
 import InputError from '@/Components/InputError';
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import {
     formatBrazilShortDate,
     getBrazilTodayShortInputValue,
-    normalizeBrazilShortDateInput,
+    isoToBrazilShortDateInput,
     shortBrazilDateInputToIso,
 } from '@/Utils/date';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
@@ -195,9 +196,9 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
 
                     <form
                         onSubmit={handleSubmit}
-                        className="rounded-2xl bg-white p-6 shadow dark:bg-gray-800"
+                        className="rounded-[28px] bg-white p-6 shadow dark:bg-gray-800"
                     >
-                        <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+                        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.75fr)_minmax(320px,0.85fr)]">
                             <div className="space-y-5">
                                 <div>
                                     <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
@@ -207,13 +208,13 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
                                         type="text"
                                         value={data.descricao}
                                         onChange={(event) => setData('descricao', event.target.value)}
-                                        className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                        className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                         placeholder="Ex.: Pagamento de fornecedor, aluguel, servico mensal"
                                     />
                                     <InputError message={errors.descricao} className="mt-2" />
                                 </div>
 
-                                <div className="grid gap-4 md:grid-cols-2">
+                                <div className="grid gap-4 md:grid-cols-3">
                                     <div>
                                         <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
                                             Frequencia
@@ -232,7 +233,7 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
                                                     dia_mes: nextFrequency === 'mensal' ? current.dia_mes : '',
                                                 }));
                                             }}
-                                            className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                            className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                         >
                                             {FREQUENCY_OPTIONS.map((option) => (
                                                 <option key={option.value} value={option.value}>
@@ -247,21 +248,27 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
                                         <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
                                             Data inicio
                                         </label>
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
-                                            value={data.data_inicio}
-                                            onChange={(event) =>
-                                                setData('data_inicio', normalizeBrazilShortDateInput(event.target.value))
-                                            }
-                                            className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                            placeholder="DD/MM/AA"
-                                        />
+                                        <div className="relative mt-2">
+                                            <div className="flex items-center rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-sm transition focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-200 dark:border-gray-600 dark:bg-gray-700">
+                                                <span className="pointer-events-none text-sm text-gray-900 dark:text-gray-100">
+                                                    {data.data_inicio || 'DD/MM/AA'}
+                                                </span>
+                                                <span className="ml-auto pointer-events-none text-base text-gray-400 dark:text-gray-300">
+                                                    <i className="bi bi-calendar3" aria-hidden="true" />
+                                                </span>
+                                            </div>
+                                            <input
+                                                type="date"
+                                                value={startDateIso}
+                                                onChange={(event) =>
+                                                    setData('data_inicio', isoToBrazilShortDateInput(event.target.value))
+                                                }
+                                                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                                                aria-label="Selecionar data de inicio"
+                                            />
+                                        </div>
                                         <InputError message={errors.data_inicio} className="mt-2" />
                                     </div>
-                                </div>
-
-                                <div className="grid gap-4 md:grid-cols-2">
                                     {data.frequencia === 'semanal' ? (
                                         <div>
                                             <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
@@ -270,7 +277,7 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
                                             <select
                                                 value={data.dia_semana}
                                                 onChange={(event) => setData('dia_semana', event.target.value)}
-                                                className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                             >
                                                 {WEEKDAY_OPTIONS.map((option) => (
                                                     <option key={option.value} value={option.value}>
@@ -289,11 +296,13 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
                                                 type="text"
                                                 value="Nao se aplica"
                                                 disabled
-                                                className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-100 px-4 py-3 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                                                className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-100 px-4 py-3 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                                             />
                                         </div>
                                     )}
+                                </div>
 
+                                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.35fr)]">
                                     {data.frequencia === 'mensal' ? (
                                         <div>
                                             <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
@@ -305,7 +314,7 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
                                                 max="31"
                                                 value={data.dia_mes}
                                                 onChange={(event) => setData('dia_mes', event.target.value)}
-                                                className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                                 placeholder="Ex.: 5"
                                             />
                                             <InputError message={errors.dia_mes} className="mt-2" />
@@ -319,13 +328,10 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
                                                 type="text"
                                                 value="Nao se aplica"
                                                 disabled
-                                                className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-100 px-4 py-3 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                                                className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-100 px-4 py-3 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                                             />
                                         </div>
                                     )}
-                                </div>
-
-                                <div className="grid gap-4 md:grid-cols-2">
                                     <div>
                                         <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
                                             Valor total
@@ -336,73 +342,84 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
                                             step="0.01"
                                             value={data.valor_total}
                                             onChange={(event) => setData('valor_total', event.target.value)}
-                                            className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                            className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                             placeholder="0,00"
                                         />
                                         <InputError message={errors.valor_total} className="mt-2" />
                                     </div>
 
-                                    <div>
-                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                            Quantidade de parcelas
-                                        </label>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            step="1"
-                                            value={data.quantidade_parcelas}
-                                            onChange={(event) => setData('quantidade_parcelas', event.target.value)}
-                                            className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                            placeholder="1"
-                                        />
-                                        <InputError message={errors.quantidade_parcelas} className="mt-2" />
+                                    <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(136px,0.95fr)]">
+                                        <div>
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                                Parcelas
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                step="1"
+                                                value={data.quantidade_parcelas}
+                                                onChange={(event) => setData('quantidade_parcelas', event.target.value)}
+                                                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                placeholder="1"
+                                            />
+                                            <InputError message={errors.quantidade_parcelas} className="mt-2" />
+                                        </div>
+
+                                        <div className="flex items-end">
+                                            <PrimaryButton
+                                                type="submit"
+                                                disabled={processing}
+                                                className="w-full justify-center rounded-2xl px-5 py-3 text-sm font-semibold normal-case tracking-normal shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                Salvar
+                                            </PrimaryButton>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300">
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300">
                                     {getFrequencyHint(data.frequencia)}
                                 </div>
                             </div>
 
-                            <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5 dark:border-gray-700 dark:bg-gray-900/40">
-                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-300">
+                            <div className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-5 dark:border-gray-700 dark:bg-gray-900/40">
+                                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500 dark:text-gray-300">
                                     Resumo calculado
                                 </p>
 
-                                <div className="mt-4 space-y-4">
-                                    <div className="rounded-xl border border-gray-100 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-300">
+                                <div className="mt-5 space-y-4">
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-300">
                                             Valor por parcela
                                         </p>
-                                        <p className="mt-2 text-lg font-bold text-gray-900 dark:text-gray-100">
+                                        <p className="mt-3 text-[1.85rem] font-bold leading-none text-gray-900 dark:text-gray-100">
                                             {formatCurrency(installmentAmount)}
                                         </p>
                                     </div>
 
-                                    <div className="rounded-xl border border-gray-100 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-300">
-                                            Data fim calculada
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-300">
+                                            Data inicio
                                         </p>
-                                        <p className="mt-2 text-base font-semibold text-gray-900 dark:text-gray-100">
-                                            {calculatedEndDate ? formatBrazilShortDate(calculatedEndDate) : '--'}
+                                        <p className="mt-3 text-xl font-semibold text-gray-900 dark:text-gray-100">
+                                            {data.data_inicio || '--'}
                                         </p>
                                     </div>
 
-                                    <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-800 dark:border-indigo-500/40 dark:bg-indigo-500/10 dark:text-indigo-100">
-                                        A data fim so aparece quando a combinacao de frequencia, data inicial e dia informado estiver coerente.
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-300">
+                                            Data fim calculada
+                                        </p>
+                                        <p className="mt-3 text-xl font-semibold text-gray-900 dark:text-gray-100">
+                                            {calculatedEndDate ? formatBrazilShortDate(calculatedEndDate) : '--'}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="mt-6 flex justify-end">
-                            <button
-                                type="submit"
-                                disabled={processing}
-                                className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow transition hover:bg-indigo-700 disabled:opacity-60"
-                            >
-                                Salvar controle
-                            </button>
+                        <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
+                            A data fim so aparece quando a combinacao de frequencia, data inicial e dia informado estiver coerente.
                         </div>
                     </form>
 
