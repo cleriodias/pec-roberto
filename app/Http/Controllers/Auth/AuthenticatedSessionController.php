@@ -7,6 +7,7 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Models\CashierClosure;
 use App\Models\OnlineUser;
 use App\Models\Unidade;
+use App\Support\PaymentControlNotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -113,6 +114,7 @@ class AuthenticatedSessionController extends Controller
         }
 
         $request->session()->put('active_role', (int) ($user->funcao_original ?? $user->funcao));
+        app(PaymentControlNotificationService::class)->notifyUserOnLogin($user, (int) $selectedUnit->tb2_id);
 
         return redirect()->intended(route('dashboard', absolute: false));
     }

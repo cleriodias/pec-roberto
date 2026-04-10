@@ -56,6 +56,11 @@ export default function Config({ auth }) {
             icon: 'bi-cash-coin',
             href: route('settings.payment-control'),
         },
+        {
+            label: 'Folha de Pagamento',
+            icon: 'bi-receipt',
+            href: route('settings.payroll'),
+        },
     ];
 
     if (isMaster) {

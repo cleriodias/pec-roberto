@@ -276,6 +276,7 @@ DEALLOCATE PREPARE stmt;
 
 CREATE TABLE IF NOT EXISTS `tb24_controle_pagamentos` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `user_id` BIGINT UNSIGNED NOT NULL,
     `descricao` VARCHAR(255) NOT NULL,
     `frequencia` VARCHAR(20) NOT NULL,
     `dia_semana` TINYINT UNSIGNED NULL,
@@ -287,8 +288,58 @@ CREATE TABLE IF NOT EXISTS `tb24_controle_pagamentos` (
     `data_fim` DATE NOT NULL,
     `created_at` TIMESTAMP NULL DEFAULT NULL,
     `updated_at` TIMESTAMP NULL DEFAULT NULL,
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    KEY `tb24_controle_pagamentos_user_id_foreign` (`user_id`),
+    CONSTRAINT `tb24_controle_pagamentos_user_id_foreign`
+        FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+        ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+SET @sql = IF(
+    EXISTS (
+        SELECT 1
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'tb24_controle_pagamentos'
+          AND COLUMN_NAME = 'user_id'
+    ),
+    'SELECT 1',
+    'ALTER TABLE `tb24_controle_pagamentos` ADD COLUMN `user_id` BIGINT UNSIGNED NOT NULL AFTER `id`'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = IF(
+    EXISTS (
+        SELECT 1
+        FROM INFORMATION_SCHEMA.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'tb24_controle_pagamentos'
+          AND INDEX_NAME = 'tb24_controle_pagamentos_user_id_foreign'
+    ),
+    'SELECT 1',
+    'ALTER TABLE `tb24_controle_pagamentos` ADD INDEX `tb24_controle_pagamentos_user_id_foreign` (`user_id`)'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = IF(
+    EXISTS (
+        SELECT 1
+        FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'tb24_controle_pagamentos'
+          AND CONSTRAINT_NAME = 'tb24_controle_pagamentos_user_id_foreign'
+          AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+    ),
+    'SELECT 1',
+    'ALTER TABLE `tb24_controle_pagamentos` ADD CONSTRAINT `tb24_controle_pagamentos_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 SET @batch := (
     SELECT COALESCE(MAX(batch), 0) + 1
@@ -389,4 +440,12 @@ WHERE NOT EXISTS (
     SELECT 1
     FROM `migrations`
     WHERE `migration` = '2026_04_09_220000_create_tb24_controle_pagamentos_table'
+);
+
+INSERT INTO `migrations` (`migration`, `batch`)
+SELECT '2026_04_10_160000_add_user_id_to_tb24_controle_pagamentos_table', @batch
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM `migrations`
+    WHERE `migration` = '2026_04_10_160000_add_user_id_to_tb24_controle_pagamentos_table'
 );

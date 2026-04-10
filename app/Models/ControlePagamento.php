@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ControlePagamento extends Model
 {
@@ -12,6 +13,7 @@ class ControlePagamento extends Model
     protected $table = 'tb24_controle_pagamentos';
 
     protected $fillable = [
+        'user_id',
         'descricao',
         'frequencia',
         'dia_semana',
@@ -24,6 +26,7 @@ class ControlePagamento extends Model
     ];
 
     protected $casts = [
+        'user_id' => 'integer',
         'dia_semana' => 'integer',
         'dia_mes' => 'integer',
         'valor_total' => 'float',
@@ -32,4 +35,9 @@ class ControlePagamento extends Model
         'data_inicio' => 'date',
         'data_fim' => 'date',
     ];
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
 }

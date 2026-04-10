@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ControlePagamento;
+use App\Support\PaymentControlTimeline;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,28 +14,13 @@ use Inertia\Response;
 
 class ControlePagamentoController extends Controller
 {
-    private const FREQUENCY_LABELS = [
-        'semanal' => 'Semanal',
-        'quinzenal' => 'Quinzenal',
-        'mensal' => 'Mensal',
-    ];
-
-    private const WEEKDAY_LABELS = [
-        0 => 'Domingo',
-        1 => 'Segunda-feira',
-        2 => 'Terca-feira',
-        3 => 'Quarta-feira',
-        4 => 'Quinta-feira',
-        5 => 'Sexta-feira',
-        6 => 'Sabado',
-    ];
-
     public function index(Request $request): Response
     {
         $this->ensureAdmin($request->user());
         $today = Carbon::today();
 
         $paymentControls = ControlePagamento::query()
+            ->where('user_id', $request->user()->id)
             ->orderByDesc('id')
             ->get()
             ->map(fn (ControlePagamento $item) => $this->mapPaymentControl($item, $today))
@@ -52,7 +38,7 @@ class ControlePagamentoController extends Controller
 
         $data = $request->validate([
             'descricao' => ['required', 'string', 'max:255'],
-            'frequencia' => ['required', 'string', Rule::in(array_keys(self::FREQUENCY_LABELS))],
+            'frequencia' => ['required', 'string', Rule::in(array_keys(PaymentControlTimeline::FREQUENCY_LABELS))],
             'dia_semana' => ['nullable', 'integer', 'between:0,6'],
             'dia_mes' => ['nullable', 'integer', 'between:1,31'],
             'valor_total' => ['required', 'numeric', 'min:0.01'],
@@ -87,9 +73,10 @@ class ControlePagamentoController extends Controller
         $installments = (int) $data['quantidade_parcelas'];
         $totalAmount = round((float) $data['valor_total'], 2);
         $installmentAmount = round($totalAmount / $installments, 2);
-        $endDate = $this->calculateEndDate($frequency, $startDate, $installments, $monthDay);
+        $endDate = PaymentControlTimeline::calculateEndDate($frequency, $startDate, $installments, $monthDay);
 
         ControlePagamento::create([
+            'user_id' => $request->user()->id,
             'descricao' => trim((string) $data['descricao']),
             'frequencia' => $frequency,
             'dia_semana' => $frequency === 'semanal' ? $weekday : null,
@@ -109,6 +96,10 @@ class ControlePagamentoController extends Controller
     public function destroy(Request $request, ControlePagamento $controlePagamento): RedirectResponse
     {
         $this->ensureAdmin($request->user());
+
+        if ((int) $controlePagamento->user_id !== (int) $request->user()->id) {
+            abort(403);
+        }
 
         $controlePagamento->delete();
 
@@ -180,52 +171,18 @@ class ControlePagamentoController extends Controller
         }
     }
 
-    private function calculateEndDate(
-        string $frequency,
-        Carbon $startDate,
-        int $installments,
-        ?int $monthDay
-    ): Carbon {
-        if ($installments <= 1) {
-            return $startDate->copy();
-        }
-
-        if ($frequency === 'semanal') {
-            return $startDate->copy()->addDays(($installments - 1) * 7);
-        }
-
-        if ($frequency === 'quinzenal') {
-            return $startDate->copy()->addDays(($installments - 1) * 14);
-        }
-
-        $current = $startDate->copy();
-        for ($index = 1; $index < $installments; $index++) {
-            $current = $this->addNextMonthlyOccurrence($current, (int) $monthDay);
-        }
-
-        return $current;
-    }
-
-    private function addNextMonthlyOccurrence(Carbon $current, int $targetDay): Carbon
-    {
-        $nextMonthStart = $current->copy()->startOfDay()->addMonthNoOverflow()->startOfMonth();
-        $day = min($targetDay, $nextMonthStart->daysInMonth);
-
-        return $nextMonthStart->copy()->day($day);
-    }
-
     private function mapPaymentControl(ControlePagamento $item, Carbon $today): array
     {
-        $timeline = $this->buildInstallmentTimeline($item, $today);
+        $timeline = PaymentControlTimeline::buildInstallmentTimeline($item, $today);
 
         return [
             'id' => $item->id,
             'descricao' => $item->descricao,
             'frequencia' => $item->frequencia,
-            'frequencia_label' => self::FREQUENCY_LABELS[$item->frequencia] ?? $item->frequencia,
+            'frequencia_label' => PaymentControlTimeline::FREQUENCY_LABELS[$item->frequencia] ?? $item->frequencia,
             'dia_semana' => $item->dia_semana,
             'dia_semana_label' => $item->dia_semana !== null
-                ? (self::WEEKDAY_LABELS[$item->dia_semana] ?? '---')
+                ? (PaymentControlTimeline::WEEKDAY_LABELS[$item->dia_semana] ?? '---')
                 : null,
             'dia_mes' => $item->dia_mes,
             'valor_total' => round((float) $item->valor_total, 2),
@@ -234,85 +191,6 @@ class ControlePagamentoController extends Controller
             'data_inicio' => $item->data_inicio?->toDateString(),
             'data_fim' => $item->data_fim?->toDateString(),
             'timeline' => $timeline,
-        ];
-    }
-
-    private function buildInstallmentTimeline(ControlePagamento $item, Carbon $today): array
-    {
-        $records = collect();
-
-        for ($installmentNumber = 1; $installmentNumber <= (int) $item->quantidade_parcelas; $installmentNumber++) {
-            $dueDate = $this->calculateInstallmentDate($item, $installmentNumber);
-            $status = $this->classifyInstallmentStatus($dueDate, $today);
-
-            $records->push([
-                'numero' => $installmentNumber,
-                'data_vencimento' => $dueDate->toDateString(),
-                'valor' => round((float) $item->valor_parcela, 2),
-                'status' => $status['key'],
-                'status_label' => $status['label'],
-                'dias_para_vencer' => $today->diffInDays($dueDate, false),
-            ]);
-        }
-
-        return [
-            'summary' => [
-                'total_parcelas' => $records->count(),
-                'vencido' => $records->where('status', 'vencido')->count(),
-                'por_vencer' => $records->where('status', 'por_vencer')->count(),
-                'nao_venceu' => $records->where('status', 'nao_venceu')->count(),
-            ],
-            'records' => $records->values()->all(),
-        ];
-    }
-
-    private function calculateInstallmentDate(ControlePagamento $item, int $installmentNumber): Carbon
-    {
-        $startDate = $item->data_inicio instanceof Carbon
-            ? $item->data_inicio->copy()->startOfDay()
-            : Carbon::parse($item->data_inicio)->startOfDay();
-
-        if ($installmentNumber <= 1) {
-            return $startDate;
-        }
-
-        if ($item->frequencia === 'semanal') {
-            return $startDate->addDays(($installmentNumber - 1) * 7);
-        }
-
-        if ($item->frequencia === 'quinzenal') {
-            return $startDate->addDays(($installmentNumber - 1) * 14);
-        }
-
-        $current = $startDate;
-        for ($index = 1; $index < $installmentNumber; $index++) {
-            $current = $this->addNextMonthlyOccurrence($current, (int) $item->dia_mes);
-        }
-
-        return $current;
-    }
-
-    private function classifyInstallmentStatus(Carbon $dueDate, Carbon $today): array
-    {
-        $daysUntilDue = $today->diffInDays($dueDate, false);
-
-        if ($daysUntilDue < 0) {
-            return [
-                'key' => 'vencido',
-                'label' => 'Vencido',
-            ];
-        }
-
-        if ($daysUntilDue <= 7) {
-            return [
-                'key' => 'por_vencer',
-                'label' => 'Por vencer',
-            ];
-        }
-
-        return [
-            'key' => 'nao_venceu',
-            'label' => 'Nao venceu',
         ];
     }
 }

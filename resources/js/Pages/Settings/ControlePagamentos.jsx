@@ -183,7 +183,7 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
                         Controle de Pagamentos
                     </h2>
                     <p className="text-sm text-gray-500 dark:text-gray-300">
-                        Cadastre recorrencias de pagamento com parcelas, valor unitario e data fim calculada.
+                        Cadastre recorrencias de pagamento com parcelas, valor unitario e data fim calculada. Cada usuario ve e gerencia apenas os proprios controles.
                     </p>
                 </div>
             }
@@ -269,6 +269,7 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
                                         </div>
                                         <InputError message={errors.data_inicio} className="mt-2" />
                                     </div>
+
                                     {data.frequencia === 'semanal' ? (
                                         <div>
                                             <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
@@ -332,6 +333,7 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
                                             />
                                         </div>
                                     )}
+
                                     <div>
                                         <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
                                             Valor total
@@ -429,7 +431,7 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
                                 Controles cadastrados
                             </h3>
                             <p className="text-sm text-gray-500 dark:text-gray-300">
-                                Consulte a configuracao salva para cada pagamento recorrente.
+                                Consulte apenas os controles de pagamento cadastrados por voce.
                             </p>
                         </div>
 
@@ -592,6 +594,7 @@ export default function ControlePagamentos({ paymentControls = [], timelineRefer
                                     </p>
                                 </div>
                             </div>
+
                             <div className="mt-4 grid gap-3 sm:grid-cols-3">
                                 <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
                                     <p className="text-xs font-bold uppercase tracking-[0.25em] text-red-500">

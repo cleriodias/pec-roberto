@@ -15,6 +15,7 @@ use App\Http\Controllers\MobileRevenueController;
 use App\Http\Controllers\NoticeController;
 use App\Http\Controllers\OnlineController;
 use App\Http\Controllers\NewsletterSubscriptionController;
+use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\RoleSwitchController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\SalesDisputeController;
@@ -141,6 +142,8 @@ Route::middleware('auth')->group(function () {
         ->name('settings.payment-control.store');
     Route::delete('/settings/controle-pagamentos/{controlePagamento}', [ControlePagamentoController::class, 'destroy'])
         ->name('settings.payment-control.destroy');
+    Route::get('/settings/folha-pagamento', [PayrollController::class, 'index'])
+        ->name('settings.payroll');
     Route::get('/settings/avisos', [NoticeController::class, 'index'])
         ->name('settings.notices');
     Route::post('/settings/avisos', [NoticeController::class, 'store'])

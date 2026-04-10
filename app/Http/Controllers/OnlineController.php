@@ -450,7 +450,11 @@ class OnlineController extends Controller
 
     private function messagePreview(string $message): string
     {
-        $plainText = preg_replace('/\[color=[^\]]+\]|\[\/color\]|\[b\]|\[\/b\]|\[i\]|\[\/i\]|\[u\]|\[\/u\]/i', '', $message);
+        $plainText = preg_replace(
+            '/\[color=[^\]]+\]|\[\/color\]|\[b\]|\[\/b\]|\[i\]|\[\/i\]|\[u\]|\[\/u\]|\[link=[^\]]+\]|\[\/link\]/i',
+            '',
+            $message
+        );
         $plainText = preg_replace('/\s+/u', ' ', (string) $plainText);
         $plainText = trim((string) $plainText);
 
