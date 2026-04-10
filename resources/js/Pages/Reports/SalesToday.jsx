@@ -19,6 +19,13 @@ const CARD_TEXT_COLORS = {
     vale: '#ffffff',
     refeicao: '#111827',
     faturar: '#ffffff',
+    gastos: '#ffffff',
+};
+
+const EXPENSE_CARD = {
+    type: 'gastos',
+    label: 'Gastos',
+    color: '#dc2626',
 };
 
 const formatCurrency = (value) =>
@@ -74,6 +81,7 @@ export default function SalesToday({
     chartData,
     details,
     totals,
+    expenseTotal = 0,
     dateLabel,
     filterUnits = [],
     selectedUnitId = null,
@@ -144,6 +152,16 @@ export default function SalesToday({
     const selectedMeta = meta[selectedType] ?? { label: selectedType, color: '#111827' };
     const selectedTotal = totals[selectedType] ?? 0;
     const detailColumns = useMemo(() => splitRecordsInColumns(selectedDetails), [selectedDetails]);
+    const summaryCards = useMemo(
+        () => [
+            ...chartData,
+            {
+                ...EXPENSE_CARD,
+                total: Number(expenseTotal ?? 0),
+            },
+        ],
+        [chartData, expenseTotal],
+    );
 
     const pieStyle = useMemo(() => {
         if (totalSum <= 0) {
@@ -335,7 +353,7 @@ export default function SalesToday({
                                 Totais por tipo
                             </h3>
                             <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                                {chartData.map((item) => (
+                                {summaryCards.map((item) => (
                                     <div
                                         key={item.type}
                                         className="rounded-2xl border p-4 shadow-sm"

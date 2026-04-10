@@ -1415,6 +1415,7 @@ class SalesReportController extends Controller
         [$totals, $details, $chartData] = $this->summarizePayments($payments);
         [$totals, $details] = $this->applyGlobalValeTotals($start, $end, $totals, $details, $filterUnitId, $allowedUnitIds);
         $chartData = $this->buildChartData($totals);
+        $expenseTotal = $this->sumExpenses($start, $end, $filterUnitId, $allowedUnitIds);
 
         $selectedUnit = $filterUnitId
             ? $availableUnits->firstWhere('id', $filterUnitId)
@@ -1425,6 +1426,7 @@ class SalesReportController extends Controller
             'chartData' => $chartData,
             'details' => $details,
             'totals' => $totals,
+            'expenseTotal' => $expenseTotal,
             'dateLabel' => $start->translatedFormat('d/m/Y'),
             'filterUnits' => $availableUnits->values(),
             'selectedUnitId' => $filterUnitId,
@@ -2087,26 +2089,15 @@ class SalesReportController extends Controller
         [$totals, $details, $chartData] = $this->summarizePayments($payments);
         [$totals, $details] = $this->applyGlobalValeTotals($start, $end, $totals, $details, $filterUnitId, $allowedUnitIds);
         $chartData = $this->buildChartData($totals);
-
-        $dailyTotals = $payments
-            ->groupBy(fn (VendaPagamento $payment) => $payment->created_at->format('Y-m-d'))
-            ->map(function (Collection $group, string $date) {
-                $carbon = Carbon::createFromFormat('Y-m-d', $date);
-
-                return [
-                    'date' => $date,
-                    'label' => $carbon->translatedFormat('d/m/Y'),
-                    'total' => round($group->sum('valor_total'), 2),
-                ];
-            })
-            ->sortByDesc('date')
-            ->values();
+        $expenseTotal = $this->sumExpenses($start, $end, $filterUnitId, $allowedUnitIds);
+        $dailyTotals = $this->buildDailyTotals($payments, $start, $end, $filterUnitId, $allowedUnitIds);
 
         return Inertia::render('Reports/SalesPeriod', [
             'meta' => self::TYPE_META,
             'chartData' => $chartData,
             'totals' => $totals,
             'details' => $details,
+            'expenseTotal' => $expenseTotal,
             'dailyTotals' => $dailyTotals,
             'mode' => $mode,
             'dateValue' => $dateValue,
@@ -2855,6 +2846,158 @@ class SalesReportController extends Controller
         $amount = max((float) $payment->valor_total, 0);
 
         return $amount > 0 ? [$type => $amount] : [];
+    }
+
+    private function buildDailyTotals(
+        Collection $payments,
+        Carbon $start,
+        Carbon $end,
+        ?int $unitId = null,
+        ?Collection $allowedUnitIds = null
+    ): Collection {
+        $baseTotals = [
+            'dinheiro' => 0.0,
+            'maquina' => 0.0,
+            'vale' => 0.0,
+            'refeicao' => 0.0,
+            'faturar' => 0.0,
+            'gastos' => 0.0,
+        ];
+
+        $dailyTotals = $payments
+            ->groupBy(fn (VendaPagamento $payment) => $payment->created_at->format('Y-m-d'))
+            ->map(function (Collection $group, string $date) use ($baseTotals) {
+                $carbon = Carbon::createFromFormat('Y-m-d', $date);
+                $dayTotals = $baseTotals;
+
+                foreach ($group as $payment) {
+                    foreach ($this->breakdownPayment($payment) as $type => $amount) {
+                        $dayTotals[$type] += $amount;
+                    }
+                }
+
+                return [
+                    'date' => $date,
+                    'label' => $carbon->translatedFormat('d/m/Y'),
+                    'total' => round((float) $group->sum('valor_total'), 2),
+                    'dinheiro' => round((float) $dayTotals['dinheiro'], 2),
+                    'maquina' => round((float) $dayTotals['maquina'], 2),
+                    'vale' => round((float) $dayTotals['vale'], 2),
+                    'refeicao' => round((float) $dayTotals['refeicao'], 2),
+                    'faturar' => round((float) $dayTotals['faturar'], 2),
+                    'gastos' => 0.0,
+                ];
+            });
+
+        $valeAndMealTotals = $this->saleTypeTotalsByDay($start, $end, $unitId, $allowedUnitIds);
+        $expenseTotals = $this->expenseTotalsByDay($start, $end, $unitId, $allowedUnitIds);
+
+        return $dailyTotals
+            ->map(function (array $day, string $date) use ($valeAndMealTotals, $expenseTotals) {
+                $day['vale'] = round((float) ($valeAndMealTotals[$date]['vale'] ?? 0), 2);
+                $day['refeicao'] = round((float) ($valeAndMealTotals[$date]['refeicao'] ?? 0), 2);
+                $day['gastos'] = round((float) ($expenseTotals[$date] ?? 0), 2);
+
+                return $day;
+            })
+            ->sortByDesc('date')
+            ->values();
+    }
+
+    private function sumExpenses(
+        Carbon $start,
+        Carbon $end,
+        ?int $unitId = null,
+        ?Collection $allowedUnitIds = null
+    ): float {
+        $query = Expense::query()
+            ->whereBetween('expense_date', [$start->toDateString(), $end->toDateString()]);
+
+        $this->applyExpenseUnitFilters($query, $unitId, $allowedUnitIds);
+
+        return round((float) $query->sum('amount'), 2);
+    }
+
+    private function expenseTotalsByDay(
+        Carbon $start,
+        Carbon $end,
+        ?int $unitId = null,
+        ?Collection $allowedUnitIds = null
+    ): Collection {
+        $query = Expense::query()
+            ->whereBetween('expense_date', [$start->toDateString(), $end->toDateString()])
+            ->selectRaw('expense_date, SUM(amount) as total')
+            ->groupBy('expense_date');
+
+        $this->applyExpenseUnitFilters($query, $unitId, $allowedUnitIds);
+
+        return $query
+            ->get()
+            ->mapWithKeys(function ($row) {
+                $dateKey = $row->expense_date instanceof Carbon
+                    ? $row->expense_date->toDateString()
+                    : (string) $row->expense_date;
+
+                return [$dateKey => round((float) $row->total, 2)];
+            });
+    }
+
+    private function saleTypeTotalsByDay(
+        Carbon $start,
+        Carbon $end,
+        ?int $unitId = null,
+        ?Collection $allowedUnitIds = null
+    ): Collection {
+        $query = Venda::query()
+            ->whereIn('tipo_pago', ['vale', 'refeicao'])
+            ->whereBetween('data_hora', [$start, $end])
+            ->selectRaw('DATE(data_hora) as sale_date, tipo_pago as tipo, SUM(valor_total) as total')
+            ->groupBy('sale_date', 'tipo');
+
+        if ($unitId) {
+            $query->where('id_unidade', $unitId);
+        } elseif ($allowedUnitIds instanceof Collection && $allowedUnitIds->isNotEmpty()) {
+            $query->whereIn('id_unidade', $allowedUnitIds);
+        } else {
+            $query->whereRaw('1 = 0');
+        }
+
+        return $query
+            ->get()
+            ->groupBy('sale_date')
+            ->map(function (Collection $rows) {
+                $totals = [
+                    'vale' => 0.0,
+                    'refeicao' => 0.0,
+                ];
+
+                foreach ($rows as $row) {
+                    $type = $row->tipo === 'refeicao' ? 'refeicao' : 'vale';
+                    $totals[$type] += (float) $row->total;
+                }
+
+                return [
+                    'vale' => round((float) $totals['vale'], 2),
+                    'refeicao' => round((float) $totals['refeicao'], 2),
+                ];
+            });
+    }
+
+    private function applyExpenseUnitFilters($query, ?int $unitId = null, ?Collection $allowedUnitIds = null): void
+    {
+        if ($unitId) {
+            $query->where('unit_id', $unitId);
+
+            return;
+        }
+
+        if ($allowedUnitIds instanceof Collection && $allowedUnitIds->isNotEmpty()) {
+            $query->whereIn('unit_id', $allowedUnitIds);
+
+            return;
+        }
+
+        $query->whereRaw('1 = 0');
     }
 
     private function parseFlexibleReportDate(?string $value, Carbon $fallback): Carbon

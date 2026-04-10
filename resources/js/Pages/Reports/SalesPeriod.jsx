@@ -2,6 +2,21 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { useMemo } from 'react';
 
+const CARD_TEXT_COLORS = {
+    dinheiro: '#ffffff',
+    maquina: '#ffffff',
+    vale: '#ffffff',
+    refeicao: '#111827',
+    faturar: '#ffffff',
+    gastos: '#ffffff',
+};
+
+const EXPENSE_CARD = {
+    type: 'gastos',
+    label: 'Gastos',
+    color: '#dc2626',
+};
+
 const formatCurrency = (value) =>
     Number(value ?? 0).toLocaleString('pt-BR', {
         style: 'currency',
@@ -11,6 +26,7 @@ const formatCurrency = (value) =>
 export default function SalesPeriod({
     chartData,
     totals,
+    expenseTotal = 0,
     dailyTotals,
     mode,
     dateValue,
@@ -40,6 +56,16 @@ export default function SalesPeriod({
     };
 
     const totalSum = chartData.reduce((sum, item) => sum + item.total, 0);
+    const summaryCards = useMemo(
+        () => [
+            ...chartData,
+            {
+                ...EXPENSE_CARD,
+                total: Number(expenseTotal ?? 0),
+            },
+        ],
+        [chartData, expenseTotal],
+    );
 
     const pieStyle = useMemo(() => {
         if (totalSum <= 0) {
@@ -174,15 +200,20 @@ export default function SalesPeriod({
                                 Totais por tipo
                             </h3>
                             <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                                {chartData.map((item) => (
+                                {summaryCards.map((item) => (
                                     <div
                                         key={item.type}
-                                        className="rounded-2xl border border-gray-100 bg-gray-50 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/40"
+                                        className="rounded-2xl border p-4 shadow-sm"
+                                        style={{
+                                            backgroundColor: item.color,
+                                            borderColor: item.color,
+                                            color: CARD_TEXT_COLORS[item.type] ?? '#ffffff',
+                                        }}
                                     >
-                                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                                        <p className="text-sm font-semibold">
                                             {item.label}
                                         </p>
-                                        <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                                        <p className="text-2xl font-bold">
                                             {formatCurrency(item.total)}
                                         </p>
                                     </div>
@@ -256,6 +287,24 @@ export default function SalesPeriod({
                                                 Dia
                                             </th>
                                             <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                Dinheiro
+                                            </th>
+                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                Maquina
+                                            </th>
+                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                Vale
+                                            </th>
+                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                Refeicao
+                                            </th>
+                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                Faturar
+                                            </th>
+                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                Gastos
+                                            </th>
+                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
                                                 Total
                                             </th>
                                         </tr>
@@ -265,6 +314,24 @@ export default function SalesPeriod({
                                             <tr key={day.date}>
                                                 <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
                                                     {day.label}
+                                                </td>
+                                                <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
+                                                    {formatCurrency(day.dinheiro)}
+                                                </td>
+                                                <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
+                                                    {formatCurrency(day.maquina)}
+                                                </td>
+                                                <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
+                                                    {formatCurrency(day.vale)}
+                                                </td>
+                                                <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
+                                                    {formatCurrency(day.refeicao)}
+                                                </td>
+                                                <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
+                                                    {formatCurrency(day.faturar)}
+                                                </td>
+                                                <td className="px-3 py-2 text-right font-semibold text-red-600 dark:text-red-300">
+                                                    {formatCurrency(day.gastos)}
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
                                                     {formatCurrency(day.total)}
