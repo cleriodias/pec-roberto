@@ -10,6 +10,7 @@ use App\Models\VendaPagamento;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 class DiscardAlertService
 {
@@ -86,6 +87,66 @@ class DiscardAlertService
             'today' => $today,
             'month' => $month,
             'reference_date' => $referenceDate->toDateString(),
+        ];
+    }
+
+    public function dashboardForAdmin(
+        User $user,
+        Collection $units,
+        ?Carbon $monthReference = null,
+    ): array {
+        $threshold = $this->thresholdPercentage();
+        $todayReference = Carbon::today();
+        $monthReference = $monthReference?->copy() ?? Carbon::today()->startOfMonth();
+        $todayStart = $todayReference->copy()->startOfDay();
+        $todayEnd = $todayReference->copy()->endOfDay();
+        $monthStart = $monthReference->copy()->startOfMonth()->startOfDay();
+        $monthEnd = $monthReference->copy()->endOfMonth()->endOfDay();
+        $globalScope = $this->resolveScope($user, null, null);
+
+        $consolidatedToday = $this->buildRangeStatus(
+            $user,
+            $globalScope,
+            $todayStart,
+            $todayEnd,
+            $threshold,
+        );
+
+        $consolidatedMonth = $this->buildRangeStatus(
+            $user,
+            $globalScope,
+            $monthStart,
+            $monthEnd,
+            $threshold,
+        );
+
+        $stores = $units
+            ->map(function (array $unit) use ($user, $threshold, $todayStart, $todayEnd, $monthStart, $monthEnd) {
+                $unitId = (int) ($unit['id'] ?? 0);
+                $unitName = trim((string) ($unit['name'] ?? ''));
+                $scope = $this->resolveScope($user, $unitId, $unitName);
+
+                return [
+                    'unit_id' => $unitId,
+                    'unit_name' => $unitName !== '' ? $unitName : ('Loja #' . $unitId),
+                    'today' => $this->buildRangeStatus($user, $scope, $todayStart, $todayEnd, $threshold),
+                    'month' => $this->buildRangeStatus($user, $scope, $monthStart, $monthEnd, $threshold),
+                ];
+            })
+            ->values();
+
+        return [
+            'enabled' => $threshold > 0,
+            'has_alert' => $threshold > 0 && ($consolidatedToday['exceeded'] || $consolidatedMonth['exceeded']),
+            'threshold_percentage' => $threshold,
+            'today_reference_date' => $todayReference->toDateString(),
+            'month_filter_value' => $monthReference->format('Y-m'),
+            'consolidated' => [
+                'today' => $consolidatedToday,
+                'month' => $consolidatedMonth,
+            ],
+            'stores' => $stores,
+            'store_count' => $stores->count(),
         ];
     }
 
