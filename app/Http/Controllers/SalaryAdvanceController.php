@@ -107,8 +107,11 @@ class SalaryAdvanceController extends Controller
         $users = $users->get(['id', 'name', 'salario']);
         $activeUnit = $this->resolveUnit($request);
         $selectedUser = $this->resolveSelectedUser($request);
+        [$monthStart, $monthEnd] = $this->currentMonthRange();
         $currentMonthAdvances = $selectedUser
-            ? $this->currentMonthAdvancesQuery($selectedUser)->get(['id', 'advance_date', 'amount', 'reason'])
+            ? $this->currentMonthAdvancesQuery($selectedUser, $monthStart, $monthEnd)
+                ->with('unit:tb2_id,tb2_nome')
+                ->get(['id', 'advance_date', 'amount', 'reason', 'unit_id'])
             : collect();
         $currentMonthTotal = round((float) $currentMonthAdvances->sum('amount'), 2);
 
@@ -131,9 +134,12 @@ class SalaryAdvanceController extends Controller
                 'advance_date' => $advance->advance_date?->toDateString(),
                 'amount' => (float) $advance->amount,
                 'reason' => $advance->reason,
+                'unit_name' => $advance->unit?->tb2_nome,
             ])->values()->all(),
             'currentMonthTotal' => $currentMonthTotal,
             'currentMonthReference' => now()->format('m/Y'),
+            'currentMonthStart' => $monthStart->toDateString(),
+            'currentMonthEnd' => $monthEnd->toDateString(),
             'canDeleteAdvances' => ManagementScope::isMaster($user),
         ]);
     }
@@ -274,9 +280,11 @@ class SalaryAdvanceController extends Controller
         return $selectedUser;
     }
 
-    private function currentMonthAdvancesQuery(User $user)
+    private function currentMonthAdvancesQuery(User $user, ?Carbon $monthStart = null, ?Carbon $monthEnd = null)
     {
-        [$monthStart, $monthEnd] = $this->currentMonthRange();
+        [$monthStart, $monthEnd] = $monthStart && $monthEnd
+            ? [$monthStart, $monthEnd]
+            : $this->currentMonthRange();
 
         return SalaryAdvance::query()
             ->where('user_id', $user->id)

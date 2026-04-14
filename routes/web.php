@@ -144,6 +144,8 @@ Route::middleware('auth')->group(function () {
         ->name('settings.payment-control.destroy');
     Route::get('/settings/folha-pagamento', [PayrollController::class, 'index'])
         ->name('settings.payroll');
+    Route::get('/settings/contra-cheque', [PayrollController::class, 'contraCheque'])
+        ->name('settings.contra-cheque');
     Route::get('/settings/avisos', [NoticeController::class, 'index'])
         ->name('settings.notices');
     Route::post('/settings/avisos', [NoticeController::class, 'store'])

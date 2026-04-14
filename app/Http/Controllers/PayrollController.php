@@ -30,6 +30,18 @@ class PayrollController extends Controller
     {
         $this->ensureAdmin($request->user());
 
+        return Inertia::render('Settings/FolhaPagamento', $this->buildPayrollPayload($request));
+    }
+
+    public function contraCheque(Request $request): Response
+    {
+        $this->ensureAdmin($request->user());
+
+        return Inertia::render('Settings/ContraCheque', $this->buildPayrollPayload($request, true));
+    }
+
+    private function buildPayrollPayload(Request $request, bool $onlyWithSalary = false): array
+    {
         [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
         $filterUnits = ManagementScope::managedUnits($request->user(), ['tb2_id', 'tb2_nome'])
             ->map(fn (Unidade $unit) => [
@@ -73,6 +85,10 @@ class PayrollController extends Controller
 
         if ($selectedRole !== null) {
             $usersQuery->where('funcao', $selectedRole);
+        }
+
+        if ($onlyWithSalary) {
+            $usersQuery->where('salario', '>', 0);
         }
 
         $users = $usersQuery->get(['id', 'name', 'funcao', 'salario', 'tb2_id']);
@@ -185,7 +201,7 @@ class PayrollController extends Controller
             'balance_total' => round((float) $rows->sum('balance'), 2),
         ];
 
-        return Inertia::render('Settings/FolhaPagamento', [
+        return [
             'rows' => $rows,
             'summary' => $summary,
             'startDate' => $startDate,
@@ -195,7 +211,7 @@ class PayrollController extends Controller
             'selectedUnitId' => $selectedUnitId,
             'selectedRole' => $selectedRole,
             'unit' => $selectedUnit,
-        ]);
+        ];
     }
 
     private function ensureAdmin($user): void

@@ -1,4 +1,6 @@
 import AlertMessage from "@/Components/Alert/AlertMessage";
+import DangerButton from "@/Components/Button/DangerButton";
+import PrimaryButton from "@/Components/Button/PrimaryButton";
 import SuccessButton from "@/Components/Button/SuccessButton";
 import Modal from "@/Components/Modal";
 import SecondaryButton from "@/Components/SecondaryButton";
@@ -9,6 +11,7 @@ import {
     normalizeBrazilShortDateInput,
     shortBrazilDateInputToIso,
 } from "@/Utils/date";
+import { printSalaryAdvanceDetail } from "@/Utils/salaryAdvancePrint";
 import { Head, Link, router, usePage } from "@inertiajs/react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -31,6 +34,8 @@ export default function SalaryAdvanceCreate({
     currentMonthAdvances = [],
     currentMonthTotal = 0,
     currentMonthReference = "",
+    currentMonthStart = "",
+    currentMonthEnd = "",
     canDeleteAdvances = false,
 }) {
     const { flash } = usePage().props;
@@ -44,6 +49,7 @@ export default function SalaryAdvanceCreate({
     const [errors, setErrors] = useState({});
     const [submitting, setSubmitting] = useState(false);
     const [previewOpen, setPreviewOpen] = useState(false);
+    const [printError, setPrintError] = useState("");
     const hasActiveUnit = Boolean(activeUnit?.id);
 
     useEffect(() => {
@@ -80,6 +86,30 @@ export default function SalaryAdvanceCreate({
     const projectedPercentage =
         selectedSalary > 0 ? (projectedTotal / selectedSalary) * 100 : 0;
     const projectedBalance = selectedSalary - projectedTotal;
+    const currentMonthDetail = useMemo(() => {
+        if (!selectedUser || currentMonthAdvances.length === 0) {
+            return null;
+        }
+
+        return {
+            user_name: selectedUser.name,
+            start_date: currentMonthStart,
+            end_date: currentMonthEnd,
+            records_count: currentMonthAdvances.length,
+            total_amount: Number(currentMonthTotal ?? 0),
+            records: currentMonthAdvances.map((advance) => ({
+                ...advance,
+                unit_name: advance.unit_name || activeUnit?.name || "---",
+            })),
+        };
+    }, [
+        activeUnit?.name,
+        currentMonthAdvances,
+        currentMonthEnd,
+        currentMonthStart,
+        currentMonthTotal,
+        selectedUser,
+    ]);
 
     const handleSelectUser = (userId) => {
         if (!userId) {
@@ -156,6 +186,44 @@ export default function SalaryAdvanceCreate({
         });
     };
 
+    const handlePrintAdvance = (advance) => {
+        if (!advance) {
+            return;
+        }
+
+        setPrintError(
+            printSalaryAdvanceDetail(
+                {
+                    user_name: selectedUser?.name ?? "---",
+                    start_date: advance.advance_date,
+                    end_date: advance.advance_date,
+                    records_count: 1,
+                    total_amount: Number(advance.amount ?? 0),
+                    records: [
+                        {
+                            ...advance,
+                            unit_name: advance.unit_name || activeUnit?.name || "---",
+                        },
+                    ],
+                },
+                "Permita pop-ups para imprimir este adiantamento.",
+            ),
+        );
+    };
+
+    const handlePrintAllAdvances = () => {
+        if (!currentMonthDetail) {
+            return;
+        }
+
+        setPrintError(
+            printSalaryAdvanceDetail(
+                currentMonthDetail,
+                "Permita pop-ups para imprimir os adiantamentos.",
+            ),
+        );
+    };
+
     const headerContent = (
         <div>
             <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">
@@ -192,6 +260,11 @@ export default function SalaryAdvanceCreate({
                         </div>
 
                         <AlertMessage message={flash} />
+                        {printError && (
+                            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+                                {printError}
+                            </div>
+                        )}
 
                         <form onSubmit={handlePreview} className="mt-6 space-y-6">
                             <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
@@ -345,25 +418,36 @@ export default function SalaryAdvanceCreate({
                             </div>
 
                             <div className="flex justify-end">
-                                <button
+                                <PrimaryButton
                                     type="submit"
                                     disabled={submitting || !hasActiveUnit}
-                                    className="rounded-xl bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-blue-600 disabled:opacity-50"
+                                    className="rounded-xl px-4 py-2 text-sm font-semibold normal-case tracking-normal disabled:opacity-50"
                                 >
                                     Gravar
-                                </button>
+                                </PrimaryButton>
                             </div>
                         </form>
                     </div>
 
                     <div className="rounded-2xl bg-white p-6 shadow dark:bg-gray-800">
-                        <div className="flex flex-col gap-1 border-b border-gray-100 pb-4">
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                Vales do mes corrente
-                            </h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-300">
-                                Referencia {currentMonthReference || "--"} para {selectedUser?.name ?? "nenhum usuario selecionado"}.
-                            </p>
+                        <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 md:flex-row md:items-center md:justify-between">
+                            <div className="flex flex-col gap-1">
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                                    Vales do mes corrente
+                                </h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-300">
+                                    Referencia {currentMonthReference || "--"} para {selectedUser?.name ?? "nenhum usuario selecionado"}.
+                                </p>
+                            </div>
+                            {currentMonthDetail && (
+                                <PrimaryButton
+                                    type="button"
+                                    onClick={handlePrintAllAdvances}
+                                    className="justify-center rounded-xl px-4 py-2 text-sm font-semibold normal-case tracking-normal"
+                                >
+                                    Imprimir todos
+                                </PrimaryButton>
+                            )}
                         </div>
 
                         {!selectedUser ? (
@@ -389,7 +473,7 @@ export default function SalaryAdvanceCreate({
                                                 Observacao
                                             </th>
                                             <th className="px-3 py-2 text-center font-medium text-gray-600 dark:text-gray-300">
-                                                Acao
+                                                Acoes
                                             </th>
                                         </tr>
                                     </thead>
@@ -406,17 +490,26 @@ export default function SalaryAdvanceCreate({
                                                     {advance.reason || "--"}
                                                 </td>
                                                 <td className="px-3 py-2 text-center">
-                                                    {canDeleteAdvances ? (
-                                                        <button
+                                                    <div className="flex flex-wrap items-center justify-center gap-2">
+                                                        <PrimaryButton
                                                             type="button"
-                                                            onClick={() => handleDeleteAdvance(advance.id)}
-                                                            className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200 dark:border-red-500/60 dark:text-red-300 dark:hover:bg-red-500/10"
+                                                            onClick={() => handlePrintAdvance(advance)}
+                                                            className="rounded-lg px-3 py-1 text-xs font-semibold normal-case tracking-normal"
                                                         >
-                                                            Excluir
-                                                        </button>
-                                                    ) : (
-                                                        <span className="text-xs text-gray-400">Somente Master</span>
-                                                    )}
+                                                            Imprimir
+                                                        </PrimaryButton>
+                                                        {canDeleteAdvances ? (
+                                                            <DangerButton
+                                                                type="button"
+                                                                onClick={() => handleDeleteAdvance(advance.id)}
+                                                                className="rounded-lg px-3 py-1 text-xs font-semibold normal-case tracking-normal"
+                                                            >
+                                                                Excluir
+                                                            </DangerButton>
+                                                        ) : (
+                                                            <span className="text-xs text-gray-400">Somente Master</span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
