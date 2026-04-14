@@ -62,6 +62,16 @@ export default function ContraCheque({
                 value: formatCurrency(summary.salary_total),
             },
             {
+                key: 'advances',
+                label: 'Adiantamento',
+                value: formatCurrency(summary.advances_total),
+            },
+            {
+                key: 'vales',
+                label: 'Vale',
+                value: formatCurrency(summary.vales_total),
+            },
+            {
                 key: 'balance',
                 label: 'Saldo a receber',
                 value: formatCurrency(summary.balance_total),
@@ -207,7 +217,7 @@ export default function ContraCheque({
                             </span>
                         </div>
 
-                        <div className="mt-4 grid gap-4 md:grid-cols-3">
+                        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                             {summaryCards.map((card) => (
                                 <div
                                     key={card.key}
