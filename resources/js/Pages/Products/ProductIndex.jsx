@@ -228,7 +228,7 @@ export default function ProductIndex({
                                     type="text"
                                     value={searchTerm}
                                     onChange={(event) => setSearchTerm(event.target.value)}
-                                    placeholder="Digite ID, código de barras ou nome"
+                                    placeholder="Digite ID, codigo de barras ou nome"
                                     className="w-full flex-1 rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:w-auto dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                 />
                                 <Link
@@ -265,9 +265,6 @@ export default function ProductIndex({
                                     {renderSortHeader('Venda', 'tb1_vlr_venda', 'right')}
                                 </td>
                                 <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">
-                                    {renderSortHeader('Código de barras', 'tb1_codbar')}
-                                </td>
-                                <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">
                                     {renderSortHeader('Tipo', 'tb1_tipo')}
                                 </td>
                                 <td className="px-4 py-3 text-right text-sm font-medium text-gray-500 tracking-wider">
@@ -277,7 +274,7 @@ export default function ProductIndex({
                                     {renderSortHeader('Status', 'tb1_status')}
                                 </td>
                                 <td className="px-4 py-3 text-center text-sm font-medium text-gray-500 tracking-wider">
-                                    Ações
+                                    Acoes
                                 </td>
                             </tr>
                         </thead>
@@ -302,16 +299,18 @@ export default function ProductIndex({
                                         {product.tb1_id}
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
-                                        {product.tb1_nome}
+                                        <div className="flex flex-col">
+                                            <span>{product.tb1_nome}</span>
+                                            <span className="text-xs text-gray-400">
+                                                {product.tb1_codbar}
+                                            </span>
+                                        </div>
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider text-right">
                                         {formatCurrency(product.tb1_vlr_custo)}
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider text-right">
                                         {formatCurrency(product.tb1_vlr_venda)}
-                                    </td>
-                                    <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
-                                        {product.tb1_codbar}
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
                                         {resolveLabel(typeLabels, product.tb1_tipo)}
