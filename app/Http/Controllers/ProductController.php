@@ -130,7 +130,7 @@ class ProductController extends Controller
         $data = $this->validateProduct($request);
 
         if ((int) ($data['tb1_tipo'] ?? 0) !== 1) {
-            $data['tb1_id'] = $this->nextSafeProductId();
+            $data['tb1_id'] = $this->nextSafeProductId($this->shouldUseOwnIdAsBarcode($data));
         }
 
         $data['tb1_vr_credit'] = (bool) ($data['tb1_vr_credit'] ?? false);
@@ -274,7 +274,7 @@ class ProductController extends Controller
                 'tb1_vlr_custo' => 'required|numeric|min:0',
                 'tb1_vlr_venda' => 'required|numeric|min:0|gte:tb1_vlr_custo',
                 'tb1_codbar' => [
-                    Rule::requiredIf(fn () => (int) $request->input('tb1_tipo') !== 1),
+                    Rule::requiredIf(fn () => (int) $request->input('tb1_tipo') !== 1 && ! $request->boolean('sem_codigo_barras')),
                     'nullable',
                     'string',
                     'max:64',
@@ -297,6 +297,10 @@ class ProductController extends Controller
                     Rule::in(array_keys(self::STATUS_LABELS)),
                 ],
                 'tb1_vr_credit' => [
+                    'nullable',
+                    'boolean',
+                ],
+                'sem_codigo_barras' => [
                     'nullable',
                     'boolean',
                 ],
@@ -328,6 +332,7 @@ class ProductController extends Controller
                 'tb1_status.integer' => 'Status invalido.',
                 'tb1_status.in' => 'Status nao reconhecido.',
                 'tb1_vr_credit.boolean' => 'Valor invalido para VR Credito.',
+                'sem_codigo_barras.boolean' => 'Valor invalido para a opcao sem codigo de barras.',
             ]
         );
 
@@ -361,11 +366,11 @@ class ProductController extends Controller
 
         $this->ensurePriceEditingIsAuthorized($data, $product, $request->user());
 
-        if ((int) ($data['tb1_tipo'] ?? $product?->tb1_tipo ?? 0) === 1) {
-            $balanceBarcode = $this->resolveBalanceBarcode($data, $product);
+        $resolvedBarcode = $this->resolveProductBarcode($data, $product);
 
+        if ($resolvedBarcode !== '') {
             $barcodeInUse = Produto::query()
-                ->where('tb1_codbar', $balanceBarcode)
+                ->where('tb1_codbar', $resolvedBarcode)
                 ->when(
                     $product,
                     fn ($query) => $query->where('tb1_id', '!=', $product->tb1_id)
@@ -373,10 +378,12 @@ class ProductController extends Controller
                 ->first();
 
             if ($barcodeInUse) {
+                $field = $this->shouldUseOwnIdAsBarcode($data, $product) ? 'tb1_id' : 'tb1_codbar';
+
                 throw ValidationException::withMessages([
-                    'tb1_id' => sprintf(
-                        'O codigo interno %s ja esta em uso no produto %d.',
-                        $balanceBarcode,
+                    $field => sprintf(
+                        'O codigo de barras %s ja esta em uso no produto %d.',
+                        $resolvedBarcode,
                         $barcodeInUse->tb1_id
                     ),
                 ]);
@@ -404,16 +411,13 @@ class ProductController extends Controller
         $type = (int) ($data['tb1_tipo'] ?? $product?->tb1_tipo ?? 0);
 
         $data['tb1_nome'] = $this->normalizeProductName($data['tb1_nome'] ?? $product?->tb1_nome ?? '');
-
-        if ($type === 1) {
-            $data['tb1_codbar'] = $this->resolveBalanceBarcode($data, $product);
-        } else {
-            $data['tb1_codbar'] = trim((string) ($data['tb1_codbar'] ?? ''));
-        }
+        $data['tb1_codbar'] = $this->resolveProductBarcode($data, $product);
 
         $data['tb1_qtd'] = $type === 3
             ? (int) ($data['tb1_qtd'] ?? $product?->tb1_qtd ?? 0)
             : 0;
+
+        unset($data['sem_codigo_barras']);
 
         if ($product) {
             unset($data['tb1_id']);
@@ -422,26 +426,20 @@ class ProductController extends Controller
         return $data;
     }
 
-    private function resolveBalanceBarcode(array $data, ?Produto $product = null): string
+    private function resolveProductBarcode(array $data, ?Produto $product = null): string
     {
-        $currentBarcode = trim((string) ($product?->tb1_codbar ?? ''));
+        if ($this->shouldUseOwnIdAsBarcode($data, $product)) {
+            $productId = isset($data['tb1_id'])
+                ? (int) $data['tb1_id']
+                : (int) ($product?->tb1_id ?? 0);
 
-        if ($currentBarcode !== '') {
-            return $currentBarcode;
+            return $this->formatGeneratedBarcode($productId);
         }
 
-        $balanceId = isset($data['tb1_id'])
-            ? (int) $data['tb1_id']
-            : (int) ($product?->tb1_id ?? 0);
-
-        if ($balanceId > 0) {
-            return 'SEM-' . $balanceId;
-        }
-
-        return 'SEM-PRODUTO-BALANCA';
+        return trim((string) ($data['tb1_codbar'] ?? $product?->tb1_codbar ?? ''));
     }
 
-    private function nextSafeProductId(): int
+    private function nextSafeProductId(bool $reserveOwnIdBarcode = false): int
     {
         $maxExistingId = (int) Produto::query()
             ->where('tb1_id', '<=', self::MAX_SAFE_PRODUCT_ID)
@@ -451,19 +449,34 @@ class ProductController extends Controller
             })
             ->max('tb1_id');
 
-        $nextId = $maxExistingId + 1;
+        $candidateId = $maxExistingId + 1;
 
-        if ($nextId >= self::RESERVED_PRODUCT_ID_START && $nextId <= self::RESERVED_PRODUCT_ID_END) {
-            $nextId = self::RESERVED_PRODUCT_ID_END + 1;
+        while ($candidateId <= self::MAX_SAFE_PRODUCT_ID) {
+            if ($candidateId >= self::RESERVED_PRODUCT_ID_START && $candidateId <= self::RESERVED_PRODUCT_ID_END) {
+                $candidateId = self::RESERVED_PRODUCT_ID_END + 1;
+                continue;
+            }
+
+            if (! $reserveOwnIdBarcode) {
+                return $candidateId;
+            }
+
+            $generatedBarcode = $this->formatGeneratedBarcode($candidateId);
+
+            $barcodeInUse = Produto::query()
+                ->where('tb1_codbar', $generatedBarcode)
+                ->exists();
+
+            if (! $barcodeInUse) {
+                return $candidateId;
+            }
+
+            $candidateId++;
         }
 
-        if ($nextId > self::MAX_SAFE_PRODUCT_ID) {
-            throw ValidationException::withMessages([
-                'tb1_nome' => 'Nao ha mais IDs seguros disponiveis para novos produtos.',
-            ]);
-        }
-
-        return $nextId;
+        throw ValidationException::withMessages([
+            'tb1_nome' => 'Nao ha mais IDs seguros disponiveis para novos produtos.',
+        ]);
     }
 
     private function isReservedProductId(int $productId): bool
@@ -520,6 +533,26 @@ class ProductController extends Controller
             $type,
             $status
         );
+    }
+
+    private function shouldUseOwnIdAsBarcode(array $data, ?Produto $product = null): bool
+    {
+        $type = (int) ($data['tb1_tipo'] ?? $product?->tb1_tipo ?? 0);
+
+        if ($type === 1) {
+            return true;
+        }
+
+        return (bool) ($data['sem_codigo_barras'] ?? false);
+    }
+
+    private function formatGeneratedBarcode(int $productId): string
+    {
+        if ($productId <= 0) {
+            return '';
+        }
+
+        return (string) $productId;
     }
 
     private function normalizeProductName(mixed $value): string

@@ -11,7 +11,7 @@ use Tests\TestCase;
 
 class ProductManagementTest extends TestCase
 {
-    public function test_prepare_product_data_generates_sem_prefixed_barcode_for_new_balance_product(): void
+    public function test_prepare_product_data_uses_product_id_as_barcode_for_new_balance_product(): void
     {
         $controller = new ProductController();
         $reflection = new ReflectionClass($controller);
@@ -30,10 +30,10 @@ class ProductManagementTest extends TestCase
             'tb1_tipo' => 1,
         ], $product);
 
-        $this->assertSame('SEM-30', $result['tb1_codbar']);
+        $this->assertSame('30', $result['tb1_codbar']);
     }
 
-    public function test_prepare_product_data_keeps_existing_internal_barcode_for_balance_product(): void
+    public function test_prepare_product_data_keeps_product_id_as_barcode_for_existing_balance_product(): void
     {
         $controller = new ProductController();
         $reflection = new ReflectionClass($controller);
@@ -45,7 +45,7 @@ class ProductManagementTest extends TestCase
             'tb1_nome' => 'Biscoito de Queijo',
             'tb1_vlr_custo' => 3,
             'tb1_vlr_venda' => 4,
-            'tb1_codbar' => 'SEM-30',
+            'tb1_codbar' => '30',
             'tb1_tipo' => 1,
             'tb1_status' => 1,
             'tb1_vr_credit' => true,
@@ -58,8 +58,46 @@ class ProductManagementTest extends TestCase
             'tb1_tipo' => 1,
         ], $product);
 
-        $this->assertSame('SEM-30', $result['tb1_codbar']);
+        $this->assertSame('30', $result['tb1_codbar']);
         $this->assertArrayNotHasKey('tb1_id', $result);
+    }
+
+    public function test_prepare_product_data_uses_product_id_as_barcode_when_product_has_no_barcode(): void
+    {
+        $controller = new ProductController();
+        $reflection = new ReflectionClass($controller);
+        $prepareProductData = $reflection->getMethod('prepareProductData');
+        $prepareProductData->setAccessible(true);
+
+        $result = $prepareProductData->invoke($controller, [
+            'tb1_id' => 3200,
+            'tb1_nome' => 'Pudim',
+            'tb1_tipo' => 0,
+            'sem_codigo_barras' => true,
+            'tb1_codbar' => '',
+        ]);
+
+        $this->assertSame('3200', $result['tb1_codbar']);
+        $this->assertArrayNotHasKey('sem_codigo_barras', $result);
+    }
+
+    public function test_prepare_product_data_keeps_informed_barcode_when_product_has_own_barcode(): void
+    {
+        $controller = new ProductController();
+        $reflection = new ReflectionClass($controller);
+        $prepareProductData = $reflection->getMethod('prepareProductData');
+        $prepareProductData->setAccessible(true);
+
+        $result = $prepareProductData->invoke($controller, [
+            'tb1_id' => 3201,
+            'tb1_nome' => 'Bolo',
+            'tb1_tipo' => 0,
+            'sem_codigo_barras' => false,
+            'tb1_codbar' => '7891234567890',
+        ]);
+
+        $this->assertSame('7891234567890', $result['tb1_codbar']);
+        $this->assertArrayNotHasKey('sem_codigo_barras', $result);
     }
 
     public function test_sub_manager_can_change_product_prices(): void

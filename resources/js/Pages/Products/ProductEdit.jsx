@@ -2,6 +2,7 @@ import InfoButton from "@/Components/Button/InfoButton";
 import WarningButton from "@/Components/Button/WarningButton";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, Link, useForm } from "@inertiajs/react";
+import { useEffect } from "react";
 
 const normalizeProductName = (value) => value.toLocaleUpperCase("pt-BR");
 
@@ -12,6 +13,9 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
         tb1_vlr_custo: product.tb1_vlr_custo ?? "",
         tb1_vlr_venda: product.tb1_vlr_venda ?? "",
         tb1_codbar: product.tb1_codbar ?? "",
+        sem_codigo_barras:
+            Number(product.tb1_tipo) === 1 ||
+            String(product.tb1_codbar ?? "").trim() === String(product.tb1_id ?? "").trim(),
         tb1_tipo: product.tb1_tipo ?? typeOptions[0]?.value ?? 0,
         tb1_qtd: product.tb1_qtd ?? 0,
         tb1_status: product.tb1_status ?? statusOptions[0]?.value ?? 1,
@@ -21,6 +25,13 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
     const isBalanceProduct = Number(data.tb1_tipo) === 1;
     const isProductionProduct = Number(data.tb1_tipo) === 3;
     const canEditPrices = [0, 1, 2].includes(Number(auth?.user?.funcao ?? -1));
+    const withoutBarcode = isBalanceProduct || Boolean(data.sem_codigo_barras);
+
+    useEffect(() => {
+        if (isBalanceProduct && !data.sem_codigo_barras) {
+            setData("sem_codigo_barras", true);
+        }
+    }, [isBalanceProduct, data.sem_codigo_barras, setData]);
 
     const handleSubmit = (event) => {
         event.preventDefault();
@@ -181,6 +192,31 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
                                 </div>
                             </div>
 
+                            <div className="mb-4 rounded-md border border-gray-200 bg-gray-50 p-4">
+                                <label className="flex items-start gap-3 text-sm text-gray-700">
+                                    <input
+                                        type="checkbox"
+                                        checked={withoutBarcode}
+                                        disabled={isBalanceProduct}
+                                        onChange={(event) => setData("sem_codigo_barras", event.target.checked)}
+                                        className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                    />
+                                    <span>
+                                        <span className="block font-medium text-gray-800">
+                                            Produto sem codigo de barras
+                                        </span>
+                                        <span className="mt-1 block text-xs text-gray-500">
+                                            {isBalanceProduct
+                                                ? "Produtos de balanca sempre usam o proprio ID no campo Codbarras."
+                                                : "Quando marcado, o sistema grava o proprio ID do produto no campo Codbarras."}
+                                        </span>
+                                    </span>
+                                </label>
+                                {errors.sem_codigo_barras && (
+                                    <span className="mt-2 block text-red-600">{errors.sem_codigo_barras}</span>
+                                )}
+                            </div>
+
                             {isBalanceProduct ? (
                                 <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4">
                                     <label htmlFor="tb1_id" className="block text-sm font-medium text-gray-700">
@@ -194,9 +230,19 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
                                         className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2 shadow-sm sm:text-sm"
                                     />
                                     <p className="mt-2 text-xs text-amber-800">
-                                        Produto de balanca nao usa codigo de barras e o tb1_id nao pode ser alterado.
+                                        Produto de balanca nao usa codigo de barras e o ID nao pode ser alterado.
+                                        O campo COdbarras permanece igual ao proprio ID.
                                     </p>
                                     {errors.tb1_id && <span className="text-red-600">{errors.tb1_id}</span>}
+                                </div>
+                            ) : withoutBarcode ? (
+                                <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4">
+                                    <p className="text-sm font-medium text-gray-700">Codigo de barras</p>
+                                    <p className="mt-2 text-xs text-amber-800">
+                                        Este produto sera mantido sem codigo de barras proprio. Ao salvar, o sistema
+                                        gravara o valor do tb1_id no campo tb1_codbar.
+                                    </p>
+                                    {errors.tb1_codbar && <span className="text-red-600">{errors.tb1_codbar}</span>}
                                 </div>
                             ) : (
                                 <div className="mb-4">

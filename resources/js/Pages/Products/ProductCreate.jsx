@@ -2,6 +2,7 @@ import InfoButton from "@/Components/Button/InfoButton";
 import SuccessButton from "@/Components/Button/SuccessButton";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, Link, useForm } from "@inertiajs/react";
+import { useEffect } from "react";
 
 const normalizeProductName = (value) => value.toLocaleUpperCase("pt-BR");
 
@@ -15,6 +16,7 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
         tb1_vlr_custo: "",
         tb1_vlr_venda: "",
         tb1_codbar: "",
+        sem_codigo_barras: false,
         tb1_tipo: defaultType,
         tb1_qtd: "0",
         tb1_status: defaultStatus,
@@ -23,6 +25,13 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
 
     const isBalanceProduct = Number(data.tb1_tipo) === 1;
     const isProductionProduct = Number(data.tb1_tipo) === 3;
+    const withoutBarcode = isBalanceProduct || Boolean(data.sem_codigo_barras);
+
+    useEffect(() => {
+        if (isBalanceProduct && !data.sem_codigo_barras) {
+            setData("sem_codigo_barras", true);
+        }
+    }, [isBalanceProduct, data.sem_codigo_barras, setData]);
 
     const handleSubmit = (event) => {
         event.preventDefault();
@@ -168,6 +177,31 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
                                 </div>
                             </div>
 
+                            <div className="mb-4 rounded-md border border-gray-200 bg-gray-50 p-4">
+                                <label className="flex items-start gap-3 text-sm text-gray-700">
+                                    <input
+                                        type="checkbox"
+                                        checked={withoutBarcode}
+                                        disabled={isBalanceProduct}
+                                        onChange={(event) => setData("sem_codigo_barras", event.target.checked)}
+                                        className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                    />
+                                    <span>
+                                        <span className="block font-medium text-gray-800">
+                                            Produto sem codigo de barras
+                                        </span>
+                                        <span className="mt-1 block text-xs text-gray-500">
+                                            {isBalanceProduct
+                                                ? "Produtos de balanca sempre usam o proprio tb1_id no campo tb1_codbar."
+                                                : "Quando marcado, o sistema gravara o proprio tb1_id no campo tb1_codbar."}
+                                        </span>
+                                    </span>
+                                </label>
+                                {errors.sem_codigo_barras && (
+                                    <span className="mt-2 block text-red-600">{errors.sem_codigo_barras}</span>
+                                )}
+                            </div>
+
                             {isBalanceProduct ? (
                                 <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4">
                                     <label htmlFor="tb1_id" className="block text-sm font-medium text-gray-700">
@@ -184,10 +218,20 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
                                     />
                                     <p className="mt-2 text-xs text-amber-800">
                                         Produto de balanca nao usa codigo de barras. Informe o tb1_id manualmente.
-                                        Se o ID ja existir, o cadastro sera bloqueado e os dados atuais serao exibidos.
-                                        IDs de 3000 a 3100 sao reservados para comandas e tambem serao bloqueados.
+                                        O sistema gravara esse mesmo tb1_id no campo tb1_codbar. Se o ID ja existir,
+                                        o cadastro sera bloqueado e os dados atuais serao exibidos. IDs de 3000 a
+                                        3100 sao reservados para comandas e tambem serao bloqueados.
                                     </p>
                                     {errors.tb1_id && <span className="text-red-600">{errors.tb1_id}</span>}
+                                </div>
+                            ) : withoutBarcode ? (
+                                <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4">
+                                    <p className="text-sm font-medium text-gray-700">Codigo de barras</p>
+                                    <p className="mt-2 text-xs text-amber-800">
+                                        Este produto sera salvo sem codigo de barras proprio. O sistema vai copiar o
+                                        tb1_id gerado automaticamente para o campo tb1_codbar.
+                                    </p>
+                                    {errors.tb1_codbar && <span className="text-red-600">{errors.tb1_codbar}</span>}
                                 </div>
                             ) : (
                                 <div className="mb-4">
