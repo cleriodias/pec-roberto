@@ -11,11 +11,13 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
         tb1_vlr_venda: product.tb1_vlr_venda ?? "",
         tb1_codbar: product.tb1_codbar ?? "",
         tb1_tipo: product.tb1_tipo ?? typeOptions[0]?.value ?? 0,
+        tb1_qtd: product.tb1_qtd ?? 0,
         tb1_status: product.tb1_status ?? statusOptions[0]?.value ?? 1,
         tb1_vr_credit: Boolean(product.tb1_vr_credit),
     });
 
     const isBalanceProduct = Number(data.tb1_tipo) === 1;
+    const isProductionProduct = Number(data.tb1_tipo) === 3;
     const canEditPrices = [0, 1, 2].includes(Number(auth?.user?.funcao ?? -1));
 
     const handleSubmit = (event) => {
@@ -39,6 +41,11 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
                     <div className="flex justify-between items-center m-4">
                         <h3 className="text-lg">Editar</h3>
                         <div className="flex space-x-4">
+                            <Link href={route("products.production-stock", { product_id: data.tb1_id })}>
+                                <InfoButton aria-label="Estoque" title="Estoque de Producao">
+                                    <i className="bi bi-boxes text-lg" aria-hidden="true"></i>
+                                </InfoButton>
+                            </Link>
                             <Link href={route("products.index")}>
                                 <InfoButton aria-label="Listar" title="Listar">
                                     <i className="bi bi-list text-lg" aria-hidden="true"></i>
@@ -132,6 +139,26 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
                                     </select>
                                     {errors.tb1_tipo && <span className="text-red-600">{errors.tb1_tipo}</span>}
                                 </div>
+                                {isProductionProduct && (
+                                    <div>
+                                        <label htmlFor="tb1_qtd" className="block text-sm font-medium text-gray-700">
+                                            Quantidade atual
+                                        </label>
+                                        <input
+                                            id="tb1_qtd"
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            value={data.tb1_qtd}
+                                            onChange={(e) => setData("tb1_qtd", e.target.value)}
+                                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                        />
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Para novas entradas e saidas, utilize a tela de estoque de Producao.
+                                        </p>
+                                        {errors.tb1_qtd && <span className="text-red-600">{errors.tb1_qtd}</span>}
+                                    </div>
+                                )}
                                 <div>
                                     <label htmlFor="tb1_status" className="block text-sm font-medium text-gray-700">
                                         Status

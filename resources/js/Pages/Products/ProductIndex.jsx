@@ -210,6 +210,19 @@ export default function ProductIndex({
                                     <i className="bi bi-credit-card me-2 text-sm" aria-hidden="true"></i>
                                     VR Credito
                                 </InfoButton>
+                                <Link
+                                    href={route("products.production-stock")}
+                                    className="self-start sm:self-auto"
+                                >
+                                    <InfoButton
+                                        aria-label="Estoque de Producao"
+                                        title="Estoque de Producao"
+                                        className="whitespace-nowrap"
+                                    >
+                                        <i className="bi bi-boxes me-2 text-sm" aria-hidden="true"></i>
+                                        Estoque
+                                    </InfoButton>
+                                </Link>
                                 <input
                                     id="product-search"
                                     type="text"
@@ -257,6 +270,9 @@ export default function ProductIndex({
                                 <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">
                                     {renderSortHeader('Tipo', 'tb1_tipo')}
                                 </td>
+                                <td className="px-4 py-3 text-right text-sm font-medium text-gray-500 tracking-wider">
+                                    {renderSortHeader('Estoque', 'tb1_qtd', 'right')}
+                                </td>
                                 <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">
                                     {renderSortHeader('Status', 'tb1_status')}
                                 </td>
@@ -300,10 +316,20 @@ export default function ProductIndex({
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
                                         {resolveLabel(typeLabels, product.tb1_tipo)}
                                     </td>
+                                    <td className="px-4 py-2 text-sm text-gray-500 tracking-wider text-right">
+                                        {Number(product.tb1_tipo) === 3 ? Number(product.tb1_qtd ?? 0) : '--'}
+                                    </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
                                         {resolveLabel(statusLabels, product.tb1_status)}
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
+                                        {Number(product.tb1_tipo) === 3 && (
+                                            <Link href={route("products.production-stock", { product_id: product.tb1_id })}>
+                                                <InfoButton className="ms-1" aria-label="Estoque" title="Estoque">
+                                                    <i className="bi bi-boxes text-lg" aria-hidden="true"></i>
+                                                </InfoButton>
+                                            </Link>
+                                        )}
                                         <Link href={route("products.show", { product: product.tb1_id })}>
                                             <PrimaryButton className="ms-1" aria-label="Visualizar" title="Visualizar">
                                                 <i className="bi bi-eye text-lg" aria-hidden="true"></i>

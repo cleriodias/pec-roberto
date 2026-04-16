@@ -9,6 +9,7 @@ use App\Http\Controllers\DiscardSettingsController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductDiscardController;
+use App\Http\Controllers\ProductStockController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\LanchoneteTerminalController;
 use App\Http\Controllers\MobileRevenueController;
@@ -154,6 +155,10 @@ Route::middleware('auth')->group(function () {
         ->name('settings.suppliers');
     Route::post('/settings/suppliers', [SupplierController::class, 'store'])
         ->name('settings.suppliers.store');
+    Route::put('/settings/suppliers/{supplier}/dispute', [SupplierController::class, 'toggleDispute'])
+        ->name('settings.suppliers.toggle-dispute');
+    Route::get('/settings/suppliers/{supplier}/disputes', [SupplierController::class, 'showDisputes'])
+        ->name('settings.suppliers.disputes');
     Route::get('/settings/anydesck', [AnyDesckController::class, 'index'])
         ->name('settings.anydesck');
     Route::post('/settings/anydesck', [AnyDesckController::class, 'store'])
@@ -193,6 +198,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/products/discard', [ProductDiscardController::class, 'index'])->name('products.discard');
     Route::post('/products/discard', [ProductDiscardController::class, 'store'])->name('products.discard.store');
+    Route::get('/products/production-stock', [ProductStockController::class, 'index'])->name('products.production-stock');
+    Route::post('/products/production-stock', [ProductStockController::class, 'store'])->name('products.production-stock.store');
     Route::get('/products/search', [ProductController::class, 'search'])->name('products.search');
     Route::get('/products/favorites', [ProductController::class, 'favorites'])->name('products.favorites');
     Route::post('/products/{product}/favorite', [ProductController::class, 'toggleFavorite'])->name('products.favorite');

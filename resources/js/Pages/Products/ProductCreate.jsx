@@ -14,11 +14,13 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
         tb1_vlr_venda: "",
         tb1_codbar: "",
         tb1_tipo: defaultType,
+        tb1_qtd: "0",
         tb1_status: defaultStatus,
         tb1_vr_credit: false,
     });
 
     const isBalanceProduct = Number(data.tb1_tipo) === 1;
+    const isProductionProduct = Number(data.tb1_tipo) === 3;
 
     const handleSubmit = (event) => {
         event.preventDefault();
@@ -41,6 +43,11 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
                     <div className="flex justify-between items-center m-4">
                         <h3 className="text-lg">Cadastrar</h3>
                         <div className="flex space-x-4">
+                            <Link href={route("products.production-stock")}>
+                                <InfoButton aria-label="Estoque" title="Estoque de Producao">
+                                    <i className="bi bi-boxes text-lg" aria-hidden="true"></i>
+                                </InfoButton>
+                            </Link>
                             <Link href={route("products.index")}>
                                 <InfoButton aria-label="Listar" title="Listar">
                                     <i className="bi bi-list text-lg" aria-hidden="true"></i>
@@ -118,6 +125,27 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
                                     </select>
                                     {errors.tb1_tipo && <span className="text-red-600">{errors.tb1_tipo}</span>}
                                 </div>
+                                {isProductionProduct && (
+                                    <div>
+                                        <label htmlFor="tb1_qtd" className="block text-sm font-medium text-gray-700">
+                                            Quantidade inicial
+                                        </label>
+                                        <input
+                                            id="tb1_qtd"
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            placeholder="0"
+                                            value={data.tb1_qtd}
+                                            onChange={(e) => setData("tb1_qtd", e.target.value)}
+                                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                        />
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Produtos do tipo Producao utilizam esta quantidade como estoque inicial.
+                                        </p>
+                                        {errors.tb1_qtd && <span className="text-red-600">{errors.tb1_qtd}</span>}
+                                    </div>
+                                )}
                                 <div>
                                     <label htmlFor="tb1_status" className="block text-sm font-medium text-gray-700">
                                         Status
@@ -155,6 +183,7 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
                                     <p className="mt-2 text-xs text-amber-800">
                                         Produto de balanca nao usa codigo de barras. Informe o tb1_id manualmente.
                                         Se o ID ja existir, o cadastro sera bloqueado e os dados atuais serao exibidos.
+                                        IDs de 3000 a 3100 sao reservados para comandas e tambem serao bloqueados.
                                     </p>
                                     {errors.tb1_id && <span className="text-red-600">{errors.tb1_id}</span>}
                                 </div>

@@ -1,5 +1,6 @@
 import AlertMessage from '@/Components/Alert/AlertMessage';
 import { formatBrazilDate } from '@/Utils/date';
+import PrimaryButton from '@/Components/Button/PrimaryButton';
 import { Head, router, usePage } from '@inertiajs/react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 
@@ -16,8 +17,9 @@ const formatDate = (value) => {
     return formatBrazilDate(value);
 };
 
-export default function Disputes({ supplier, bids = [] }) {
+export default function Disputes({ supplier, bids = [], portalMode = 'supplier', backUrl = null }) {
     const { flash, errors } = usePage().props;
+    const isAdminPreview = portalMode === 'admin';
     const initialCosts = useMemo(() => {
         const map = {};
         bids.forEach((bid) => {
@@ -90,14 +92,32 @@ export default function Disputes({ supplier, bids = [] }) {
                         <p className="text-sm text-gray-500">
                             Fornecedor: <span className="font-semibold text-gray-700">{supplier?.name ?? '--'}</span>
                         </p>
+                        {isAdminPreview && (
+                            <p className="mt-1 text-sm text-gray-500">
+                                Visualizacao administrativa da area de resposta do fornecedor.
+                            </p>
+                        )}
                     </div>
-                    <button
-                        type="button"
-                        onClick={handleLogout}
-                        className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
-                    >
-                        Sair
-                    </button>
+                    <div className="flex gap-2">
+                        {isAdminPreview && backUrl && (
+                            <PrimaryButton
+                                type="button"
+                                onClick={() => router.visit(backUrl)}
+                                className="px-4 py-2 text-sm normal-case tracking-normal"
+                            >
+                                Voltar
+                            </PrimaryButton>
+                        )}
+                        {!isAdminPreview && (
+                            <button
+                                type="button"
+                                onClick={handleLogout}
+                                className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
+                            >
+                                Sair
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 <AlertMessage message={flash} />
@@ -167,7 +187,7 @@ export default function Disputes({ supplier, bids = [] }) {
                                                                     [bid.id]: event.target.value,
                                                                 }))
                                                             }
-                                                            disabled={isApproved}
+                                                            disabled={isApproved || isAdminPreview}
                                                             className="w-28 rounded-md border border-gray-300 px-2 py-1 text-right text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-100"
                                                         />
                                                     </td>
@@ -175,7 +195,7 @@ export default function Disputes({ supplier, bids = [] }) {
                                                         {formatCurrency(totalCost)}
                                                     </td>
                                                     <td className="px-3 py-2 text-center">
-                                                        {!isApproved && (
+                                                        {!isApproved && !isAdminPreview && (
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleSave(bid.id)}
@@ -184,6 +204,11 @@ export default function Disputes({ supplier, bids = [] }) {
                                                             >
                                                                 Salvar
                                                             </button>
+                                                        )}
+                                                        {!isApproved && isAdminPreview && (
+                                                            <span className="text-xs font-semibold text-slate-500">
+                                                                Aguardando fornecedor
+                                                            </span>
                                                         )}
                                                         {isApproved && (
                                                             <span className="text-xs font-semibold text-emerald-600">
@@ -213,7 +238,7 @@ export default function Disputes({ supplier, bids = [] }) {
                                                                                     [bid.id]: event.target.value,
                                                                                 }))
                                                                             }
-                                                                            disabled={isInvoiceLocked}
+                                                                            disabled={isInvoiceLocked || isAdminPreview}
                                                                             className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-100"
                                                                             placeholder="Detalhes do faturamento"
                                                                         />
@@ -231,7 +256,7 @@ export default function Disputes({ supplier, bids = [] }) {
                                                                                     [bid.id]: event.target.files?.[0] ?? null,
                                                                                 }))
                                                                             }
-                                                                            disabled={isInvoiceLocked}
+                                                                            disabled={isInvoiceLocked || isAdminPreview}
                                                                             className="mt-1 w-full text-sm disabled:opacity-60"
                                                                         />
                                                                         {hasInvoice && (
@@ -242,14 +267,21 @@ export default function Disputes({ supplier, bids = [] }) {
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex justify-end">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => handleInvoice(bid.id)}
-                                                                        disabled={uploadingId === bid.id || isInvoiceLocked}
-                                                                        className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-indigo-700 disabled:opacity-50"
-                                                                    >
-                                                                        {hasInvoice ? 'Faturado' : 'Faturar'}
-                                                                    </button>
+                                                                    {!isAdminPreview && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleInvoice(bid.id)}
+                                                                            disabled={uploadingId === bid.id || isInvoiceLocked}
+                                                                            className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-indigo-700 disabled:opacity-50"
+                                                                        >
+                                                                            {hasInvoice ? 'Faturado' : 'Faturar'}
+                                                                        </button>
+                                                                    )}
+                                                                    {isAdminPreview && (
+                                                                        <span className="text-xs font-semibold text-slate-500">
+                                                                            Faturamento disponivel apenas no portal do fornecedor
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </td>

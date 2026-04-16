@@ -14,10 +14,17 @@ use Inertia\Response;
 
 class ProductController extends Controller
 {
+    private const RESERVED_PRODUCT_ID_START = 3000;
+
+    private const RESERVED_PRODUCT_ID_END = 3100;
+
+    private const MAX_SAFE_PRODUCT_ID = 9999;
+
     private const TYPE_LABELS = [
         0 => 'Industria',
         1 => 'Balanca',
         2 => 'Servico',
+        3 => 'Producao',
     ];
 
     private const STATUS_LABELS = [
@@ -67,6 +74,7 @@ class ProductController extends Controller
             'tb1_vlr_venda',
             'tb1_codbar',
             'tb1_tipo',
+            'tb1_qtd',
             'tb1_status',
         ];
         $allowedDirections = ['asc', 'desc'];
@@ -118,6 +126,11 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $data = $this->validateProduct($request);
+
+        if ((int) ($data['tb1_tipo'] ?? 0) !== 1) {
+            $data['tb1_id'] = $this->nextSafeProductId();
+        }
+
         $data['tb1_vr_credit'] = (bool) ($data['tb1_vr_credit'] ?? false);
         $data = $this->prepareProductData($data);
 
@@ -181,6 +194,7 @@ class ProductController extends Controller
                 'tb1_vlr_custo',
                 'tb1_vlr_venda',
                 'tb1_tipo',
+                'tb1_qtd',
                 'tb1_status',
                 'tb1_vr_credit',
             ]);
@@ -235,6 +249,7 @@ class ProductController extends Controller
                 'tb1_vlr_custo',
                 'tb1_vlr_venda',
                 'tb1_tipo',
+                'tb1_qtd',
                 'tb1_status',
                 'tb1_vr_credit',
             ]);
@@ -251,6 +266,7 @@ class ProductController extends Controller
                     'nullable',
                     'integer',
                     'min:1',
+                    'max:' . self::MAX_SAFE_PRODUCT_ID,
                 ],
                 'tb1_nome' => 'required|string|max:45',
                 'tb1_vlr_custo' => 'required|numeric|min:0',
@@ -267,6 +283,12 @@ class ProductController extends Controller
                     'integer',
                     Rule::in(array_keys(self::TYPE_LABELS)),
                 ],
+                'tb1_qtd' => [
+                    Rule::requiredIf(fn () => (int) $request->input('tb1_tipo') === 3),
+                    'nullable',
+                    'integer',
+                    'min:0',
+                ],
                 'tb1_status' => [
                     'required',
                     'integer',
@@ -281,6 +303,7 @@ class ProductController extends Controller
                 'tb1_id.required' => 'Informe o ID do produto de balanca.',
                 'tb1_id.integer' => 'O ID do produto deve ser numerico.',
                 'tb1_id.min' => 'O ID do produto deve ser maior que zero.',
+                'tb1_id.max' => 'O ID do produto deve ser no maximo :max.',
                 'tb1_nome.required' => 'Informe o nome do produto.',
                 'tb1_nome.max' => 'O nome nao pode exceder :max caracteres.',
                 'tb1_vlr_custo.required' => 'Informe o valor de custo.',
@@ -296,6 +319,9 @@ class ProductController extends Controller
                 'tb1_tipo.required' => 'Selecione o tipo do produto.',
                 'tb1_tipo.integer' => 'Tipo de produto invalido.',
                 'tb1_tipo.in' => 'Tipo de produto nao reconhecido.',
+                'tb1_qtd.required' => 'Informe a quantidade em estoque para o produto de Producao.',
+                'tb1_qtd.integer' => 'A quantidade em estoque deve ser numerica e inteira.',
+                'tb1_qtd.min' => 'A quantidade em estoque nao pode ser negativa.',
                 'tb1_status.required' => 'Selecione o status do produto.',
                 'tb1_status.integer' => 'Status invalido.',
                 'tb1_status.in' => 'Status nao reconhecido.',
@@ -312,6 +338,16 @@ class ProductController extends Controller
         }
 
         if ($product === null && (int) ($data['tb1_tipo'] ?? 0) === 1 && $requestedId !== null) {
+            if ($this->isReservedProductId($requestedId)) {
+                throw ValidationException::withMessages([
+                    'tb1_id' => sprintf(
+                        'Os IDs de %d a %d sao reservados para comandas. Informe outro ID de balanca.',
+                        self::RESERVED_PRODUCT_ID_START,
+                        self::RESERVED_PRODUCT_ID_END
+                    ),
+                ]);
+            }
+
             $existingProduct = Produto::query()->find($requestedId);
 
             if ($existingProduct) {
@@ -368,9 +404,12 @@ class ProductController extends Controller
         if ($type === 1) {
             $data['tb1_codbar'] = $this->resolveBalanceBarcode($data, $product);
         } else {
-            unset($data['tb1_id']);
             $data['tb1_codbar'] = trim((string) ($data['tb1_codbar'] ?? ''));
         }
+
+        $data['tb1_qtd'] = $type === 3
+            ? (int) ($data['tb1_qtd'] ?? $product?->tb1_qtd ?? 0)
+            : 0;
 
         if ($product) {
             unset($data['tb1_id']);
@@ -396,6 +435,37 @@ class ProductController extends Controller
         }
 
         return 'SEM-PRODUTO-BALANCA';
+    }
+
+    private function nextSafeProductId(): int
+    {
+        $maxExistingId = (int) Produto::query()
+            ->where('tb1_id', '<=', self::MAX_SAFE_PRODUCT_ID)
+            ->where(function ($query) {
+                $query->where('tb1_id', '<', self::RESERVED_PRODUCT_ID_START)
+                    ->orWhere('tb1_id', '>', self::RESERVED_PRODUCT_ID_END);
+            })
+            ->max('tb1_id');
+
+        $nextId = $maxExistingId + 1;
+
+        if ($nextId >= self::RESERVED_PRODUCT_ID_START && $nextId <= self::RESERVED_PRODUCT_ID_END) {
+            $nextId = self::RESERVED_PRODUCT_ID_END + 1;
+        }
+
+        if ($nextId > self::MAX_SAFE_PRODUCT_ID) {
+            throw ValidationException::withMessages([
+                'tb1_nome' => 'Nao ha mais IDs seguros disponiveis para novos produtos.',
+            ]);
+        }
+
+        return $nextId;
+    }
+
+    private function isReservedProductId(int $productId): bool
+    {
+        return $productId >= self::RESERVED_PRODUCT_ID_START
+            && $productId <= self::RESERVED_PRODUCT_ID_END;
     }
 
     private function ensurePriceEditingIsAuthorized(array $data, ?Produto $product, ?User $user): void

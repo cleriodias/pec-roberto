@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\SalesDisputeBid;
 use App\Models\Supplier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -55,11 +56,72 @@ class SupplierController extends Controller
             ->with('success', 'Fornecedor cadastrado com sucesso!');
     }
 
+    public function toggleDispute(Request $request, Supplier $supplier): RedirectResponse
+    {
+        $this->ensureMaster($request->user());
+
+        $supplier->update([
+            'dispute' => ! (bool) $supplier->dispute,
+        ]);
+
+        return redirect()
+            ->route('settings.suppliers')
+            ->with('success', 'Disputa do fornecedor atualizada com sucesso!');
+    }
+
+    public function showDisputes(Request $request, Supplier $supplier): Response
+    {
+        $this->ensureMaster($request->user());
+
+        return Inertia::render('Supplier/Disputes', [
+            'supplier' => [
+                'id' => $supplier->id,
+                'name' => $supplier->name,
+            ],
+            'bids' => $this->buildSupplierBids($supplier),
+            'portalMode' => 'admin',
+            'backUrl' => route('settings.suppliers'),
+        ]);
+    }
+
     private function ensureMaster($user): void
     {
         if (! $user || (int) $user->funcao !== 0) {
             abort(403);
         }
+    }
+
+    private function buildSupplierBids(Supplier $supplier)
+    {
+        $approvedDisputes = SalesDisputeBid::query()
+            ->whereNotNull('approved_at')
+            ->select('sales_dispute_id');
+
+        return SalesDisputeBid::with('dispute:id,product_name,quantity')
+            ->where('supplier_id', $supplier->id)
+            ->where(function ($query) use ($approvedDisputes) {
+                $query->whereNotIn('sales_dispute_id', $approvedDisputes)
+                    ->orWhereNotNull('approved_at');
+            })
+            ->orderByDesc('sales_dispute_id')
+            ->get()
+            ->map(fn (SalesDisputeBid $bid) => [
+                'id' => $bid->id,
+                'unit_cost' => $bid->unit_cost,
+                'approved_at' => optional($bid->approved_at)->toIso8601String(),
+                'is_approved' => (bool) $bid->approved_at,
+                'invoice_note' => $bid->invoice_note,
+                'invoice_file_path' => $bid->invoice_file_path,
+                'invoiced_at' => optional($bid->invoiced_at)->toIso8601String(),
+                'dispute' => $bid->dispute
+                    ? [
+                        'id' => $bid->dispute->id,
+                        'product_name' => $bid->dispute->product_name,
+                        'quantity' => $bid->dispute->quantity,
+                    ]
+                    : null,
+            ])
+            ->values();
     }
 
     private function generateAccessCode(): ?string

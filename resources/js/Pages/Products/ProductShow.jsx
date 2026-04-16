@@ -39,6 +39,13 @@ export default function ProductShow({ auth, product, typeLabels, statusLabels })
                     <div className="flex justify-between items-center m-4">
                         <h3 className="text-lg">Visualizar</h3>
                         <div className="flex space-x-4">
+                            {Number(product.tb1_tipo) === 3 && (
+                                <Link href={route("products.production-stock", { product_id: product.tb1_id })}>
+                                    <InfoButton aria-label="Estoque" title="Estoque de Producao">
+                                        <i className="bi bi-boxes text-lg" aria-hidden="true"></i>
+                                    </InfoButton>
+                                </Link>
+                            )}
                             <Link href={route("products.index")}>
                                 <InfoButton aria-label="Listar" title="Listar">
                                     <i className="bi bi-list text-lg" aria-hidden="true"></i>
@@ -86,10 +93,15 @@ export default function ProductShow({ auth, product, typeLabels, statusLabels })
                                 </p>
                             </div>
                         </div>
+                        {Number(product.tb1_tipo) === 3 && (
+                            <div className="mb-4">
+                                <p className="text-md font-semibold text-gray-700 dark:text-gray-200">Estoque atual</p>
+                                <p className="text-gray-600 dark:text-gray-400">{Number(product.tb1_qtd ?? 0)}</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
         </AuthenticatedLayout>
     );
 }
-

@@ -7,6 +7,12 @@ use Illuminate\Support\Facades\DB;
 
 class ProdutoSeeder extends Seeder
 {
+    private const RESERVED_PRODUCT_ID_START = 3000;
+
+    private const RESERVED_PRODUCT_ID_END = 3100;
+
+    private const MAX_SAFE_PRODUCT_ID = 9999;
+
     public function run(): void
     {
         $path = $this->resolveSqlPath();
@@ -31,8 +37,8 @@ class ProdutoSeeder extends Seeder
 
         DB::statement("SET SESSION sql_mode = CONCAT(@@sql_mode, ',NO_AUTO_VALUE_ON_ZERO')");
 
-        $seenCodbar = [];
-        $batch = [];
+        $sourceRows = [];
+        $highestSafeId = 0;
         $now = now();
 
         foreach ($matches[1] as $valuesBlock) {
@@ -43,34 +49,84 @@ class ProdutoSeeder extends Seeder
                     continue;
                 }
 
-                $id = (int) $fields[0];
-                $name = $this->normalizeName($fields[1]);
-                $cost = $this->normalizeNumber($fields[2]);
-                $price = $this->normalizeNumber($fields[3]);
-                $codbar = $this->normalizeCodbar($fields[4], $id, $seenCodbar);
-                $tipo = (int) $this->normalizeNumber($fields[5]);
+                $sourceId = (int) $fields[0];
 
-                $batch[] = [
-                    'tb1_id' => $id,
-                    'tb1_nome' => $name,
-                    'tb1_vlr_custo' => $cost,
-                    'tb1_vlr_venda' => $price,
-                    'tb1_codbar' => $codbar,
-                    'tb1_tipo' => $tipo,
+                if ($this->isSeedSafeProductId($sourceId)) {
+                    $highestSafeId = max($highestSafeId, $sourceId);
+                }
+
+                $sourceRows[] = [
+                    'source_id' => $sourceId,
+                    'tb1_nome' => $this->normalizeName($fields[1]),
+                    'tb1_vlr_custo' => $this->normalizeNumber($fields[2]),
+                    'tb1_vlr_venda' => $this->normalizeNumber($fields[3]),
+                    'tb1_codbar' => $fields[4],
+                    'tb1_tipo' => (int) $this->normalizeNumber($fields[5]),
                     'created_at' => $now,
                     'updated_at' => $now,
                 ];
+            }
+        }
 
-                if (count($batch) >= 500) {
-                    $this->upsertBatch($batch);
-                    $batch = [];
-                }
+        $seenCodbar = [];
+        $batch = [];
+        $nextSafeId = $this->nextSeedSafeProductId($highestSafeId + 1);
+
+        foreach ($sourceRows as $row) {
+            $id = (int) $row['source_id'];
+
+            if (! $this->isSeedSafeProductId($id)) {
+                $id = $nextSafeId;
+                $nextSafeId = $this->nextSeedSafeProductId($nextSafeId + 1);
+            }
+
+            $codbar = $this->normalizeCodbar($row['tb1_codbar'], $id, $seenCodbar);
+
+            $batch[] = [
+                'tb1_id' => $id,
+                'tb1_nome' => $row['tb1_nome'],
+                'tb1_vlr_custo' => $row['tb1_vlr_custo'],
+                'tb1_vlr_venda' => $row['tb1_vlr_venda'],
+                'tb1_codbar' => $codbar,
+                'tb1_tipo' => $row['tb1_tipo'],
+                'created_at' => $row['created_at'],
+                'updated_at' => $row['updated_at'],
+            ];
+
+            if (count($batch) >= 500) {
+                $this->upsertBatch($batch);
+                $batch = [];
             }
         }
 
         if ($batch) {
             $this->upsertBatch($batch);
         }
+    }
+
+    private function isSeedSafeProductId(int $id): bool
+    {
+        return $id <= self::MAX_SAFE_PRODUCT_ID
+            && ! $this->isReservedProductId($id);
+    }
+
+    private function isReservedProductId(int $id): bool
+    {
+        return $id >= self::RESERVED_PRODUCT_ID_START
+            && $id <= self::RESERVED_PRODUCT_ID_END;
+    }
+
+    private function nextSeedSafeProductId(int $candidate): int
+    {
+        if ($candidate >= self::RESERVED_PRODUCT_ID_START && $candidate <= self::RESERVED_PRODUCT_ID_END) {
+            $candidate = self::RESERVED_PRODUCT_ID_END + 1;
+        }
+
+        if ($candidate > self::MAX_SAFE_PRODUCT_ID) {
+            return $candidate;
+        }
+
+        return $candidate;
     }
 
     private function resolveSqlPath(): ?string

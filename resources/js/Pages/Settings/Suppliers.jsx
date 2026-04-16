@@ -1,10 +1,13 @@
 import AlertMessage from '@/Components/Alert/AlertMessage';
+import PrimaryButton from '@/Components/Button/PrimaryButton';
 import SuccessButton from '@/Components/Button/SuccessButton';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 
 export default function Suppliers({ auth, suppliers = [] }) {
     const { flash } = usePage().props;
+    const [updatingSupplierId, setUpdatingSupplierId] = useState(null);
     const { data, setData, post, processing, errors, reset } = useForm({
         name: '',
         dispute: '0',
@@ -15,6 +18,23 @@ export default function Suppliers({ auth, suppliers = [] }) {
         post(route('settings.suppliers.store'), {
             onSuccess: () => reset(),
         });
+    };
+
+    const handleDisputeToggle = (supplier) => {
+        if (!supplier?.id) {
+            return;
+        }
+
+        setUpdatingSupplierId(supplier.id);
+
+        router.put(
+            route('settings.suppliers.toggle-dispute', supplier.id),
+            {},
+            {
+                preserveScroll: true,
+                onFinish: () => setUpdatingSupplierId(null),
+            }
+        );
     };
 
     return (
@@ -110,8 +130,33 @@ export default function Suppliers({ auth, suppliers = [] }) {
                                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                                             {suppliers.map((supplier) => (
                                                 <tr key={supplier.id}>
-                                                    <td className="px-3 py-2 font-semibold">{supplier.name}</td>
-                                                    <td className="px-3 py-2">{supplier.dispute ? 'Sim' : 'Nao'}</td>
+                                                    <td className="px-3 py-2 font-semibold">
+                                                        <Link
+                                                            href={route('settings.suppliers.disputes', supplier.id)}
+                                                            className="text-blue-600 transition hover:text-blue-800 hover:underline"
+                                                        >
+                                                            {supplier.name}
+                                                        </Link>
+                                                    </td>
+                                                    <td className="px-3 py-2">
+                                                        <PrimaryButton
+                                                            type="button"
+                                                            onClick={() => handleDisputeToggle(supplier)}
+                                                            disabled={updatingSupplierId === supplier.id}
+                                                            className={`min-w-[72px] justify-center px-3 py-2 text-sm normal-case tracking-normal ${
+                                                                supplier.dispute
+                                                                    ? ''
+                                                                    : 'border-gray-300 bg-gray-200 text-gray-700 hover:bg-gray-300 focus:bg-gray-300 focus:ring-gray-300 active:bg-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600 dark:focus:bg-gray-600 dark:active:bg-gray-600'
+                                                            }`}
+                                                            title={`Clique para alterar disputa para ${supplier.dispute ? 'Nao' : 'Sim'}`}
+                                                        >
+                                                            {updatingSupplierId === supplier.id
+                                                                ? '...'
+                                                                : supplier.dispute
+                                                                  ? 'Sim'
+                                                                  : 'Nao'}
+                                                        </PrimaryButton>
+                                                    </td>
                                                     <td className="px-3 py-2 font-mono">{supplier.access_code}</td>
                                                 </tr>
                                             ))}

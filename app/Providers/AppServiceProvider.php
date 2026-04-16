@@ -58,11 +58,12 @@ class AppServiceProvider extends ServiceProvider
         $forwardedProto = strtolower((string) $request->header('X-Forwarded-Proto', ''));
         $hasAzureSslHeader = $request->header('X-ARR-SSL') !== null;
         $configuredAppUrl = strtolower((string) config('app.url'));
-        $shouldForceHttps =
+        $shouldForceHttps = ! $this->app->environment('local') && (
             $this->app->environment('production') ||
             str_starts_with($configuredAppUrl, 'https://') ||
             $forwardedProto === 'https' ||
-            $hasAzureSslHeader;
+            $hasAzureSslHeader
+        );
 
         if ($shouldForceHttps) {
             $forcedRootUrl = 'https://'.$request->getHttpHost();
