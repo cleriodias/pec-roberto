@@ -10,6 +10,7 @@ import { Head, Link, usePage, router } from "@inertiajs/react";
 import { useEffect, useRef, useState } from "react";
 
 const MIN_SEARCH_CHARACTERS = 3;
+const MAX_PRODUCT_NAME_LENGTH = 25;
 const numericRegex = /^\d+$/;
 
 const formatCurrency = (value) => {
@@ -27,6 +28,22 @@ const resolveLabel = (labels, key) => {
     }
 
     return labels[key] ?? "---";
+};
+
+const truncateText = (value, maxLength) => {
+    if (!value) {
+        return "";
+    }
+
+    if (value.length <= maxLength) {
+        return value;
+    }
+
+    if (maxLength <= 3) {
+        return value.slice(0, maxLength);
+    }
+
+    return `${value.slice(0, maxLength - 3)}...`;
 };
 
 export default function ProductIndex({
@@ -300,7 +317,9 @@ export default function ProductIndex({
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
                                         <div className="flex flex-col">
-                                            <span>{product.tb1_nome}</span>
+                                            <span title={product.tb1_nome}>
+                                                {truncateText(product.tb1_nome, MAX_PRODUCT_NAME_LENGTH)}
+                                            </span>
                                             <span className="text-xs text-gray-400">
                                                 {product.tb1_codbar}
                                             </span>

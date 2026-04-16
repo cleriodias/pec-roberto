@@ -3,6 +3,8 @@ import WarningButton from "@/Components/Button/WarningButton";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, Link, useForm } from "@inertiajs/react";
 
+const normalizeProductName = (value) => value.toLocaleUpperCase("pt-BR");
+
 export default function ProductEdit({ auth, product, typeOptions = [], statusOptions = [] }) {
     const { data, setData, put, processing, errors } = useForm({
         tb1_id: product.tb1_id ?? "",
@@ -65,7 +67,7 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
                                     type="text"
                                     placeholder="Nome do produto"
                                     value={data.tb1_nome}
-                                    onChange={(e) => setData("tb1_nome", e.target.value)}
+                                    onChange={(e) => setData("tb1_nome", normalizeProductName(e.target.value))}
                                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 />
                                 {errors.tb1_nome && <span className="text-red-600">{errors.tb1_nome}</span>}

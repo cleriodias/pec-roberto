@@ -32,6 +32,8 @@ class ProductController extends Controller
         1 => 'Ativo',
     ];
 
+    private const PRODUCT_NAME_ENCODING = 'UTF-8';
+
     public function index(Request $request): Response
     {
         $search = trim((string) $request->input('search', ''));
@@ -401,6 +403,8 @@ class ProductController extends Controller
     {
         $type = (int) ($data['tb1_tipo'] ?? $product?->tb1_tipo ?? 0);
 
+        $data['tb1_nome'] = $this->normalizeProductName($data['tb1_nome'] ?? $product?->tb1_nome ?? '');
+
         if ($type === 1) {
             $data['tb1_codbar'] = $this->resolveBalanceBarcode($data, $product);
         } else {
@@ -516,5 +520,16 @@ class ProductController extends Controller
             $type,
             $status
         );
+    }
+
+    private function normalizeProductName(mixed $value): string
+    {
+        $normalized = trim((string) $value);
+
+        if ($normalized === '') {
+            return '';
+        }
+
+        return mb_strtoupper($normalized, self::PRODUCT_NAME_ENCODING);
     }
 }
