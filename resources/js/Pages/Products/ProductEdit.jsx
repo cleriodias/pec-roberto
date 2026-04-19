@@ -6,7 +6,7 @@ import { useEffect } from "react";
 
 const normalizeProductName = (value) => value.toLocaleUpperCase("pt-BR");
 
-export default function ProductEdit({ auth, product, typeOptions = [], statusOptions = [] }) {
+export default function ProductEdit({ auth, product, typeOptions = [], statusOptions = [], originOptions = [] }) {
     const { data, setData, put, processing, errors } = useForm({
         tb1_id: product.tb1_id ?? "",
         tb1_nome: product.tb1_nome ?? "",
@@ -17,6 +17,15 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
             Number(product.tb1_tipo) === 1 ||
             String(product.tb1_codbar ?? "").trim() === String(product.tb1_id ?? "").trim(),
         tb1_tipo: product.tb1_tipo ?? typeOptions[0]?.value ?? 0,
+        tb1_ncm: product.tb1_ncm ?? "",
+        tb1_cest: product.tb1_cest ?? "",
+        tb1_cfop: product.tb1_cfop ?? "",
+        tb1_unidade_comercial: product.tb1_unidade_comercial ?? "UN",
+        tb1_unidade_tributavel: product.tb1_unidade_tributavel ?? "UN",
+        tb1_origem: product.tb1_origem ?? originOptions[0]?.value ?? 0,
+        tb1_csosn: product.tb1_csosn ?? "",
+        tb1_cst: product.tb1_cst ?? "",
+        tb1_aliquota_icms: product.tb1_aliquota_icms ?? "0.00",
         tb1_qtd: product.tb1_qtd ?? 0,
         tb1_status: product.tb1_status ?? statusOptions[0]?.value ?? 1,
         tb1_vr_credit: Boolean(product.tb1_vr_credit),
@@ -275,6 +284,70 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
                                 {errors.tb1_vr_credit && (
                                     <span className="text-red-600">{errors.tb1_vr_credit}</span>
                                 )}
+                            </div>
+
+                            <div className="mb-6 rounded-md border border-gray-200 bg-white p-4">
+                                <div className="mb-4">
+                                    <h4 className="text-sm font-semibold text-gray-800">Cadastro fiscal</h4>
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        Esses campos alimentam a preparacao da NF-e/NFC-e.
+                                    </p>
+                                    <p className="mt-1 text-xs font-medium text-amber-700">
+                                        Campos obrigatorios para emissao: NCM, CFOP e pelo menos um entre CSOSN ou CST.
+                                    </p>
+                                </div>
+
+                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                                    <div>
+                                        <label htmlFor="tb1_ncm" className="block text-sm font-medium text-gray-700">NCM *</label>
+                                        <input id="tb1_ncm" type="text" required maxLength="8" value={data.tb1_ncm} onChange={(e) => setData("tb1_ncm", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_ncm && <span className="text-red-600">{errors.tb1_ncm}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_cest" className="block text-sm font-medium text-gray-700">CEST</label>
+                                        <input id="tb1_cest" type="text" maxLength="7" value={data.tb1_cest} onChange={(e) => setData("tb1_cest", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_cest && <span className="text-red-600">{errors.tb1_cest}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_cfop" className="block text-sm font-medium text-gray-700">CFOP *</label>
+                                        <input id="tb1_cfop" type="text" required maxLength="4" value={data.tb1_cfop} onChange={(e) => setData("tb1_cfop", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_cfop && <span className="text-red-600">{errors.tb1_cfop}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_origem" className="block text-sm font-medium text-gray-700">Origem</label>
+                                        <select id="tb1_origem" value={data.tb1_origem} onChange={(e) => setData("tb1_origem", Number(e.target.value))} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm">
+                                            {originOptions.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </select>
+                                        {errors.tb1_origem && <span className="text-red-600">{errors.tb1_origem}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_unidade_comercial" className="block text-sm font-medium text-gray-700">Unidade comercial</label>
+                                        <input id="tb1_unidade_comercial" type="text" maxLength="6" value={data.tb1_unidade_comercial} onChange={(e) => setData("tb1_unidade_comercial", e.target.value.toUpperCase())} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_unidade_comercial && <span className="text-red-600">{errors.tb1_unidade_comercial}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_unidade_tributavel" className="block text-sm font-medium text-gray-700">Unidade tributavel</label>
+                                        <input id="tb1_unidade_tributavel" type="text" maxLength="6" value={data.tb1_unidade_tributavel} onChange={(e) => setData("tb1_unidade_tributavel", e.target.value.toUpperCase())} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_unidade_tributavel && <span className="text-red-600">{errors.tb1_unidade_tributavel}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_csosn" className="block text-sm font-medium text-gray-700">CSOSN *</label>
+                                        <input id="tb1_csosn" type="text" maxLength="4" value={data.tb1_csosn} onChange={(e) => setData("tb1_csosn", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_csosn && <span className="text-red-600">{errors.tb1_csosn}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_cst" className="block text-sm font-medium text-gray-700">CST *</label>
+                                        <input id="tb1_cst" type="text" maxLength="3" value={data.tb1_cst} onChange={(e) => setData("tb1_cst", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_cst && <span className="text-red-600">{errors.tb1_cst}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_aliquota_icms" className="block text-sm font-medium text-gray-700">Aliquota ICMS</label>
+                                        <input id="tb1_aliquota_icms" type="number" step="0.01" min="0" max="100" value={data.tb1_aliquota_icms} onChange={(e) => setData("tb1_aliquota_icms", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_aliquota_icms && <span className="text-red-600">{errors.tb1_aliquota_icms}</span>}
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="flex justify-end">

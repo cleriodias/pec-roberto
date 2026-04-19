@@ -32,6 +32,18 @@ class ProductController extends Controller
         1 => 'Ativo',
     ];
 
+    private const ORIGIN_LABELS = [
+        0 => '0 - Nacional',
+        1 => '1 - Estrangeira importacao direta',
+        2 => '2 - Estrangeira adquirida no mercado interno',
+        3 => '3 - Nacional com conteudo de importacao superior a 40%',
+        4 => '4 - Nacional com processo produtivo basico',
+        5 => '5 - Nacional com conteudo de importacao ate 40%',
+        6 => '6 - Estrangeira importacao direta sem similar nacional',
+        7 => '7 - Estrangeira mercado interno sem similar nacional',
+        8 => '8 - Nacional com conteudo de importacao superior a 70%',
+    ];
+
     private const PRODUCT_NAME_ENCODING = 'UTF-8';
 
     public function index(Request $request): Response
@@ -285,6 +297,15 @@ class ProductController extends Controller
                     'integer',
                     Rule::in(array_keys(self::TYPE_LABELS)),
                 ],
+                'tb1_ncm' => ['nullable', 'string', 'size:8'],
+                'tb1_cest' => ['nullable', 'string', 'size:7'],
+                'tb1_cfop' => ['nullable', 'string', 'size:4'],
+                'tb1_unidade_comercial' => ['nullable', 'string', 'max:6'],
+                'tb1_unidade_tributavel' => ['nullable', 'string', 'max:6'],
+                'tb1_origem' => ['nullable', 'integer', Rule::in(array_keys(self::ORIGIN_LABELS))],
+                'tb1_csosn' => ['nullable', 'string', 'max:4'],
+                'tb1_cst' => ['nullable', 'string', 'max:3'],
+                'tb1_aliquota_icms' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'tb1_qtd' => [
                     Rule::requiredIf(fn () => (int) $request->input('tb1_tipo') === 3),
                     'nullable',
@@ -325,6 +346,17 @@ class ProductController extends Controller
                 'tb1_tipo.required' => 'Selecione o tipo do produto.',
                 'tb1_tipo.integer' => 'Tipo de produto invalido.',
                 'tb1_tipo.in' => 'Tipo de produto nao reconhecido.',
+                'tb1_ncm.size' => 'O NCM deve ter exatamente 8 digitos.',
+                'tb1_cest.size' => 'O CEST deve ter exatamente 7 digitos.',
+                'tb1_cfop.size' => 'O CFOP deve ter exatamente 4 digitos.',
+                'tb1_unidade_comercial.max' => 'A unidade comercial deve ter no maximo :max caracteres.',
+                'tb1_unidade_tributavel.max' => 'A unidade tributavel deve ter no maximo :max caracteres.',
+                'tb1_origem.in' => 'Origem fiscal invalida.',
+                'tb1_csosn.max' => 'O CSOSN deve ter no maximo :max caracteres.',
+                'tb1_cst.max' => 'O CST deve ter no maximo :max caracteres.',
+                'tb1_aliquota_icms.numeric' => 'A aliquota de ICMS deve ser numerica.',
+                'tb1_aliquota_icms.min' => 'A aliquota de ICMS nao pode ser negativa.',
+                'tb1_aliquota_icms.max' => 'A aliquota de ICMS nao pode ultrapassar 100%.',
                 'tb1_qtd.required' => 'Informe a quantidade em estoque para o produto de Producao.',
                 'tb1_qtd.integer' => 'A quantidade em estoque deve ser numerica e inteira.',
                 'tb1_qtd.min' => 'A quantidade em estoque nao pode ser negativa.',
@@ -365,6 +397,7 @@ class ProductController extends Controller
         }
 
         $this->ensurePriceEditingIsAuthorized($data, $product, $request->user());
+        $this->ensureRequiredFiscalFields($data, $product);
 
         $resolvedBarcode = $this->resolveProductBarcode($data, $product);
 
@@ -393,6 +426,33 @@ class ProductController extends Controller
         return $data;
     }
 
+    private function ensureRequiredFiscalFields(array $data, ?Produto $product = null): void
+    {
+        $ncm = $this->normalizeDigitsField($data['tb1_ncm'] ?? $product?->tb1_ncm ?? null, 8);
+        $cfop = $this->normalizeDigitsField($data['tb1_cfop'] ?? $product?->tb1_cfop ?? null, 4);
+        $csosn = $this->normalizeDigitsField($data['tb1_csosn'] ?? $product?->tb1_csosn ?? null, 4);
+        $cst = $this->normalizeDigitsField($data['tb1_cst'] ?? $product?->tb1_cst ?? null, 3);
+
+        $errors = [];
+
+        if ($ncm === null) {
+            $errors['tb1_ncm'] = 'Informe o NCM para permitir a emissao fiscal do produto.';
+        }
+
+        if ($cfop === null) {
+            $errors['tb1_cfop'] = 'Informe o CFOP para permitir a emissao fiscal do produto.';
+        }
+
+        if ($csosn === null && $cst === null) {
+            $errors['tb1_csosn'] = 'Informe o CSOSN ou o CST para permitir a emissao fiscal do produto.';
+            $errors['tb1_cst'] = 'Informe o CST ou o CSOSN para permitir a emissao fiscal do produto.';
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
     private function formOptions(): array
     {
         $format = fn (array $labels) => collect($labels)
@@ -403,6 +463,7 @@ class ProductController extends Controller
         return [
             'typeOptions' => $format(self::TYPE_LABELS),
             'statusOptions' => $format(self::STATUS_LABELS),
+            'originOptions' => $format(self::ORIGIN_LABELS),
         ];
     }
 
@@ -412,6 +473,17 @@ class ProductController extends Controller
 
         $data['tb1_nome'] = $this->normalizeProductName($data['tb1_nome'] ?? $product?->tb1_nome ?? '');
         $data['tb1_codbar'] = $this->resolveProductBarcode($data, $product);
+        $data['tb1_ncm'] = $this->normalizeDigitsField($data['tb1_ncm'] ?? $product?->tb1_ncm ?? null, 8);
+        $data['tb1_cest'] = $this->normalizeDigitsField($data['tb1_cest'] ?? $product?->tb1_cest ?? null, 7);
+        $data['tb1_cfop'] = $this->normalizeDigitsField($data['tb1_cfop'] ?? $product?->tb1_cfop ?? null, 4);
+        $data['tb1_unidade_comercial'] = $this->normalizeShortCode($data['tb1_unidade_comercial'] ?? $product?->tb1_unidade_comercial ?? 'UN', 'UN');
+        $data['tb1_unidade_tributavel'] = $this->normalizeShortCode($data['tb1_unidade_tributavel'] ?? $product?->tb1_unidade_tributavel ?? 'UN', 'UN');
+        $data['tb1_origem'] = isset($data['tb1_origem']) && $data['tb1_origem'] !== ''
+            ? (int) $data['tb1_origem']
+            : (int) ($product?->tb1_origem ?? 0);
+        $data['tb1_csosn'] = $this->normalizeDigitsField($data['tb1_csosn'] ?? $product?->tb1_csosn ?? null, 4);
+        $data['tb1_cst'] = $this->normalizeDigitsField($data['tb1_cst'] ?? $product?->tb1_cst ?? null, 3);
+        $data['tb1_aliquota_icms'] = round((float) ($data['tb1_aliquota_icms'] ?? $product?->tb1_aliquota_icms ?? 0), 2);
 
         $data['tb1_qtd'] = $type === 3
             ? (int) ($data['tb1_qtd'] ?? $product?->tb1_qtd ?? 0)
@@ -562,6 +634,25 @@ class ProductController extends Controller
         if ($normalized === '') {
             return '';
         }
+
+        return mb_strtoupper($normalized, self::PRODUCT_NAME_ENCODING);
+    }
+
+    private function normalizeDigitsField(mixed $value, int $size): ?string
+    {
+        $normalized = preg_replace('/\D+/', '', (string) $value);
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        return mb_substr($normalized, 0, $size);
+    }
+
+    private function normalizeShortCode(mixed $value, string $fallback): string
+    {
+        $normalized = trim((string) $value);
+        $normalized = $normalized === '' ? $fallback : $normalized;
 
         return mb_strtoupper($normalized, self::PRODUCT_NAME_ENCODING);
     }

@@ -7,12 +7,12 @@ use App\Http\Controllers\ControlePagamentoController;
 use App\Http\Controllers\DatabaseToolsController;
 use App\Http\Controllers\DiscardSettingsController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\FiscalConfigurationController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductDiscardController;
 use App\Http\Controllers\ProductStockController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\LanchoneteTerminalController;
-use App\Http\Controllers\MobileRevenueController;
 use App\Http\Controllers\NoticeController;
 use App\Http\Controllers\OnlineController;
 use App\Http\Controllers\NewsletterSubscriptionController;
@@ -56,12 +56,14 @@ Route::get('/', function (Request $request) {
 Route::post('/newsletter', [NewsletterSubscriptionController::class, 'store'])
     ->name('newsletter.store');
 
-Route::get('/app/endpoints/mobile/revenue/dashboard', [MobileRevenueController::class, 'dashboard'])
-    ->name('mobile.revenue.dashboard');
-Route::get('/app/endpoints/mobile/revenue/daily', [MobileRevenueController::class, 'daily'])
-    ->name('mobile.revenue.daily');
-Route::get('/app/endpoints/mobile/revenue/monthly', [MobileRevenueController::class, 'monthly'])
-    ->name('mobile.revenue.monthly');
+if (class_exists(\App\Http\Controllers\MobileRevenueController::class)) {
+    Route::get('/app/endpoints/mobile/revenue/dashboard', [\App\Http\Controllers\MobileRevenueController::class, 'dashboard'])
+        ->name('mobile.revenue.dashboard');
+    Route::get('/app/endpoints/mobile/revenue/daily', [\App\Http\Controllers\MobileRevenueController::class, 'daily'])
+        ->name('mobile.revenue.daily');
+    Route::get('/app/endpoints/mobile/revenue/monthly', [\App\Http\Controllers\MobileRevenueController::class, 'monthly'])
+        ->name('mobile.revenue.monthly');
+}
 
 
 Route::get('/dashboard', function () {
@@ -145,6 +147,20 @@ Route::middleware('auth')->group(function () {
         ->name('settings.payment-control.destroy');
     Route::get('/settings/folha-pagamento', [PayrollController::class, 'index'])
         ->name('settings.payroll');
+    Route::get('/settings/fiscal', [FiscalConfigurationController::class, 'index'])
+        ->name('settings.fiscal');
+    Route::post('/settings/fiscal', [FiscalConfigurationController::class, 'update'])
+        ->name('settings.fiscal.update');
+    Route::post('/settings/fiscal/reprocess', [FiscalConfigurationController::class, 'reprocess'])
+        ->name('settings.fiscal.reprocess');
+    Route::post('/settings/fiscal/notas/{notaFiscal}/regenerate', [FiscalConfigurationController::class, 'regenerateInvoice'])
+        ->name('settings.fiscal.invoices.regenerate');
+    Route::delete('/settings/fiscal/notas/{notaFiscal}', [FiscalConfigurationController::class, 'destroyInvoice'])
+        ->name('settings.fiscal.invoices.destroy');
+    Route::get('/settings/fiscal/notas/{notaFiscal}/xml', [FiscalConfigurationController::class, 'downloadXml'])
+        ->name('settings.fiscal.invoices.xml');
+    Route::post('/settings/fiscal/notas/{notaFiscal}/transmit', [FiscalConfigurationController::class, 'transmit'])
+        ->name('settings.fiscal.invoices.transmit');
     Route::get('/settings/contra-cheque', [PayrollController::class, 'contraCheque'])
         ->name('settings.contra-cheque');
     Route::get('/settings/avisos', [NoticeController::class, 'index'])
@@ -194,6 +210,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/units/{unit}', [UnitController::class, 'show'])->name('units.show');
     Route::get('/units/{unit}/edit', [UnitController::class, 'edit'])->name('units.edit');
     Route::put('/units/{unit}', [UnitController::class, 'update'])->name('units.update');
+    Route::patch('/units/{unit}/fiscal-generation', [UnitController::class, 'toggleFiscalGeneration'])->name('units.fiscal-generation.toggle');
     Route::delete('/units/{unit}', [UnitController::class, 'destroy'])->name('units.destroy');
 
     Route::get('/products/discard', [ProductDiscardController::class, 'index'])->name('products.discard');
@@ -209,6 +226,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/sales/dashboard-status', [SaleController::class, 'dashboardStatus'])->name('sales.dashboard-status');
     Route::get('/sales/comandas/{codigo}/items', [SaleController::class, 'comandaItems'])->name('sales.comandas.items');
     Route::post('/sales', [SaleController::class, 'store'])->name('sales.store');
+    Route::post('/sales/fiscal/{notaFiscal}/transmit', [SaleController::class, 'transmitFiscalInvoice'])->name('sales.fiscal.transmit');
     Route::post('/sales/comandas/{codigo}/items', [SaleController::class, 'addComandaItem'])->name('sales.comandas.add-item');
     Route::put('/sales/comandas/{codigo}/items/{productId}', [SaleController::class, 'updateComandaItem'])->name('sales.comandas.update-item');
     Route::get('/reports', [SalesReportController::class, 'index'])->name('reports.index');

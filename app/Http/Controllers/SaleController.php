@@ -3,11 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\CashierClosure;
+use App\Models\NotaFiscal;
 use App\Models\Produto;
 use App\Models\Unidade;
 use App\Models\User;
 use App\Models\Venda;
 use App\Models\VendaPagamento;
+use App\Support\FiscalInvoicePreparationService;
+use App\Support\FiscalNfceTransmissionService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,7 +44,7 @@ class SaleController extends Controller
         return response()->json(['items' => $items]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, FiscalInvoicePreparationService $fiscalInvoicePreparationService): JsonResponse
     {
         $user = $request->user();
         $unit = $request->session()->get('active_unit');
@@ -81,11 +84,12 @@ class SaleController extends Controller
             'tipo_pago' => [
                 'required',
                 'string',
-                Rule::in(['maquina', 'dinheiro', 'vale', 'refeicao', 'faturar']),
+                Rule::in(['cartao_credito', 'cartao_debito', 'maquina', 'dinheiro', 'vale', 'refeicao', 'faturar']),
             ],
             'vale_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'valor_pago' => ['nullable', 'numeric', 'min:0'],
             'vale_type' => ['nullable', 'string', Rule::in(['vale', 'refeicao'])],
+            'card_type' => ['nullable', 'string', Rule::in(['cartao_credito', 'cartao_debito'])],
             'comanda_codigo' => ['nullable', 'integer', 'between:3000,3100'],
         ]);
 
@@ -116,16 +120,18 @@ class SaleController extends Controller
         }
 
         $selectedValeType = $validated['vale_type'] ?? 'vale';
-        $finalPaymentType = $validated['tipo_pago'];
-        $isValePayment = in_array($finalPaymentType, ['vale', 'refeicao'], true);
+        $requestedPaymentType = (string) $validated['tipo_pago'];
+        $salePaymentType = $this->normalizeSalePaymentType($requestedPaymentType);
 
-        if ($finalPaymentType === 'vale' && $selectedValeType === 'refeicao') {
-            $finalPaymentType = 'refeicao';
+        if ($salePaymentType === 'vale' && $selectedValeType === 'refeicao') {
+            $salePaymentType = 'refeicao';
         }
 
-        if ($finalPaymentType === 'refeicao') {
+        if ($salePaymentType === 'refeicao') {
             $selectedValeType = 'refeicao';
         }
+
+        $isValePayment = in_array($salePaymentType, ['vale', 'refeicao'], true);
 
         if ($isValePayment && empty($validated['vale_user_id'])) {
             throw ValidationException::withMessages([
@@ -178,7 +184,7 @@ class SaleController extends Controller
         $dateTime = now();
         $monthStart = $dateTime->copy()->startOfMonth();
         $monthEnd = $dateTime->copy()->endOfMonth();
-        $isPaid = in_array($finalPaymentType, ['maquina', 'dinheiro'], true);
+        $isPaid = in_array($salePaymentType, ['maquina', 'dinheiro'], true);
         $valeUserId = $isValePayment ? $validated['vale_user_id'] : null;
         $valeUserName = null;
         $valeUser = null;
@@ -189,7 +195,7 @@ class SaleController extends Controller
         }
 
         $itemsPayload = [];
-        $requiresVrEligible = $finalPaymentType === 'refeicao';
+        $requiresVrEligible = $salePaymentType === 'refeicao';
         $extraItems = [];
 
         if ($comandaCodigo) {
@@ -349,7 +355,7 @@ class SaleController extends Controller
         $totalValue = collect($itemsPayload)->sum('subtotal');
         $valorPago = isset($validated['valor_pago']) ? (float) $validated['valor_pago'] : null;
 
-        if ($finalPaymentType === 'refeicao' && $valeUserId) {
+        if ($salePaymentType === 'refeicao' && $valeUserId) {
             if (! $valeUser) {
                 throw ValidationException::withMessages([
                     'vale_user_id' => 'Colaborador selecionado nao foi encontrado.',
@@ -397,19 +403,19 @@ class SaleController extends Controller
             }
         }
 
-        if ($finalPaymentType === 'dinheiro' && ($valorPago === null || $valorPago <= 0)) {
+        if ($salePaymentType === 'dinheiro' && ($valorPago === null || $valorPago <= 0)) {
             throw ValidationException::withMessages([
                 'valor_pago' => 'Informe o valor recebido em dinheiro.',
             ]);
         }
 
-        if ($finalPaymentType !== 'dinheiro') {
+        if ($salePaymentType !== 'dinheiro') {
             $valorPago = null;
         }
 
         $troco = 0;
         $cardComplement = 0;
-        if ($finalPaymentType === 'dinheiro' && $valorPago !== null) {
+        if ($salePaymentType === 'dinheiro' && $valorPago !== null) {
             if ($valorPago >= $totalValue) {
                 $troco = round($valorPago - $totalValue, 2);
             } else {
@@ -417,9 +423,24 @@ class SaleController extends Controller
             }
         }
 
+        $selectedCardType = isset($validated['card_type']) ? (string) $validated['card_type'] : null;
+
+        if ($requestedPaymentType === 'dinheiro' && $cardComplement > 0 && ! $this->isCardPaymentType($selectedCardType)) {
+            throw ValidationException::withMessages([
+                'card_type' => 'Selecione se o restante no cartao sera no credito ou no debito.',
+            ]);
+        }
+
+        $storedPaymentType = $this->resolveStoredPaymentType(
+            $requestedPaymentType,
+            $salePaymentType,
+            $cardComplement,
+            $selectedCardType,
+        );
+
         $payment = VendaPagamento::create([
             'valor_total' => $totalValue,
-            'tipo_pagamento' => $finalPaymentType,
+            'tipo_pagamento' => $storedPaymentType,
             'valor_pago' => $valorPago,
             'troco' => $troco,
             'dois_pgto' => $cardComplement,
@@ -434,7 +455,7 @@ class SaleController extends Controller
                     'tb4_id' => $payment->tb4_id,
                     'id_user_caixa' => $user->id,
                     'id_user_vale' => $valeUserId,
-                    'tipo_pago' => $finalPaymentType,
+                    'tipo_pago' => $salePaymentType,
                     'status_pago' => $isPaid,
                     'status' => 1,
                     'data_hora' => $dateTime,
@@ -454,7 +475,7 @@ class SaleController extends Controller
                     'id_user_vale' => $valeUserId,
                     'id_lanc' => $user->id,
                     'id_unidade' => $unitId,
-                    'tipo_pago' => $finalPaymentType,
+                    'tipo_pago' => $salePaymentType,
                     'status_pago' => $isPaid,
                     'status' => 1,
                 ]);
@@ -472,12 +493,14 @@ class SaleController extends Controller
                     'id_user_caixa' => $user->id,
                     'id_user_vale' => $valeUserId,
                     'id_unidade' => $unitId,
-                    'tipo_pago' => $finalPaymentType,
+                    'tipo_pago' => $salePaymentType,
                     'status_pago' => $isPaid,
                     'status' => 1,
                 ]);
             }
         }
+
+        $invoice = $fiscalInvoicePreparationService->prepareForPayment($payment);
 
         $receiptItems = array_map(
             static function (array $item) use ($comandaCodigo): array {
@@ -499,7 +522,7 @@ class SaleController extends Controller
                 'items' => $receiptItems,
                 'total' => $totalValue,
                 'date_time' => $dateTime->toIso8601String(),
-                'tipo_pago' => $finalPaymentType,
+                'tipo_pago' => $storedPaymentType,
                 'status_pago' => $isPaid,
                 'cashier_name' => $user->name,
                 'unit_name' => $unitName,
@@ -515,7 +538,71 @@ class SaleController extends Controller
                     'dois_pgto' => $payment->dois_pgto,
                     'tipo_pagamento' => $payment->tipo_pagamento,
                 ],
+                'fiscal' => $this->buildFiscalSummary($invoice),
             ],
+        ]);
+    }
+
+    public function transmitFiscalInvoice(
+        Request $request,
+        NotaFiscal $notaFiscal,
+        FiscalInvoicePreparationService $fiscalInvoicePreparationService,
+        FiscalNfceTransmissionService $fiscalNfceTransmissionService,
+    ): JsonResponse {
+        $user = $request->user();
+        $activeUnitId = $this->resolveActiveUnitId($request);
+
+        if (! $user) {
+            abort(403, 'Acesso negado.');
+        }
+
+        if ($activeUnitId === null || (int) $notaFiscal->tb2_id !== $activeUnitId) {
+            abort(403, 'A nota fiscal nao pertence a loja ativa do caixa.');
+        }
+
+        if (! in_array((int) $user->funcao, [0, 1, 3], true)) {
+            abort(403, 'Acesso negado.');
+        }
+
+        try {
+            $notaFiscal->loadMissing('pagamento.vendas.produto', 'pagamento.vendas.unidade');
+
+            if (! $notaFiscal->pagamento) {
+                return response()->json([
+                    'message' => 'Nao foi encontrado o pagamento vinculado a esta nota fiscal.',
+                    'fiscal' => $this->buildFiscalSummary($notaFiscal),
+                ], 422);
+            }
+
+            $refreshedInvoice = $fiscalInvoicePreparationService->prepareForPayment($notaFiscal->pagamento);
+
+            if (! $refreshedInvoice) {
+                return response()->json([
+                    'message' => 'Esta forma de pagamento nao gera nota fiscal automatica para transmissao.',
+                    'fiscal' => $this->buildFiscalSummary($notaFiscal),
+                ], 422);
+            }
+
+            if (! filled($refreshedInvoice->tb27_xml_envio)) {
+                return response()->json([
+                    'message' => $refreshedInvoice->tb27_mensagem ?: 'A nota ainda nao possui XML assinado para transmissao.',
+                    'fiscal' => $this->buildFiscalSummary($refreshedInvoice),
+                ], 422);
+            }
+
+            $notaFiscal = $fiscalNfceTransmissionService->transmit($refreshedInvoice);
+        } catch (\RuntimeException $exception) {
+            $notaFiscal->refresh();
+
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'fiscal' => $this->buildFiscalSummary($notaFiscal),
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => sprintf('Nota fiscal da venda %d enviada para a SEFAZ.', (int) $notaFiscal->tb4_id),
+            'fiscal' => $this->buildFiscalSummary($notaFiscal),
         ]);
     }
 
@@ -940,5 +1027,117 @@ class SaleController extends Controller
     private function formatCurrencyForMessage(float $value): string
     {
         return 'R$ ' . number_format($value, 2, ',', '.');
+    }
+
+    private function buildFiscalSummary(?NotaFiscal $invoice): ?array
+    {
+        if (! $invoice) {
+            return null;
+        }
+
+        $xmlDebug = $this->extractFiscalXmlDebugData($invoice->tb27_xml_envio);
+        $statusMessage = $this->augmentFiscalStatusMessage($invoice->tb27_mensagem, $xmlDebug);
+
+        return [
+            'id' => $invoice->tb27_id,
+            'status' => $invoice->tb27_status,
+            'mensagem' => $statusMessage,
+            'modelo' => $invoice->tb27_modelo,
+            'ambiente' => $invoice->tb27_ambiente,
+            'serie' => $invoice->tb27_serie,
+            'numero' => $invoice->tb27_numero,
+            'protocolo' => $invoice->tb27_protocolo,
+            'recibo' => $invoice->tb27_recibo,
+            'chave_acesso' => $invoice->tb27_chave_acesso,
+            'emitida_em' => optional($invoice->tb27_emitida_em)?->toIso8601String(),
+            'xml_debug' => $xmlDebug,
+        ];
+    }
+
+    private function extractFiscalXmlDebugData(?string $xml): ?array
+    {
+        if (! filled($xml) || ! class_exists(\DOMDocument::class) || ! class_exists(\DOMXPath::class)) {
+            return null;
+        }
+
+        $document = new \DOMDocument();
+
+        if (! @$document->loadXML((string) $xml)) {
+            return null;
+        }
+
+        $xpath = new \DOMXPath($document);
+        $xpath->registerNamespace('nfe', 'http://www.portalfiscal.inf.br/nfe');
+        $xpath->registerNamespace('ds', 'http://www.w3.org/2000/09/xmldsig#');
+        $qrCodeData = $this->nullableXmlValue($xpath->evaluate('string(//nfe:infNFeSupl/nfe:qrCode)'));
+        $queryString = $qrCodeData ? (string) parse_url($qrCodeData, PHP_URL_QUERY) : '';
+        $payload = str_starts_with($queryString, 'p=') ? substr($queryString, 2) : $queryString;
+        $payloadParts = $payload !== '' ? explode('|', $payload) : [];
+
+        return [
+            'mod' => $this->nullableXmlValue($xpath->evaluate('string(//nfe:infNFe/nfe:ide/nfe:mod)')),
+            'tp_imp' => $this->nullableXmlValue($xpath->evaluate('string(//nfe:infNFe/nfe:ide/nfe:tpImp)')),
+            'dest_present' => (bool) $xpath->evaluate('count(//nfe:infNFe/nfe:dest)'),
+            'dest_document' => $this->nullableXmlValue($xpath->evaluate('string(//nfe:infNFe/nfe:dest/nfe:CPF | //nfe:infNFe/nfe:dest/nfe:CNPJ | //nfe:infNFe/nfe:dest/nfe:idEstrangeiro)')),
+            'dest_name' => $this->nullableXmlValue($xpath->evaluate('string(//nfe:infNFe/nfe:dest/nfe:xNome)')),
+            'dest_city_code' => $this->nullableXmlValue($xpath->evaluate('string(//nfe:infNFe/nfe:dest/nfe:enderDest/nfe:cMun)')),
+            'card_present' => (bool) $xpath->evaluate('count(//nfe:infNFe/nfe:pag/nfe:detPag/nfe:card)'),
+            'qr_code_data' => $qrCodeData,
+            'signature_present' => (bool) $xpath->evaluate('count(//ds:Signature)'),
+            'csc_id' => $payloadParts[3] ?? null,
+        ];
+    }
+
+    private function nullableXmlValue(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
+    }
+
+    private function augmentFiscalStatusMessage(?string $message, ?array $xmlDebug = null): ?string
+    {
+        $message = $this->nullableXmlValue($message);
+
+        if ($message === null || ! str_contains($message, 'cStat 462')) {
+            return $message;
+        }
+
+        $cscId = $xmlDebug['csc_id'] ?? null;
+        $suffix = sprintf(
+            ' Confira o CSC ID%s cadastrado na SEFAZ para o ambiente atual da loja.',
+            $cscId ? ' ' . $cscId : ''
+        );
+
+        return str_contains($message, $suffix) ? $message : $message . $suffix;
+    }
+
+    private function normalizeSalePaymentType(string $paymentType): string
+    {
+        return $this->isCardPaymentType($paymentType) ? 'maquina' : $paymentType;
+    }
+
+    private function isCardPaymentType(?string $paymentType): bool
+    {
+        return in_array((string) $paymentType, ['cartao_credito', 'cartao_debito'], true);
+    }
+
+    private function resolveStoredPaymentType(
+        string $requestedPaymentType,
+        string $salePaymentType,
+        float $cardComplement,
+        ?string $selectedCardType,
+    ): string {
+        if ($requestedPaymentType === 'dinheiro' && $cardComplement > 0) {
+            return $selectedCardType === 'cartao_debito'
+                ? 'dinheiro_cartao_debito'
+                : 'dinheiro_cartao_credito';
+        }
+
+        if ($this->isCardPaymentType($requestedPaymentType)) {
+            return $requestedPaymentType;
+        }
+
+        return $salePaymentType;
     }
 }

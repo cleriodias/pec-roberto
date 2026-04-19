@@ -263,6 +263,7 @@ class SalesReportController extends Controller
                 $firstSale = $sales->first();
                 $saleDateTime = $firstSale?->data_hora ?? $payment->created_at;
                 $receiptComanda = $this->resolveReceiptComanda($sales);
+                $displayPaymentType = $this->normalizePaymentTypeForDisplay($payment->tipo_pagamento);
 
                 return [
                     'id' => $payment->tb4_id,
@@ -283,7 +284,7 @@ class SalesReportController extends Controller
                         'comanda' => $receiptComanda,
                         'total' => round((float) $payment->valor_total, 2),
                         'date_time' => $saleDateTime?->toIso8601String(),
-                        'tipo_pago' => $payment->tipo_pagamento,
+                        'tipo_pago' => $displayPaymentType,
                         'cashier_name' => $firstSale?->caixa?->name ?? '---',
                         'unit_name' => $firstSale?->unidade?->tb2_nome ?? '---',
                         'unit_address' => $firstSale?->unidade?->tb2_endereco,
@@ -296,7 +297,7 @@ class SalesReportController extends Controller
                             'valor_pago' => $payment->valor_pago !== null ? round((float) $payment->valor_pago, 2) : null,
                             'troco' => $payment->troco !== null ? round((float) $payment->troco, 2) : null,
                             'dois_pgto' => $payment->dois_pgto !== null ? round((float) $payment->dois_pgto, 2) : null,
-                            'tipo_pagamento' => $payment->tipo_pagamento,
+                            'tipo_pagamento' => $displayPaymentType,
                         ],
                         'items' => $sales
                             ->map(function (Venda $sale) {
@@ -660,6 +661,7 @@ class SalesReportController extends Controller
                 $cashierId = $firstSale?->id_user_caixa ? (int) $firstSale->id_user_caixa : null;
                 $unitId = $firstSale?->id_unidade ? (int) $firstSale->id_unidade : null;
                 $receiptComanda = $this->resolveReceiptComanda($sales);
+                $displayPaymentType = $this->normalizePaymentTypeForDisplay($payment->tipo_pagamento);
 
                 return [
                     'id' => $payment->tb4_id,
@@ -676,7 +678,7 @@ class SalesReportController extends Controller
                         'comanda' => $receiptComanda,
                         'total' => round((float) $payment->valor_total, 2),
                         'date_time' => $saleDateTime?->toIso8601String(),
-                        'tipo_pago' => $payment->tipo_pagamento,
+                        'tipo_pago' => $displayPaymentType,
                         'cashier_name' => $firstSale?->caixa?->name ?? '---',
                         'unit_name' => $firstSale?->unidade?->tb2_nome ?? '---',
                         'unit_address' => $firstSale?->unidade?->tb2_endereco,
@@ -689,7 +691,7 @@ class SalesReportController extends Controller
                             'valor_pago' => $payment->valor_pago !== null ? round((float) $payment->valor_pago, 2) : null,
                             'troco' => $payment->troco !== null ? round((float) $payment->troco, 2) : null,
                             'dois_pgto' => $payment->dois_pgto !== null ? round((float) $payment->dois_pgto, 2) : null,
-                            'tipo_pagamento' => $payment->tipo_pagamento,
+                            'tipo_pagamento' => $displayPaymentType,
                         ],
                         'items' => $sales
                             ->map(function (Venda $sale) {
@@ -1323,6 +1325,7 @@ class SalesReportController extends Controller
                 $firstSale = $sales->first();
                 $saleDateTime = $firstSale?->data_hora ?? $payment->created_at;
                 $receiptComanda = $this->resolveReceiptComanda($sales);
+                $displayPaymentType = $this->normalizePaymentTypeForDisplay($payment->tipo_pagamento);
 
                 return [
                     'id' => $payment->tb4_id,
@@ -1335,7 +1338,7 @@ class SalesReportController extends Controller
                         'comanda' => $receiptComanda,
                         'total' => round((float) $payment->valor_total, 2),
                         'date_time' => $saleDateTime?->toIso8601String(),
-                        'tipo_pago' => $payment->tipo_pagamento,
+                        'tipo_pago' => $displayPaymentType,
                         'cashier_name' => $firstSale?->caixa?->name ?? '---',
                         'unit_name' => $unit?->tb2_nome ?? ('Unidade #' . $firstSale?->id_unidade),
                         'unit_address' => $unit?->tb2_endereco,
@@ -1350,7 +1353,7 @@ class SalesReportController extends Controller
                             'valor_pago' => $payment->valor_pago !== null ? round((float) $payment->valor_pago, 2) : null,
                             'troco' => $payment->troco !== null ? round((float) $payment->troco, 2) : null,
                             'dois_pgto' => $payment->dois_pgto !== null ? round((float) $payment->dois_pgto, 2) : null,
-                            'tipo_pagamento' => $payment->tipo_pagamento,
+                            'tipo_pagamento' => $displayPaymentType,
                         ],
                         'items' => $sales
                             ->map(function (Venda $sale) {
@@ -1611,7 +1614,7 @@ class SalesReportController extends Controller
             }
 
             $cardComplement = max((float) $payment->dois_pgto, 0);
-            if ($payment->tipo_pagamento === 'dinheiro' && $cardComplement >= 0.01 && $cardComplement < 1) {
+            if ($this->normalizePaymentTypeForDisplay($payment->tipo_pagamento) === 'dinheiro' && $cardComplement >= 0.01 && $cardComplement < 1) {
                 $grouped[$groupKey]['small_card_complements']['total'] += $cardComplement;
                 $grouped[$groupKey]['small_card_complements']['items'][] = [
                     'payment_id' => $payment->tb4_id,
@@ -2183,7 +2186,7 @@ class SalesReportController extends Controller
                 return [
                     'tb4_id' => $payment->tb4_id,
                     'valor_total' => (float) $payment->valor_total,
-                    'tipo_pagamento' => $payment->tipo_pagamento,
+                    'tipo_pagamento' => $this->normalizePaymentTypeForDisplay($payment->tipo_pagamento),
                     'valor_pago' => $payment->valor_pago,
                     'troco' => $payment->troco,
                     'dois_pgto' => $payment->dois_pgto,
@@ -2494,16 +2497,18 @@ class SalesReportController extends Controller
         ];
 
         foreach ($payments as $payment) {
-            $type = $payment->tipo_pagamento;
+            $rawType = (string) $payment->tipo_pagamento;
+            $type = $this->normalizePaymentTypeForBucket($rawType);
+            $displayPaymentType = $this->normalizePaymentTypeForDisplay($rawType);
             $base = [
                 'tb4_id' => $payment->tb4_id,
-                'tipo_pagamento' => $type,
+                'tipo_pagamento' => $displayPaymentType,
                 'valor_total' => (float) $payment->valor_total,
                 'valor_pago' => $payment->valor_pago,
                 'troco' => $payment->troco,
                 'dois_pgto' => $payment->dois_pgto,
                 'created_at' => $payment->created_at->toIso8601String(),
-                'origin' => $type,
+                'origin' => $rawType,
                 'receipt' => $this->buildReceiptPayload($payment),
             ];
 
@@ -2549,13 +2554,14 @@ class SalesReportController extends Controller
         $firstSale = $sales->first();
         $saleDateTime = $firstSale?->data_hora ?? $payment->created_at;
         $receiptComanda = $this->resolveReceiptComanda($sales);
+        $displayPaymentType = $this->normalizePaymentTypeForDisplay($payment->tipo_pagamento);
 
         return [
             'id' => $payment->tb4_id,
             'comanda' => $receiptComanda,
             'total' => round((float) $payment->valor_total, 2),
             'date_time' => $saleDateTime?->toIso8601String(),
-            'tipo_pago' => $payment->tipo_pagamento,
+            'tipo_pago' => $displayPaymentType,
             'cashier_name' => $firstSale?->caixa?->name ?? '---',
             'unit_name' => $firstSale?->unidade?->tb2_nome ?? '---',
             'unit_address' => $firstSale?->unidade?->tb2_endereco,
@@ -2570,7 +2576,7 @@ class SalesReportController extends Controller
                 'valor_pago' => $payment->valor_pago !== null ? round((float) $payment->valor_pago, 2) : null,
                 'troco' => $payment->troco !== null ? round((float) $payment->troco, 2) : null,
                 'dois_pgto' => $payment->dois_pgto !== null ? round((float) $payment->dois_pgto, 2) : null,
-                'tipo_pagamento' => $payment->tipo_pagamento,
+                'tipo_pagamento' => $displayPaymentType,
             ],
             'items' => $sales
                 ->map(function (Venda $sale) {
@@ -2823,7 +2829,7 @@ class SalesReportController extends Controller
 
     private function breakdownPayment(VendaPagamento $payment): array
     {
-        $type = $payment->tipo_pagamento;
+        $type = $this->normalizePaymentTypeForBucket($payment->tipo_pagamento);
 
         if ($type === 'dinheiro') {
             $cardPortion = max((float) $payment->dois_pgto, 0);
@@ -2846,6 +2852,25 @@ class SalesReportController extends Controller
         $amount = max((float) $payment->valor_total, 0);
 
         return $amount > 0 ? [$type => $amount] : [];
+    }
+
+    private function normalizePaymentTypeForDisplay(?string $paymentType): string
+    {
+        return match ((string) $paymentType) {
+            'cartao_credito', 'cartao_debito', 'maquina' => 'maquina',
+            'dinheiro_cartao_credito', 'dinheiro_cartao_debito' => 'dinheiro',
+            default => (string) $paymentType,
+        };
+    }
+
+    private function normalizePaymentTypeForBucket(?string $paymentType): ?string
+    {
+        return match ((string) $paymentType) {
+            'cartao_credito', 'cartao_debito', 'maquina' => 'maquina',
+            'dinheiro', 'dinheiro_cartao_credito', 'dinheiro_cartao_debito' => 'dinheiro',
+            'vale', 'refeicao', 'faturar' => (string) $paymentType,
+            default => null,
+        };
     }
 
     private function buildDailyTotals(

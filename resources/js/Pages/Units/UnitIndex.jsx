@@ -5,10 +5,36 @@ import WarningButton from "@/Components/Button/WarningButton";
 import ConfirmDeleteButton from "@/Components/Delete/ConfirmDeleteButton";
 import Pagination from "@/Components/Pagination";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
-import { Head, Link, usePage } from "@inertiajs/react";
+import { Head, Link, router, usePage } from "@inertiajs/react";
+import { useState } from "react";
 
 export default function UnitIndex({ auth, units, canCreate = false }) {
     const { flash } = usePage().props;
+    const [togglingUnitId, setTogglingUnitId] = useState(null);
+
+    const formatCurrency = (value) =>
+        Number(value ?? 0).toLocaleString('pt-BR', {
+            style: 'currency',
+            currency: 'BRL',
+        });
+
+    const handleToggleFiscalGeneration = (unit) => {
+        if (!unit?.tb2_id || togglingUnitId !== null) {
+            return;
+        }
+
+        setTogglingUnitId(unit.tb2_id);
+
+        router.patch(
+            route('units.fiscal-generation.toggle', { unit: unit.tb2_id }),
+            {},
+            {
+                preserveScroll: true,
+                onFinish: () => setTogglingUnitId(null),
+            }
+        );
+    };
+
     const renderStatus = (status) => {
         const isActive = Number(status) === 1;
 
@@ -54,7 +80,7 @@ export default function UnitIndex({ auth, units, canCreate = false }) {
                             <tr>
                                 <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">ID</td>
                                 <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">Nome</td>
-                                <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">{'Endere\u00E7o'}</td>
+                                <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">NF</td>
                                 <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">CEP</td>
                                 <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">Telefone</td>
                                 <td className="px-4 py-3 text-left text-sm font-medium text-gray-500 tracking-wider">CNPJ</td>
@@ -73,7 +99,57 @@ export default function UnitIndex({ auth, units, canCreate = false }) {
                                         {unit.tb2_nome}
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
-                                        {unit.tb2_endereco}
+                                        <div className="flex min-w-[180px] items-center justify-between gap-3">
+                                            <Link
+                                                href={route('settings.fiscal', { unit_id: unit.tb2_id })}
+                                                className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                                                    unit.tb26_geracao_automatica_ativa
+                                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                                        : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                                                }`}
+                                                title={
+                                                    unit.tb26_geracao_automatica_ativa
+                                                        ? 'Geracao automatica de notas ativa'
+                                                        : 'Geracao automatica de notas desligada'
+                                                }
+                                            >
+                                                {formatCurrency(unit.tb2_nf_total)}
+                                            </Link>
+
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleToggleFiscalGeneration(unit)}
+                                                    disabled={togglingUnitId !== null}
+                                                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition ${
+                                                        unit.tb26_geracao_automatica_ativa
+                                                            ? 'bg-blue-600'
+                                                            : 'bg-slate-300'
+                                                    } ${togglingUnitId !== null ? 'cursor-not-allowed opacity-70' : ''}`}
+                                                    aria-label={`Alternar geracao automatica de notas da loja ${unit.tb2_nome}`}
+                                                    aria-pressed={Boolean(unit.tb26_geracao_automatica_ativa)}
+                                                    title={
+                                                        unit.tb26_geracao_automatica_ativa
+                                                            ? 'Clique para desligar a geracao automatica'
+                                                            : 'Clique para ligar a geracao automatica'
+                                                    }
+                                                >
+                                                    <span className="sr-only">Alternar geracao automatica de notas fiscais</span>
+                                                    <span
+                                                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+                                                            unit.tb26_geracao_automatica_ativa ? 'translate-x-6' : 'translate-x-1'
+                                                        }`}
+                                                    />
+                                                </button>
+                                                <span
+                                                    className={`text-xs font-semibold ${
+                                                        unit.tb26_geracao_automatica_ativa ? 'text-emerald-700' : 'text-rose-700'
+                                                    }`}
+                                                >
+                                                    {unit.tb26_geracao_automatica_ativa ? 'Ativa' : 'Off'}
+                                                </span>
+                                            </div>
+                                        </div>
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
                                         {unit.tb2_cep}

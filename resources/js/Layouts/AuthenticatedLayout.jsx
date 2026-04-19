@@ -1,5 +1,6 @@
 import ApplicationLogo from '@/Components/ApplicationLogo';
 import Dropdown from '@/Components/Dropdown';
+import Modal from '@/Components/Modal';
 import NavLink from '@/Components/NavLink';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
 import {
@@ -45,6 +46,12 @@ const MenuLabel = ({ icon, text, attention = false, trailing = null, textClassNa
         {trailing}
     </span>
 );
+
+const formatFiscalCurrency = (value) =>
+    Number(value ?? 0).toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+    });
 
 const ACCESS_STORAGE_KEY = 'menuAccessConfig';
 const ORDER_STORAGE_KEY = 'menuOrderConfig';
@@ -157,6 +164,10 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
     const activeUnitName = pageProps.auth.unit?.name ?? 'Dashboard';
     const discardAlert = pageProps.discardAlert ?? null;
     const supportTicketsMenu = pageProps.supportTicketsMenu ?? null;
+    const pendingFiscalTransmissions = pageProps.pendingFiscalTransmissions ?? {
+        count: 0,
+        items: [],
+    };
     const effectiveRole = user ? Number(user.funcao) : null;
     const originalRole = user ? Number(user.funcao_original ?? user.funcao) : null;
     const roleLabels = {
@@ -195,6 +206,7 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
         unread_total: 0,
         unread_sender_ids: [],
     });
+    const [showTransmitModal, setShowTransmitModal] = useState(false);
 
     useEffect(() => {
         if (typeof window === 'undefined') {
@@ -283,6 +295,12 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
         () => buildSupportTicketMenuCounters(supportTicketsMenu),
         [supportTicketsMenu],
     );
+    const pendingFiscalTransmissionCount = Number(pendingFiscalTransmissions?.count ?? 0);
+    const pendingFiscalTransmissionItems = Array.isArray(pendingFiscalTransmissions?.items)
+        ? pendingFiscalTransmissions.items
+        : [];
+    const fiscalSettingsShortcutUrl =
+        pendingFiscalTransmissionItems[0]?.settings_url ?? (isAdmin ? route('settings.fiscal') : null);
 
     useEffect(() => {
         if (
@@ -536,6 +554,30 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                 ),
             },
             {
+                key: 'fiscal_transmit',
+                visible: isAdmin,
+                node: (
+                    <button
+                        type="button"
+                        onClick={() => setShowTransmitModal(true)}
+                        className="block w-full px-4 py-2 text-start text-sm leading-5 text-gray-700 transition duration-150 ease-in-out hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:text-gray-300 dark:hover:bg-gray-800 dark:focus:bg-gray-800"
+                    >
+                        <MenuLabel
+                            icon="bi bi-send-check"
+                            text={`Transmitir (${pendingFiscalTransmissionCount})`}
+                            trailing={
+                                pendingFiscalTransmissionCount > 0 ? (
+                                    <span className="inline-flex min-w-[22px] items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold leading-none text-emerald-700">
+                                        {pendingFiscalTransmissionCount}
+                                    </span>
+                                ) : null
+                            }
+                            textClassName={pendingFiscalTransmissionCount > 0 ? 'font-bold text-emerald-700' : ''}
+                        />
+                    </button>
+                ),
+            },
+            {
                 key: 'settings',
                 visible: isAdmin && hasMenuAccess('settings'),
                 node: (
@@ -758,6 +800,15 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                                         On-Line
                                     </ResponsiveNavLink>
                                 )}
+                                {isAdmin && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowTransmitModal(true)}
+                                        className="block w-full px-4 py-2 text-start text-sm font-medium leading-5 text-gray-700 transition duration-150 ease-in-out hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:text-gray-300 dark:hover:bg-gray-800 dark:focus:bg-gray-800"
+                                    >
+                                        Transmitir ({pendingFiscalTransmissionCount})
+                                    </button>
+                                )}
                                 {dropdownMenuItems.map((item) => (
                                     <div key={item.key}>{item.node}</div>
                                 ))}
@@ -785,6 +836,91 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
             )}
 
             <main>{children}</main>
+            <Modal
+                show={showTransmitModal}
+                onClose={() => setShowTransmitModal(false)}
+                maxWidth="2xl"
+                tone="light"
+            >
+                <div className="border-b border-gray-200 px-6 py-4">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-900">
+                                Transmitir notas pendentes
+                            </h3>
+                            <p className="mt-1 text-sm text-gray-500">
+                                Notas prontas para transmissao na SEFAZ: {pendingFiscalTransmissionCount}
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {fiscalSettingsShortcutUrl ? (
+                                <Link
+                                    href={fiscalSettingsShortcutUrl}
+                                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                                >
+                                    Abrir fiscal
+                                </Link>
+                            ) : null}
+                            <button
+                                type="button"
+                                onClick={() => setShowTransmitModal(false)}
+                                className="rounded-full border border-gray-200 px-3 py-1 text-sm font-semibold text-gray-600 hover:bg-gray-100"
+                            >
+                                Fechar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div className="max-h-[70vh] overflow-y-auto px-6 py-4">
+                    {pendingFiscalTransmissionItems.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-10 text-center text-sm text-gray-500">
+                            Nao existem notas prontas para transmissao neste momento.
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {pendingFiscalTransmissionItems.map((invoice) => (
+                                <div
+                                    key={invoice.id}
+                                    className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm"
+                                >
+                                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                        <div className="space-y-1 text-sm text-gray-700">
+                                            <p className="text-base font-semibold text-gray-900">
+                                                {invoice.unit_name}
+                                            </p>
+                                            <p>
+                                                Venda #{invoice.payment_id} | {invoice.model} {invoice.serie}/{invoice.number}
+                                            </p>
+                                            <p>Valor: {formatFiscalCurrency(invoice.total)}</p>
+                                            <p>Criada em: {invoice.created_at ?? '--'}</p>
+                                            <p>Status: {invoice.status}</p>
+                                            {invoice.message ? (
+                                                <p className="text-xs text-gray-500">{invoice.message}</p>
+                                            ) : null}
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <Link
+                                                href={invoice.settings_url}
+                                                className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700"
+                                            >
+                                                Abrir fiscal
+                                            </Link>
+                                            <Link
+                                                href={invoice.transmit_url}
+                                                method="post"
+                                                as="button"
+                                                className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700"
+                                            >
+                                                Transmitir
+                                            </Link>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </Modal>
         </div>
     );
 }
