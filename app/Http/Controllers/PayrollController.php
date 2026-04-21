@@ -52,6 +52,7 @@ class PayrollController extends Controller
         $allowedUnitIds = $this->reportUnitIds($filterUnits);
         $selectedUnitId = $this->resolveSelectedUnitId($request->query('unit_id'), $allowedUnitIds);
         $selectedRole = $this->resolveSelectedRole($request->query('role'));
+        $selectedUserId = $this->resolveSelectedUserId($request->query('user_id'));
         $selectedUnit = $selectedUnitId
             ? $filterUnits->firstWhere('id', $selectedUnitId)
             : ['id' => null, 'name' => 'Todas as unidades'];
@@ -63,7 +64,7 @@ class PayrollController extends Controller
             ])
             ->values();
 
-        $usersQuery = User::query()
+        $baseUsersQuery = User::query()
             ->with([
                 'units:tb2_id,tb2_nome',
                 'primaryUnit:tb2_id,tb2_nome',
@@ -71,10 +72,10 @@ class PayrollController extends Controller
             ->where('funcao', '!=', 6)
             ->orderBy('name');
 
-        ManagementScope::applyManagedUserScope($usersQuery, $request->user());
+        ManagementScope::applyManagedUserScope($baseUsersQuery, $request->user());
 
         if ($selectedUnitId) {
-            $usersQuery->where(function ($query) use ($selectedUnitId) {
+            $baseUsersQuery->where(function ($query) use ($selectedUnitId) {
                 $query
                     ->where('tb2_id', $selectedUnitId)
                     ->orWhereHas('units', function ($unitQuery) use ($selectedUnitId) {
@@ -84,14 +85,64 @@ class PayrollController extends Controller
         }
 
         if ($selectedRole !== null) {
-            $usersQuery->where('funcao', $selectedRole);
+            $baseUsersQuery->where('funcao', $selectedRole);
+        }
+
+        if ($selectedUserId !== null) {
+            $baseUsersQuery->where('id', $selectedUserId);
         }
 
         if ($onlyWithSalary) {
-            $usersQuery->where('salario', '>', 0);
+            $baseUsersQuery->where('salario', '>', 0);
+        }
+
+        $usersQuery = clone $baseUsersQuery;
+        $filterUsersQuery = clone $baseUsersQuery;
+
+        if ($selectedUserId !== null) {
+            $filterUsersQuery = User::query()
+                ->with([
+                    'units:tb2_id,tb2_nome',
+                    'primaryUnit:tb2_id,tb2_nome',
+                ])
+                ->where('funcao', '!=', 6)
+                ->orderBy('name');
+
+            ManagementScope::applyManagedUserScope($filterUsersQuery, $request->user());
+
+            if ($selectedUnitId) {
+                $filterUsersQuery->where(function ($query) use ($selectedUnitId) {
+                    $query
+                        ->where('tb2_id', $selectedUnitId)
+                        ->orWhereHas('units', function ($unitQuery) use ($selectedUnitId) {
+                            $unitQuery->where('tb2_unidades.tb2_id', $selectedUnitId);
+                        });
+                });
+            }
+
+            if ($selectedRole !== null) {
+                $filterUsersQuery->where('funcao', $selectedRole);
+            }
+
+            if ($onlyWithSalary) {
+                $filterUsersQuery->where('salario', '>', 0);
+            }
+        }
+
+        $filterUsers = $filterUsersQuery
+            ->get(['id', 'name'])
+            ->map(fn (User $user) => [
+                'id' => (int) $user->id,
+                'name' => $user->name,
+            ])
+            ->values();
+
+        if ($selectedUserId !== null && ! $filterUsers->contains(fn (array $user) => $user['id'] === $selectedUserId)) {
+            $selectedUserId = null;
         }
 
         $users = $usersQuery->get(['id', 'name', 'funcao', 'salario', 'tb2_id']);
+
         $userIds = $users->pluck('id')->map(fn ($value) => (int) $value)->values();
 
         $advances = $userIds->isEmpty()
@@ -207,9 +258,11 @@ class PayrollController extends Controller
             'startDate' => $startDate,
             'endDate' => $endDate,
             'filterUnits' => $filterUnits,
+            'filterUsers' => $filterUsers,
             'roleOptions' => $roleOptions,
             'selectedUnitId' => $selectedUnitId,
             'selectedRole' => $selectedRole,
+            'selectedUserId' => $selectedUserId,
             'unit' => $selectedUnit,
         ];
     }
@@ -281,6 +334,17 @@ class PayrollController extends Controller
         }
 
         return $role;
+    }
+
+    private function resolveSelectedUserId(mixed $requestedUserId): ?int
+    {
+        if ($requestedUserId === null || $requestedUserId === '' || $requestedUserId === 'all') {
+            return null;
+        }
+
+        $userId = (int) $requestedUserId;
+
+        return $userId > 0 ? $userId : null;
     }
 
     private function reportUnitIds(iterable $units): Collection

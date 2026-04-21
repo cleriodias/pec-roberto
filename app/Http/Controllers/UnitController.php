@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ConfiguracaoFiscal;
 use App\Models\Unidade;
 use App\Support\ManagementScope;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -25,7 +27,18 @@ class UnitController extends Controller
         $this->ensureAuthorized();
 
         $user = request()->user();
-        $unitsQuery = Unidade::query()->orderByDesc('tb2_id');
+        $unitsQuery = Unidade::query()
+            ->select('tb2_unidades.*')
+            ->with('configuracaoFiscal:tb26_id,tb2_id,tb26_geracao_automatica_ativa')
+            ->selectSub(
+                DB::table('tb27_notas_fiscais')
+                    ->join('tb4_vendas_pg', 'tb4_vendas_pg.tb4_id', '=', 'tb27_notas_fiscais.tb4_id')
+                    ->whereColumn('tb27_notas_fiscais.tb2_id', 'tb2_unidades.tb2_id')
+                    ->where('tb27_notas_fiscais.tb27_status', 'emitida')
+                    ->selectRaw('COALESCE(SUM(tb4_vendas_pg.valor_total), 0)'),
+                'tb2_nf_total'
+            )
+            ->orderByDesc('tb2_id');
 
         if (ManagementScope::isManager($user)) {
             $unitIds = ManagementScope::managedUnitIds($user)->all();
@@ -37,7 +50,12 @@ class UnitController extends Controller
             }
         }
 
-        $units = $unitsQuery->paginate(10);
+        $units = $unitsQuery->paginate(10)->through(function (Unidade $unit) {
+            $unit->tb2_nf_total = round((float) ($unit->tb2_nf_total ?? 0), 2);
+            $unit->tb26_geracao_automatica_ativa = (bool) (optional($unit->configuracaoFiscal)->tb26_geracao_automatica_ativa ?? true);
+
+            return $unit;
+        });
 
         return Inertia::render('Units/UnitIndex', [
             'units' => $units,
@@ -115,6 +133,30 @@ class UnitController extends Controller
             ->with('success', 'Unidade atualizada com sucesso!');
     }
 
+    public function toggleFiscalGeneration(Request $request, Unidade $unit)
+    {
+        $this->ensureAuthorized();
+        $this->ensureCanManageUnit($request->user(), $unit);
+
+        $configuration = ConfiguracaoFiscal::firstOrNew([
+            'tb2_id' => $unit->tb2_id,
+        ]);
+
+        $currentStatus = $configuration->exists
+            ? (bool) $configuration->tb26_geracao_automatica_ativa
+            : true;
+
+        $configuration->tb26_geracao_automatica_ativa = ! $currentStatus;
+        $configuration->save();
+
+        return Redirect::back()->with(
+            'success',
+            $configuration->tb26_geracao_automatica_ativa
+                ? 'Geracao automatica de notas ativada com sucesso.'
+                : 'Geracao automatica de notas desativada com sucesso.'
+        );
+    }
+
     public function destroy(Unidade $unit)
     {
         $this->ensureAuthorized();
@@ -144,12 +186,12 @@ class UnitController extends Controller
             ],
             [
                 'tb2_nome.required' => 'Informe o nome da unidade.',
-                'tb2_endereco.required' => 'Informe o endereço.',
+                'tb2_endereco.required' => 'Informe o endere\u00E7o.',
                 'tb2_cep.required' => 'Informe o CEP.',
                 'tb2_fone.required' => 'Informe o telefone.',
                 'tb2_cnpj.required' => 'Informe o CNPJ.',
                 'tb2_localizacao.required' => 'Informe o link do Google Maps.',
-                'tb2_localizacao.url' => 'O link de localização deve ser uma URL válida.',
+                'tb2_localizacao.url' => 'O link de localiza\u00E7\u00E3o deve ser uma URL v\u00E1lida.',
                 'tb2_status.required' => 'Informe o status da unidade.',
                 'tb2_status.in' => 'O status da unidade e invalido.',
             ]

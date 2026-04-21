@@ -57,6 +57,11 @@ export default function Config({ auth }) {
             href: route('settings.payment-control'),
         },
         {
+            label: 'Configuracao Fiscal',
+            icon: 'bi-receipt-cutoff',
+            href: route('settings.fiscal'),
+        },
+        {
             label: 'Contra-Cheque',
             icon: 'bi-receipt-cutoff',
             href: route('settings.contra-cheque'),

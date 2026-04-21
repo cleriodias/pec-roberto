@@ -32,12 +32,25 @@ class ProductController extends Controller
         1 => 'Ativo',
     ];
 
+    private const ORIGIN_LABELS = [
+        0 => '0 - Nacional',
+        1 => '1 - Estrangeira importacao direta',
+        2 => '2 - Estrangeira adquirida no mercado interno',
+        3 => '3 - Nacional com conteudo de importacao superior a 40%',
+        4 => '4 - Nacional com processo produtivo basico',
+        5 => '5 - Nacional com conteudo de importacao ate 40%',
+        6 => '6 - Estrangeira importacao direta sem similar nacional',
+        7 => '7 - Estrangeira mercado interno sem similar nacional',
+        8 => '8 - Nacional com conteudo de importacao superior a 70%',
+    ];
+
     private const PRODUCT_NAME_ENCODING = 'UTF-8';
 
     public function index(Request $request): Response
     {
         $search = trim((string) $request->input('search', ''));
         $vrCreditOnly = in_array(strtolower((string) $request->input('vr_credit', '0')), ['1', 'true'], true);
+        $fiscalStatus = strtolower(trim((string) $request->input('fiscal_status', '')));
         $sort = (string) $request->input('sort', '');
         $direction = strtolower((string) $request->input('direction', 'asc'));
         $query = Produto::query();
@@ -66,6 +79,22 @@ class ProductController extends Controller
 
         if ($vrCreditOnly) {
             $query->where('tb1_vr_credit', true);
+        }
+
+        if (in_array($fiscalStatus, ['complete', 'incomplete'], true)) {
+            $query->where(function ($builder) use ($fiscalStatus) {
+                $requiredFiscalFields = ['tb1_ncm', 'tb1_cfop', 'tb1_csosn', 'tb1_cst'];
+
+                foreach ($requiredFiscalFields as $field) {
+                    if ($fiscalStatus === 'complete') {
+                        $builder->whereNotNull($field)
+                            ->where($field, '!=', '');
+                    } else {
+                        $builder->orWhereNull($field)
+                            ->orWhere($field, '=', '');
+                    }
+                }
+            });
         }
 
         $allowedSorts = [
@@ -106,6 +135,7 @@ class ProductController extends Controller
             'statusLabels' => self::STATUS_LABELS,
             'search' => $search,
             'vrCreditOnly' => $vrCreditOnly,
+            'fiscalStatus' => $fiscalStatus,
             'sort' => $sort,
             'direction' => $direction,
         ]);
@@ -123,6 +153,68 @@ class ProductController extends Controller
     public function create(): Response
     {
         return Inertia::render('Products/ProductCreate', $this->formOptions());
+    }
+
+    public function fiscalQueue(): Response
+    {
+        $typeFilter = $this->resolveFiscalQueueTypeFilter(request());
+        $search = $this->resolveFiscalQueueSearch(request());
+        $pendingQuery = $this->pendingFiscalProductsQuery($typeFilter, $search);
+
+        return Inertia::render('Products/ProductFiscalQueue', [
+            'items' => $pendingQuery->limit(20)->get(),
+            'pendingCount' => $this->pendingFiscalProductsQuery($typeFilter, $search)->count(),
+            'selectedType' => $typeFilter,
+            'search' => $search,
+            'typeOptions' => $this->formOptions()['typeOptions'],
+        ]);
+    }
+
+    public function fiscalQueueItems(Request $request): JsonResponse
+    {
+        $typeFilter = $this->resolveFiscalQueueTypeFilter($request);
+        $search = $this->resolveFiscalQueueSearch($request);
+
+        return response()->json([
+            'items' => $this->pendingFiscalProductsQuery($typeFilter, $search)->limit(20)->get(),
+            'pendingCount' => $this->pendingFiscalProductsQuery($typeFilter, $search)->count(),
+            'selectedType' => $typeFilter,
+            'search' => $search,
+        ]);
+    }
+
+    public function updateFiscalQueueItem(Request $request, Produto $product): JsonResponse
+    {
+        $data = $request->validate(
+            [
+                'tb1_ncm' => ['required', 'string', 'size:8'],
+                'tb1_cfop' => ['required', 'string', 'size:4'],
+                'tb1_csosn' => ['required', 'string', 'max:4'],
+                'tb1_cst' => ['required', 'string', 'max:3'],
+            ],
+            [
+                'tb1_ncm.required' => 'Informe o NCM.',
+                'tb1_ncm.size' => 'O NCM deve ter exatamente 8 digitos.',
+                'tb1_cfop.required' => 'Informe o CFOP.',
+                'tb1_cfop.size' => 'O CFOP deve ter exatamente 4 digitos.',
+                'tb1_csosn.required' => 'Informe o CSOSN.',
+                'tb1_csosn.max' => 'O CSOSN deve ter no maximo :max caracteres.',
+                'tb1_cst.required' => 'Informe o CST.',
+                'tb1_cst.max' => 'O CST deve ter no maximo :max caracteres.',
+            ]
+        );
+
+        $product->update([
+            'tb1_ncm' => $this->normalizeDigitsField($data['tb1_ncm'], 8),
+            'tb1_cfop' => $this->normalizeDigitsField($data['tb1_cfop'], 4),
+            'tb1_csosn' => $this->normalizeDigitsField($data['tb1_csosn'], 4),
+            'tb1_cst' => $this->normalizeDigitsField($data['tb1_cst'], 3),
+        ]);
+
+        return response()->json([
+            'message' => 'Dados fiscais gravados com sucesso.',
+            'product_id' => (int) $product->tb1_id,
+        ]);
     }
 
     public function store(Request $request)
@@ -285,6 +377,15 @@ class ProductController extends Controller
                     'integer',
                     Rule::in(array_keys(self::TYPE_LABELS)),
                 ],
+                'tb1_ncm' => ['nullable', 'string', 'size:8'],
+                'tb1_cest' => ['nullable', 'string', 'size:7'],
+                'tb1_cfop' => ['nullable', 'string', 'size:4'],
+                'tb1_unidade_comercial' => ['nullable', 'string', 'max:6'],
+                'tb1_unidade_tributavel' => ['nullable', 'string', 'max:6'],
+                'tb1_origem' => ['nullable', 'integer', Rule::in(array_keys(self::ORIGIN_LABELS))],
+                'tb1_csosn' => ['nullable', 'string', 'max:4'],
+                'tb1_cst' => ['nullable', 'string', 'max:3'],
+                'tb1_aliquota_icms' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'tb1_qtd' => [
                     Rule::requiredIf(fn () => (int) $request->input('tb1_tipo') === 3),
                     'nullable',
@@ -325,6 +426,17 @@ class ProductController extends Controller
                 'tb1_tipo.required' => 'Selecione o tipo do produto.',
                 'tb1_tipo.integer' => 'Tipo de produto invalido.',
                 'tb1_tipo.in' => 'Tipo de produto nao reconhecido.',
+                'tb1_ncm.size' => 'O NCM deve ter exatamente 8 digitos.',
+                'tb1_cest.size' => 'O CEST deve ter exatamente 7 digitos.',
+                'tb1_cfop.size' => 'O CFOP deve ter exatamente 4 digitos.',
+                'tb1_unidade_comercial.max' => 'A unidade comercial deve ter no maximo :max caracteres.',
+                'tb1_unidade_tributavel.max' => 'A unidade tributavel deve ter no maximo :max caracteres.',
+                'tb1_origem.in' => 'Origem fiscal invalida.',
+                'tb1_csosn.max' => 'O CSOSN deve ter no maximo :max caracteres.',
+                'tb1_cst.max' => 'O CST deve ter no maximo :max caracteres.',
+                'tb1_aliquota_icms.numeric' => 'A aliquota de ICMS deve ser numerica.',
+                'tb1_aliquota_icms.min' => 'A aliquota de ICMS nao pode ser negativa.',
+                'tb1_aliquota_icms.max' => 'A aliquota de ICMS nao pode ultrapassar 100%.',
                 'tb1_qtd.required' => 'Informe a quantidade em estoque para o produto de Producao.',
                 'tb1_qtd.integer' => 'A quantidade em estoque deve ser numerica e inteira.',
                 'tb1_qtd.min' => 'A quantidade em estoque nao pode ser negativa.',
@@ -403,7 +515,77 @@ class ProductController extends Controller
         return [
             'typeOptions' => $format(self::TYPE_LABELS),
             'statusOptions' => $format(self::STATUS_LABELS),
+            'originOptions' => $format(self::ORIGIN_LABELS),
         ];
+    }
+
+    private function pendingFiscalProductsQuery(?int $typeFilter = null, string $search = '')
+    {
+        return Produto::query()
+            ->select([
+                'tb1_id',
+                'tb1_nome',
+                'tb1_codbar',
+                'tb1_tipo',
+                'tb1_ncm',
+                'tb1_cfop',
+                'tb1_csosn',
+                'tb1_cst',
+            ])
+            ->when($typeFilter !== null, function ($query) use ($typeFilter) {
+                $query->where('tb1_tipo', $typeFilter);
+            })
+            ->when($search !== '', function ($query) use ($search) {
+                $isNumeric = ctype_digit($search);
+                $safeTerm = str_replace(['%', '_'], ['\%', '\_'], $search);
+                $likeTerm = '%' . $safeTerm . '%';
+                $numericTerm = $isNumeric ? (int) $search : null;
+                $isLongNumeric = $isNumeric && mb_strlen($search) > 4;
+
+                $query->where(function ($builder) use ($isNumeric, $isLongNumeric, $likeTerm, $numericTerm) {
+                    if ($isNumeric) {
+                        if ($isLongNumeric) {
+                            $builder->where('tb1_codbar', 'like', $likeTerm);
+                        } else {
+                            $builder->where('tb1_id', $numericTerm);
+                        }
+
+                        return;
+                    }
+
+                    $builder->where('tb1_nome', 'like', $likeTerm);
+                });
+            })
+            ->where(function ($query) {
+                $query
+                    ->whereNull('tb1_ncm')
+                    ->orWhere('tb1_ncm', '=', '')
+                    ->orWhereNull('tb1_cfop')
+                    ->orWhere('tb1_cfop', '=', '')
+                    ->orWhereNull('tb1_csosn')
+                    ->orWhere('tb1_csosn', '=', '')
+                    ->orWhereNull('tb1_cst')
+                    ->orWhere('tb1_cst', '=', '');
+            })
+            ->orderBy('tb1_id');
+    }
+
+    private function resolveFiscalQueueTypeFilter(Request $request): ?int
+    {
+        $type = $request->input('type');
+
+        if ($type === null || $type === '') {
+            return null;
+        }
+
+        $type = (int) $type;
+
+        return array_key_exists($type, self::TYPE_LABELS) ? $type : null;
+    }
+
+    private function resolveFiscalQueueSearch(Request $request): string
+    {
+        return trim((string) $request->input('search', ''));
     }
 
     private function prepareProductData(array $data, ?Produto $product = null): array
@@ -412,6 +594,17 @@ class ProductController extends Controller
 
         $data['tb1_nome'] = $this->normalizeProductName($data['tb1_nome'] ?? $product?->tb1_nome ?? '');
         $data['tb1_codbar'] = $this->resolveProductBarcode($data, $product);
+        $data['tb1_ncm'] = $this->normalizeDigitsField($data['tb1_ncm'] ?? $product?->tb1_ncm ?? null, 8);
+        $data['tb1_cest'] = $this->normalizeDigitsField($data['tb1_cest'] ?? $product?->tb1_cest ?? null, 7);
+        $data['tb1_cfop'] = $this->normalizeDigitsField($data['tb1_cfop'] ?? $product?->tb1_cfop ?? null, 4);
+        $data['tb1_unidade_comercial'] = $this->normalizeShortCode($data['tb1_unidade_comercial'] ?? $product?->tb1_unidade_comercial ?? 'UN', 'UN');
+        $data['tb1_unidade_tributavel'] = $this->normalizeShortCode($data['tb1_unidade_tributavel'] ?? $product?->tb1_unidade_tributavel ?? 'UN', 'UN');
+        $data['tb1_origem'] = isset($data['tb1_origem']) && $data['tb1_origem'] !== ''
+            ? (int) $data['tb1_origem']
+            : (int) ($product?->tb1_origem ?? 0);
+        $data['tb1_csosn'] = $this->normalizeDigitsField($data['tb1_csosn'] ?? $product?->tb1_csosn ?? null, 4);
+        $data['tb1_cst'] = $this->normalizeDigitsField($data['tb1_cst'] ?? $product?->tb1_cst ?? null, 3);
+        $data['tb1_aliquota_icms'] = round((float) ($data['tb1_aliquota_icms'] ?? $product?->tb1_aliquota_icms ?? 0), 2);
 
         $data['tb1_qtd'] = $type === 3
             ? (int) ($data['tb1_qtd'] ?? $product?->tb1_qtd ?? 0)
@@ -562,6 +755,25 @@ class ProductController extends Controller
         if ($normalized === '') {
             return '';
         }
+
+        return mb_strtoupper($normalized, self::PRODUCT_NAME_ENCODING);
+    }
+
+    private function normalizeDigitsField(mixed $value, int $size): ?string
+    {
+        $normalized = preg_replace('/\D+/', '', (string) $value);
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        return mb_substr($normalized, 0, $size);
+    }
+
+    private function normalizeShortCode(mixed $value, string $fallback): string
+    {
+        $normalized = trim((string) $value);
+        $normalized = $normalized === '' ? $fallback : $normalized;
 
         return mb_strtoupper($normalized, self::PRODUCT_NAME_ENCODING);
     }

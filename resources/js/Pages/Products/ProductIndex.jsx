@@ -53,6 +53,7 @@ export default function ProductIndex({
     statusLabels,
     search = '',
     vrCreditOnly = false,
+    fiscalStatus = '',
     sort = '',
     direction = '',
 }) {
@@ -91,6 +92,10 @@ export default function ProductIndex({
 
         if (vrCreditOnly) {
             query.vr_credit = 1;
+        }
+
+        if (fiscalStatus) {
+            query.fiscal_status = fiscalStatus;
         }
 
         return query;
@@ -150,6 +155,15 @@ export default function ProductIndex({
             ...(searchTerm.trim() !== '' ? { search: searchTerm.trim() } : {}),
             ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
             vr_credit: 1,
+        }, { preserveState: true, replace: true });
+    };
+
+    const handleFiscalFilter = (status) => {
+        router.get(route('products.index'), {
+            ...(searchTerm.trim() !== '' ? { search: searchTerm.trim() } : {}),
+            ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
+            ...(vrCreditOnly ? { vr_credit: 1 } : {}),
+            fiscal_status: status,
         }, { preserveState: true, replace: true });
     };
 
@@ -224,8 +238,7 @@ export default function ProductIndex({
                                     title="Mostrar produtos disponiveis para VR Credito"
                                     className="self-start sm:self-auto whitespace-nowrap"
                                 >
-                                    <i className="bi bi-credit-card me-2 text-sm" aria-hidden="true"></i>
-                                    VR Credito
+                                    <i className="bi bi-credit-card text-sm" aria-hidden="true"></i>
                                 </InfoButton>
                                 <Link
                                     href={route("products.production-stock")}
@@ -236,8 +249,37 @@ export default function ProductIndex({
                                         title="Estoque de Producao"
                                         className="whitespace-nowrap"
                                     >
-                                        <i className="bi bi-boxes me-2 text-sm" aria-hidden="true"></i>
-                                        Estoque
+                                        <i className="bi bi-boxes text-sm" aria-hidden="true"></i>
+                                    </InfoButton>
+                                </Link>
+                                <InfoButton
+                                    type="button"
+                                    onClick={() => handleFiscalFilter('incomplete')}
+                                    aria-label="Mostrar produtos com cadastro fiscal incompleto"
+                                    title="Mostrar produtos com cadastro fiscal incompleto"
+                                    className="self-start sm:self-auto whitespace-nowrap"
+                                >
+                                    <i className="bi bi-exclamation-triangle text-sm" aria-hidden="true"></i>
+                                </InfoButton>
+                                <InfoButton
+                                    type="button"
+                                    onClick={() => handleFiscalFilter('complete')}
+                                    aria-label="Mostrar produtos com cadastro fiscal completo"
+                                    title="Mostrar produtos com cadastro fiscal completo"
+                                    className="self-start sm:self-auto whitespace-nowrap"
+                                >
+                                    <i className="bi bi-patch-check text-sm" aria-hidden="true"></i>
+                                </InfoButton>
+                                <Link
+                                    href={route("products.fiscal-queue")}
+                                    className="self-start sm:self-auto"
+                                >
+                                    <InfoButton
+                                        aria-label="Abrir fila de atualizacao fiscal"
+                                        title="Abrir fila de atualizacao fiscal"
+                                        className="whitespace-nowrap"
+                                    >
+                                        <i className="bi bi-ui-checks-grid text-sm" aria-hidden="true"></i>
                                     </InfoButton>
                                 </Link>
                                 <input
