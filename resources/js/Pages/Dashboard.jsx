@@ -345,12 +345,6 @@ export default function Dashboard() {
     const [cashierRestrictionsLoading, setCashierRestrictionsLoading] = useState(false);
     const lastAutoOpenComandasKey = useRef('');
 
-    const focusCashInput = () => {
-        requestAnimationFrame(() => {
-            cashInputRef.current?.focus();
-        });
-    };
-
     useEffect(() => {
         if (typeof window === 'undefined') {
             return;
@@ -1252,13 +1246,15 @@ export default function Dashboard() {
                 setCashInputVisible(true);
                 setCashCardType('');
                 setShowChangeCard(true);
-                focusCashInput();
+                requestAnimationFrame(() => {
+                    cashInputRef.current?.focus();
+                });
                 return;
             }
 
             if (numericCashValue <= 0) {
                 setSaleError('Informe o valor recebido em dinheiro e pressione Enter.');
-                focusCashInput();
+                cashInputRef.current?.focus();
                 return;
             }
 
@@ -2165,7 +2161,6 @@ export default function Dashboard() {
                                                                                 onClick={() => {
                                                                                     setCashCardType(option.value);
                                                                                     setSaleError('');
-                                                                                    focusCashInput();
                                                                                 }}
                                                                                 className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
                                                                                     isSelected

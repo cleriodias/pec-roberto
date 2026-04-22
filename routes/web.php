@@ -267,6 +267,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
     Route::get('/boletos', [BoletoController::class, 'index'])->name('boletos.index');
     Route::post('/boletos', [BoletoController::class, 'store'])->name('boletos.store');
+    Route::put('/boletos/{boleto}', [BoletoController::class, 'update'])->name('boletos.update');
     Route::put('/boletos/{boleto}/pay', [BoletoController::class, 'pay'])->name('boletos.pay');
     Route::get('/cashier/close', [CashierClosureController::class, 'index'])->name('cashier.close');
     Route::post('/cashier/close', [CashierClosureController::class, 'store'])->name('cashier.close.store');

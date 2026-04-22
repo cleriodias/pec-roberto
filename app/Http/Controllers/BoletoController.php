@@ -8,46 +8,84 @@ use App\Support\ManagementScope;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class BoletoController extends Controller
 {
+    private const BARCODE_LENGTH = 44;
+
+    private const DIGITABLE_LINE_LENGTHS = [47, 48];
+
     public function index(Request $request): Response
     {
         $user = $request->user();
         $this->ensureAccess($user);
 
+        $today = Carbon::now('America/Sao_Paulo')->toDateString();
         $filters = [
-            'start_date' => $request->query('start_date'),
-            'end_date' => $request->query('end_date'),
-            'paid' => $request->query('paid', 'all'),
+            'start_date' => $this->normalizeDateInput($request->query('start_date'))?->toDateString() ?? $today,
+            'end_date' => $this->normalizeDateInput($request->query('end_date'))?->toDateString() ?? $today,
+            'paid' => $this->normalizePaidFilter($request->query('paid')),
+            'unit_id' => 'all',
         ];
 
         $activeUnit = $this->resolveUnit($request);
-        $activeUnitId = is_array($activeUnit) ? ($activeUnit['id'] ?? null) : null;
+        $canManageList = $this->canManageList($user);
+        $filterUnits = collect();
         $boletos = null;
+        $listTotalAmount = 0.0;
 
-        if ($this->canManageList($user)) {
-            $boletos = Boleto::with(['user:id,name', 'paidBy:id,name', 'unit:tb2_id,tb2_nome'])
-                ->forUnit($activeUnitId)
+        if ($canManageList) {
+            $filterUnits = $this->resolveManagedUnits($user);
+            $selectedUnitId = $this->resolveSelectedUnitId($request->query('unit_id'), $filterUnits);
+            $filters['unit_id'] = $selectedUnitId !== null ? (string) $selectedUnitId : 'all';
+
+            $boletosQuery = Boleto::with(['user:id,name', 'paidBy:id,name', 'unit:tb2_id,tb2_nome'])
                 ->withPaidStatus($filters['paid'])
-                ->when($filters['start_date'], function ($query) use ($filters) {
+                ->when($filters['start_date'] !== '', function ($query) use ($filters) {
                     $query->whereDate('due_date', '>=', $filters['start_date']);
                 })
-                ->when($filters['end_date'], function ($query) use ($filters) {
+                ->when($filters['end_date'] !== '', function ($query) use ($filters) {
                     $query->whereDate('due_date', '<=', $filters['end_date']);
                 })
+                ->when($selectedUnitId !== null, function ($query) use ($selectedUnitId) {
+                    $query->where('unit_id', $selectedUnitId);
+                }, function ($query) use ($filterUnits) {
+                    if ($filterUnits->isEmpty()) {
+                        $query->whereRaw('1 = 0');
+
+                        return;
+                    }
+
+                    $query->whereIn('unit_id', $filterUnits->pluck('id')->all());
+                })
                 ->orderBy('due_date')
+                ->orderBy('id');
+
+            $listTotalAmount = round((float) (clone $boletosQuery)->sum('amount'), 2);
+
+            $boletos = $boletosQuery
                 ->paginate(15)
                 ->withQueryString();
         }
+
+        $createUnits = ManagementScope::isMaster($user)
+            ? $this->resolveManagedUnits($user)
+            : collect();
 
         return Inertia::render('Finance/BoletoIndex', [
             'activeUnit' => $activeUnit,
             'filters' => $filters,
             'boletos' => $boletos,
-            'canManageList' => $this->canManageList($user),
+            'canManageList' => $canManageList,
+            'filterUnits' => $filterUnits,
+            'listTotalAmount' => $listTotalAmount,
+            'canChooseCreateUnit' => ManagementScope::isMaster($user),
+            'createUnits' => $createUnits,
+            'createUnitId' => $this->resolveCreateUnitId($request, $user, $activeUnit, $createUnits),
         ]);
     }
 
@@ -57,31 +95,53 @@ class BoletoController extends Controller
         $this->ensureCreator($user);
 
         $activeUnit = $this->resolveUnit($request);
-        if (! $activeUnit) {
+        $createUnits = ManagementScope::isMaster($user)
+            ? $this->resolveManagedUnits($user)
+            : collect();
+        $targetUnit = $this->resolveTargetUnitForWrite($request, $user, $activeUnit, $createUnits);
+
+        if (! $targetUnit) {
             return back()->with('error', 'Unidade ativa nao definida para registrar o boleto.');
         }
 
-        $data = $request->validate([
-            'description' => ['required', 'string', 'max:255'],
-            'amount' => ['required', 'numeric', 'min:0.01'],
-            'due_date' => ['required', 'date'],
-            'barcode' => ['required', 'string', 'max:128'],
-            'digitable_line' => ['required', 'string', 'max:256'],
-        ]);
+        $data = $this->validateBoletoPayload($request);
 
         Boleto::create([
-            'unit_id' => $activeUnit['id'],
+            'unit_id' => $targetUnit['id'],
             'user_id' => $user->id,
-            'description' => $data['description'],
-            'amount' => $data['amount'],
-            'due_date' => $data['due_date'],
-            'barcode' => $data['barcode'],
-            'digitable_line' => $data['digitable_line'],
+            ...$data,
         ]);
 
-        return redirect()
-            ->route('boletos.index')
-            ->with('success', 'Boleto registrado com sucesso!');
+        return back()->with('success', 'Boleto registrado com sucesso!');
+    }
+
+    public function update(Request $request, Boleto $boleto): RedirectResponse
+    {
+        $user = $request->user();
+        $this->ensureManager($user);
+
+        if (! $this->canManageBoleto($user, $boleto)) {
+            abort(403);
+        }
+
+        $activeUnit = $this->resolveUnit($request);
+        $createUnits = ManagementScope::isMaster($user)
+            ? $this->resolveManagedUnits($user)
+            : collect();
+        $targetUnit = $this->resolveTargetUnitForWrite($request, $user, $activeUnit, $createUnits, $boleto);
+
+        if (! $targetUnit) {
+            return back()->with('error', 'Nao foi possivel definir a unidade do boleto.');
+        }
+
+        $data = $this->validateBoletoPayload($request);
+
+        $boleto->update([
+            'unit_id' => $targetUnit['id'],
+            ...$data,
+        ]);
+
+        return back()->with('success', 'Boleto atualizado com sucesso!');
     }
 
     public function pay(Request $request, Boleto $boleto): RedirectResponse
@@ -89,15 +149,12 @@ class BoletoController extends Controller
         $user = $request->user();
         $this->ensureManager($user);
 
-        $activeUnit = $this->resolveUnit($request);
-        if (! $activeUnit || (int) $boleto->unit_id !== (int) $activeUnit['id']) {
+        if (! $this->canManageBoleto($user, $boleto)) {
             abort(403);
         }
 
         if ($boleto->is_paid) {
-            return redirect()
-                ->route('boletos.index')
-                ->with('error', 'Boleto ja esta pago.');
+            return back()->with('error', 'Boleto ja esta pago.');
         }
 
         $boleto->update([
@@ -106,9 +163,7 @@ class BoletoController extends Controller
             'paid_by' => $user->id,
         ]);
 
-        return redirect()
-            ->route('boletos.index')
-            ->with('success', 'Boleto baixado com sucesso!');
+        return back()->with('success', 'Boleto baixado com sucesso!');
     }
 
     private function ensureAccess($user): void
@@ -135,6 +190,196 @@ class BoletoController extends Controller
     private function canManageList($user): bool
     {
         return ManagementScope::isAdmin($user);
+    }
+
+    private function canManageBoleto($user, Boleto $boleto): bool
+    {
+        $unitId = (int) ($boleto->unit_id ?? 0);
+
+        if ($unitId <= 0) {
+            return ManagementScope::isMaster($user);
+        }
+
+        return ManagementScope::canManageUnit($user, $unitId);
+    }
+
+    private function resolveManagedUnits($user): Collection
+    {
+        return ManagementScope::managedUnits($user, ['tb2_id', 'tb2_nome'])
+            ->map(fn (Unidade $unit) => [
+                'id' => (int) $unit->tb2_id,
+                'name' => $unit->tb2_nome,
+            ])
+            ->values();
+    }
+
+    private function resolveSelectedUnitId(mixed $value, Collection $units): ?int
+    {
+        if ($value === null || $value === '' || $value === 'all') {
+            return null;
+        }
+
+        $unitId = (int) $value;
+
+        if ($unitId <= 0) {
+            return null;
+        }
+
+        return $units->contains(fn (array $unit) => (int) $unit['id'] === $unitId)
+            ? $unitId
+            : null;
+    }
+
+    private function resolveCreateUnitId(Request $request, $user, ?array $activeUnit, Collection $createUnits): ?int
+    {
+        if (! ManagementScope::isMaster($user)) {
+            return $activeUnit['id'] ?? null;
+        }
+
+        $selectedUnitId = $this->resolveSelectedUnitId($request->query('unit_id'), $createUnits);
+        if ($selectedUnitId !== null) {
+            return $selectedUnitId;
+        }
+
+        $activeUnitId = (int) ($activeUnit['id'] ?? 0);
+        if ($activeUnitId > 0 && $createUnits->contains(fn (array $unit) => (int) $unit['id'] === $activeUnitId)) {
+            return $activeUnitId;
+        }
+
+        return $createUnits->first()['id'] ?? null;
+    }
+
+    private function resolveTargetUnitForWrite(
+        Request $request,
+        $user,
+        ?array $activeUnit,
+        Collection $createUnits,
+        ?Boleto $boleto = null
+    ): ?array {
+        if (ManagementScope::isMaster($user)) {
+            $selectedUnitId = $this->resolveSelectedUnitId($request->input('unit_id'), $createUnits);
+            if ($selectedUnitId !== null) {
+                return $createUnits->first(fn (array $unit) => (int) $unit['id'] === $selectedUnitId);
+            }
+        }
+
+        if ($boleto && (int) ($boleto->unit_id ?? 0) > 0 && $this->canManageBoleto($user, $boleto)) {
+            return [
+                'id' => (int) $boleto->unit_id,
+                'name' => $boleto->unit?->tb2_nome ?? ('Unidade #' . $boleto->unit_id),
+            ];
+        }
+
+        $activeUnitId = (int) ($activeUnit['id'] ?? 0);
+        if ($activeUnitId > 0 && ManagementScope::canManageUnit($user, $activeUnitId)) {
+            return $activeUnit;
+        }
+
+        return null;
+    }
+
+    private function validateBoletoPayload(Request $request): array
+    {
+        $data = $request->validate([
+            'description' => ['required', 'string', 'max:255'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'due_date' => ['required', 'string'],
+            'barcode' => ['required', 'string', 'max:128'],
+            'digitable_line' => ['required', 'string', 'max:256'],
+            'unit_id' => ['nullable'],
+        ]);
+
+        return [
+            'description' => trim((string) $data['description']),
+            'amount' => round((float) $data['amount'], 2),
+            'due_date' => $this->parseDateInput((string) $data['due_date'], 'due_date')->toDateString(),
+            'barcode' => $this->normalizeBarcode((string) $data['barcode']),
+            'digitable_line' => $this->normalizeDigitableLine((string) $data['digitable_line']),
+        ];
+    }
+
+    private function parseDateInput(string $value, string $field): Carbon
+    {
+        $normalized = trim($value);
+
+        if ($normalized === '') {
+            throw ValidationException::withMessages([
+                $field => 'Informe a data no formato DD/MM/AA.',
+            ]);
+        }
+
+        foreach (['d/m/y', 'd/m/Y', 'Y-m-d'] as $format) {
+            try {
+                $date = Carbon::createFromFormat($format, $normalized);
+            } catch (\Throwable $e) {
+                continue;
+            }
+
+            if ($date && $date->format($format) === $normalized) {
+                return $date->startOfDay();
+            }
+        }
+
+        throw ValidationException::withMessages([
+            $field => 'Informe a data no formato DD/MM/AA.',
+        ]);
+    }
+
+    private function normalizeDateInput(mixed $value): ?Carbon
+    {
+        $normalized = trim((string) ($value ?? ''));
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        foreach (['Y-m-d', 'd/m/y', 'd/m/Y'] as $format) {
+            try {
+                $date = Carbon::createFromFormat($format, $normalized);
+            } catch (\Throwable $e) {
+                continue;
+            }
+
+            if ($date && $date->format($format) === $normalized) {
+                return $date->startOfDay();
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizePaidFilter(mixed $value): string
+    {
+        $status = trim((string) ($value ?? ''));
+
+        return in_array($status, ['all', 'paid', 'unpaid'], true) ? $status : 'unpaid';
+    }
+
+    private function normalizeBarcode(string $value): string
+    {
+        $digits = preg_replace('/\D+/', '', $value) ?? '';
+
+        if (strlen($digits) !== self::BARCODE_LENGTH) {
+            throw ValidationException::withMessages([
+                'barcode' => 'O codigo de barras deve ter exatamente 44 digitos.',
+            ]);
+        }
+
+        return $digits;
+    }
+
+    private function normalizeDigitableLine(string $value): string
+    {
+        $digits = preg_replace('/\D+/', '', $value) ?? '';
+        $length = strlen($digits);
+
+        if (! in_array($length, self::DIGITABLE_LINE_LENGTHS, true)) {
+            throw ValidationException::withMessages([
+                'digitable_line' => 'A linha digitavel deve ter 47 ou 48 digitos.',
+            ]);
+        }
+
+        return $digits;
     }
 
     private function resolveUnit(Request $request): ?array

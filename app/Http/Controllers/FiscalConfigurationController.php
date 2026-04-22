@@ -30,6 +30,8 @@ use Throwable;
 
 class FiscalConfigurationController extends Controller
 {
+    private const INVOICE_FILTER_OPTIONS = ['all', 'error', 'signed', 'issued'];
+
     public function index(
         Request $request,
         FiscalCertificateService $fiscalCertificateService,
@@ -40,7 +42,12 @@ class FiscalConfigurationController extends Controller
         $this->ensureAdmin($user);
         $units = collect();
         $selectedUnitId = (int) $request->query('unit_id', 0);
+        $invoiceStatusFilter = strtolower((string) $request->query('invoice_status', 'error'));
         $lastStep = 'inicializar tela fiscal';
+
+        if (! in_array($invoiceStatusFilter, self::INVOICE_FILTER_OPTIONS, true)) {
+            $invoiceStatusFilter = 'all';
+        }
 
         try {
             $lastStep = 'carregar unidades gerenciadas';
@@ -90,8 +97,18 @@ class FiscalConfigurationController extends Controller
             if ($selectedUnitId > 0) {
                 try {
                     $lastStep = 'carregar ultimas notas fiscais da unidade';
-                    $invoices = NotaFiscal::query()
-                        ->where('tb2_id', $selectedUnitId)
+                    $invoiceQuery = NotaFiscal::query()
+                        ->where('tb2_id', $selectedUnitId);
+
+                    if ($invoiceStatusFilter === 'error') {
+                        $invoiceQuery->whereIn('tb27_status', ['erro_validacao', 'erro_transmissao']);
+                    } elseif ($invoiceStatusFilter === 'signed') {
+                        $invoiceQuery->where('tb27_status', 'xml_assinado');
+                    } elseif ($invoiceStatusFilter === 'issued') {
+                        $invoiceQuery->where('tb27_status', 'emitida');
+                    }
+
+                    $invoices = $invoiceQuery
                         ->with([
                             'pagamento.vendas.unidade:tb2_id,tb2_nome,tb2_endereco,tb2_cnpj',
                             'pagamento.vendas.caixa:id,name',
@@ -99,7 +116,7 @@ class FiscalConfigurationController extends Controller
                             'configuracaoFiscal:tb26_id,tb26_razao_social,tb26_nome_fantasia,tb26_ie,tb26_logradouro,tb26_numero,tb26_complemento,tb26_bairro,tb26_municipio,tb26_uf,tb26_cep',
                         ])
                         ->orderByDesc('tb27_id')
-                        ->limit(15)
+                        ->limit(20)
                         ->get([
                             'tb27_id',
                             'tb4_id',
@@ -154,6 +171,7 @@ class FiscalConfigurationController extends Controller
                 $this->buildConfigurationDiagnostics($configuration, $selectedUnitId, $fiscalCertificateService),
                 null,
                 $invoiceLoadWarning,
+                $invoiceStatusFilter,
             );
         } catch (Throwable $exception) {
             report($exception);
@@ -179,6 +197,7 @@ class FiscalConfigurationController extends Controller
                     $this->buildSafeExceptionMessage($exception)
                 ),
                 null,
+                $invoiceStatusFilter,
             );
         }
     }
@@ -923,6 +942,7 @@ class FiscalConfigurationController extends Controller
         array $configurationDiagnostics,
         ?string $fiscalUnavailableMessage,
         ?string $invoiceLoadWarning,
+        string $invoiceStatusFilter = 'error',
     ): Response {
         return Inertia::render('Settings/FiscalConfig', [
             'units' => $units,
@@ -940,6 +960,7 @@ class FiscalConfigurationController extends Controller
             'invoices' => $invoices,
             'fiscalUnavailableMessage' => $fiscalUnavailableMessage,
             'invoiceLoadWarning' => $invoiceLoadWarning,
+            'invoiceStatusFilter' => $invoiceStatusFilter,
         ]);
     }
 

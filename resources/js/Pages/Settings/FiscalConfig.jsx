@@ -52,26 +52,48 @@ const badgeClassName = (status) =>
 const inputClassName =
     'mt-2 block w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100';
 
+const fiscalSectionClassName = 'rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-gray-800';
+const fiscalPanelClassName = 'rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/40';
+const fiscalFieldClassName =
+    'mt-2 block h-12 w-full rounded-[18px] border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-gray-700 dark:text-gray-100';
+const fiscalFileInputClassName =
+    'mt-2 block w-full rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-gray-700 dark:text-gray-100 file:mr-4 file:rounded-full file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 dark:file:bg-blue-500/10 dark:file:text-blue-200';
+
+const FiscalSectionHeader = ({ title, description }) => (
+    <div className="flex flex-col gap-1">
+        <h3 className="text-[1.35rem] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+            {title}
+        </h3>
+        <p className="text-sm text-slate-500 dark:text-slate-300">
+            {description}
+        </p>
+    </div>
+);
+
 const UnitCard = ({ unit }) => (
-    <div className="rounded-2xl bg-white p-6 shadow dark:bg-gray-800">
-        <div className="flex flex-col gap-2">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+    <div className={`${fiscalSectionClassName} h-full`}>
+        <div className="flex h-full flex-col gap-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-300">
+                Unidade
+            </p>
+            <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
                 {unit?.name ?? 'Unidade'}
             </h3>
-            <p className="text-sm text-gray-500 dark:text-gray-300">
+            <p className="text-sm text-slate-500 dark:text-slate-300">
                 CNPJ base da unidade: {unit?.cnpj ?? '--'}
             </p>
-            <p className="text-sm text-gray-500 dark:text-gray-300">
-                Endereco cadastrado na unidade: {unit?.endereco ?? '--'}
-            </p>
+            <div className="mt-auto rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
+                <p className="font-medium text-slate-700 dark:text-slate-100">Endereco cadastrado na unidade</p>
+                <p className="mt-1 break-words">{unit?.endereco ?? '--'}</p>
+            </div>
         </div>
     </div>
 );
 
 const CertificateSummaryCard = ({ unit, configuration, resolvedEndpoints }) => (
-    <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5 shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10">
-        <div className="flex flex-col gap-2 text-sm text-blue-900 dark:text-blue-100">
-            <p className="text-xs font-semibold uppercase tracking-wide">Associacao loja e certificado</p>
+    <div className="h-full rounded-[28px] border border-blue-100 bg-blue-50 p-5 shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10">
+        <div className="flex h-full flex-col gap-2 text-sm text-blue-900 dark:text-blue-100">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em]">Associacao loja e certificado</p>
             <p>Loja: {unit?.name ?? '--'}</p>
             <p>CNPJ da loja: {unit?.cnpj ?? '--'}</p>
             <p>Nome do certificado: {configuration?.tb26_certificado_nome || '--'}</p>
@@ -97,9 +119,9 @@ const DiagnosticsCard = ({ diagnostics }) => {
               : 'text-amber-700 dark:text-amber-200';
 
     return (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900/40">
-            <div className="flex flex-col gap-2 text-sm text-slate-800 dark:text-slate-100">
-                <p className="text-xs font-semibold uppercase tracking-wide">Diagnostico do ambiente</p>
+        <div className="h-full rounded-[28px] border border-slate-200 bg-slate-50 p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900/40">
+            <div className="flex h-full flex-col gap-2 text-sm text-slate-800 dark:text-slate-100">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em]">Diagnostico do ambiente</p>
                 <p>Unidade selecionada: {diagnostics.selected_unit_id ?? '--'}</p>
                 <p>Configuracao encontrada no banco: {diagnostics.configuration_found ? 'Sim' : 'Nao'}</p>
                 <p>ID da configuracao fiscal: {diagnostics.configuration_id ?? '--'}</p>
@@ -123,6 +145,13 @@ const DiagnosticsCard = ({ diagnostics }) => {
 const actionButtonClassName =
     'inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold';
 
+const INVOICE_FILTER_BUTTONS = [
+    { key: 'all', label: 'Todas' },
+    { key: 'error', label: 'Erro' },
+    { key: 'signed', label: 'Assinada' },
+    { key: 'issued', label: 'Emitida' },
+];
+
 const TrashIcon = () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
         <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16" />
@@ -133,15 +162,50 @@ const TrashIcon = () => (
     </svg>
 );
 
-const InvoiceTable = ({ invoices = [], onDeleteInvoice, onPrintFiscalReceipt }) => (
+const InvoiceTable = ({ invoices = [], selectedUnitId, invoiceStatusFilter = 'error', onDeleteInvoice, onPrintFiscalReceipt }) => (
     <section className="rounded-2xl bg-white p-6 shadow dark:bg-gray-800">
-        <div className="flex flex-col gap-1">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Ultimas notas preparadas
-            </h3>
-            <p className="text-sm text-gray-500 dark:text-gray-300">
-                As vendas finalizadas passam a gerar um registro fiscal para preparacao e validacao.
-            </p>
+        <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex flex-col gap-1">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        Ultimas notas preparadas
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-300">
+                        As vendas finalizadas passam a gerar um registro fiscal para preparacao e validacao.
+                    </p>
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                        Exibindo as ultimas 20 notas do filtro selecionado.
+                    </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                    {INVOICE_FILTER_BUTTONS.map((filterOption) => {
+                        const isActive = invoiceStatusFilter === filterOption.key;
+
+                        return (
+                            <button
+                                key={filterOption.key}
+                                type="button"
+                                onClick={() => router.get(route('settings.fiscal'), {
+                                    unit_id: selectedUnitId,
+                                    invoice_status: filterOption.key,
+                                }, {
+                                    preserveState: true,
+                                    preserveScroll: true,
+                                    replace: true,
+                                })}
+                                className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                                    isActive
+                                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-500/10 dark:text-blue-200'
+                                        : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-blue-500/50 dark:hover:text-blue-200'
+                                }`}
+                            >
+                                {filterOption.label}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
         </div>
 
         {invoices.length === 0 ? (
@@ -269,6 +333,7 @@ export default function FiscalConfig({
     invoices = [],
     fiscalUnavailableMessage = null,
     invoiceLoadWarning = null,
+    invoiceStatusFilter = 'error',
 }) {
     const [printError, setPrintError] = useState('');
     const { flash = {} } = usePage().props;
@@ -306,10 +371,6 @@ export default function FiscalConfig({
         tb26_email: configuration?.tb26_email ?? '',
     });
     const fiscalGenerationEnabled = Boolean(data.tb26_geracao_automatica_ativa);
-
-    const filter = useForm({
-        unit_id: selectedUnitId ?? '',
-    });
     const reprocess = useForm({
         tb2_id: selectedUnitId ?? '',
     });
@@ -322,9 +383,11 @@ export default function FiscalConfig({
         reprocess.setData('tb2_id', selectedUnitId ?? '');
     }, [reprocess.setData, selectedUnitId]);
 
-    const handleFilterSubmit = (event) => {
-        event.preventDefault();
-        filter.get(route('settings.fiscal'), {
+    const handleSelectUnit = (unitId) => {
+        router.get(route('settings.fiscal'), {
+            unit_id: unitId,
+            invoice_status: invoiceStatusFilter,
+        }, {
             preserveState: true,
             preserveScroll: true,
             replace: true,
@@ -400,32 +463,36 @@ export default function FiscalConfig({
                 <div className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8">
                     <AlertMessage message={flash} />
 
-                    <form onSubmit={handleFilterSubmit} className="rounded-2xl bg-white p-6 shadow dark:bg-gray-800">
-                        <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+                    <section className="rounded-2xl bg-white p-6 shadow dark:bg-gray-800">
+                        <div className="flex flex-col gap-3">
                             <div>
-                                <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Unidade</label>
-                                <select
-                                    value={filter.data.unit_id}
-                                    onChange={(event) => filter.setData('unit_id', event.target.value)}
-                                    className={inputClassName}
-                                >
-                                    <option value="">Selecione</option>
-                                    {units.map((store) => (
-                                        <option key={store.id} value={store.id}>{store.name}</option>
-                                    ))}
-                                </select>
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Unidade</h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-300">
+                                    Selecione a loja pelos botoes abaixo.
+                                </p>
                             </div>
-                            <div>
-                                <PrimaryButton
-                                    type="submit"
-                                    disabled={filter.processing || !filter.data.unit_id}
-                                    className="px-5 py-3 text-sm font-semibold normal-case tracking-normal"
-                                >
-                                    Carregar unidade
-                                </PrimaryButton>
+                            <div className="flex flex-wrap gap-3">
+                                {units.map((store) => {
+                                    const isActive = Number(selectedUnitId) === Number(store.id);
+
+                                    return (
+                                        <button
+                                            key={store.id}
+                                            type="button"
+                                            onClick={() => handleSelectUnit(store.id)}
+                                            className={`rounded-full border px-5 py-3 text-sm font-semibold transition ${
+                                                isActive
+                                                    ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm dark:border-blue-400 dark:bg-blue-500/10 dark:text-blue-200'
+                                                    : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:text-blue-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-blue-500/50 dark:hover:text-blue-200'
+                                            }`}
+                                        >
+                                            {store.name}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
-                    </form>
+                    </section>
 
                     {!selectedUnitId ? (
                         <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-10 text-center text-sm text-gray-500 shadow dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
@@ -443,9 +510,37 @@ export default function FiscalConfig({
                                     {invoiceLoadWarning}
                                 </div>
                             )}
-                            <UnitCard unit={unit} />
-                            <CertificateSummaryCard unit={unit} configuration={configuration} resolvedEndpoints={resolvedEndpoints} />
-                            <DiagnosticsCard diagnostics={configurationDiagnostics} />
+                            <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
+                                <UnitCard unit={unit} />
+                                <div className={`${fiscalSectionClassName} h-full`}>
+                                    <div className="grid h-full gap-4 md:grid-cols-2">
+                                        <div className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-700 dark:bg-slate-900/40">
+                                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-300">
+                                                Dados da unidade
+                                            </p>
+                                            <p className="mt-3 text-sm text-slate-700 dark:text-slate-100">
+                                                <span className="font-semibold">Nome:</span> {unit?.name ?? '--'}
+                                            </p>
+                                            <p className="mt-2 text-sm text-slate-700 dark:text-slate-100">
+                                                <span className="font-semibold">CNPJ:</span> {unit?.cnpj ?? '--'}
+                                            </p>
+                                        </div>
+                                        <div className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-700 dark:bg-slate-900/40">
+                                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-300">
+                                                Endereco da unidade
+                                            </p>
+                                            <p className="mt-3 text-sm text-slate-700 dark:text-slate-100">
+                                                {unit?.endereco ?? '--'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-6 xl:grid-cols-2">
+                                <CertificateSummaryCard unit={unit} configuration={configuration} resolvedEndpoints={resolvedEndpoints} />
+                                <DiagnosticsCard diagnostics={configurationDiagnostics} />
+                            </div>
 
                             {printError && (
                                 <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
@@ -455,169 +550,130 @@ export default function FiscalConfig({
 
                             <form
                                 onSubmit={handleSubmit}
-                                className="space-y-6 rounded-2xl bg-white p-6 shadow dark:bg-gray-800"
+                                className={`${fiscalSectionClassName} space-y-8`}
                             >
                                 <InputError message={errors.tb2_id} className="mt-2" />
 
                                 <section className="space-y-4">
-                                    <div>
-                                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                            Emissao e numeracao
-                                        </h3>
-                                        <p className="text-sm text-gray-500 dark:text-gray-300">
-                                            Defina tipo de nota, ambiente e sequencia fiscal da unidade.
-                                        </p>
-                                    </div>
+                                    <FiscalSectionHeader
+                                        title="Emissao e numeracao"
+                                        description="Defina tipo de nota, ambiente e sequencia fiscal da unidade."
+                                    />
 
-                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
-                                        <label className="flex items-center justify-between gap-4">
-                                            <div className="space-y-1">
-                                                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                                                    Geracao automatica de notas fiscais
-                                                </p>
-                                                <p className="text-sm text-gray-500 dark:text-gray-300">
-                                                    Desligue para concluir vendas sem preparar nota fiscal automaticamente nesta loja.
-                                                </p>
+                                    <div className="grid gap-6 xl:grid-cols-[minmax(260px,0.8fr)_minmax(0,1fr)]">
+                                        <div className={`${fiscalPanelClassName} flex flex-col justify-center`}>
+                                            <div className="space-y-4">
+                                                <label className="flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-100">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={Boolean(data.tb26_emitir_nfe)}
+                                                        onChange={(event) => setData('tb26_emitir_nfe', event.target.checked)}
+                                                        className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                    Emitir NF-e
+                                                </label>
+                                                <label className="flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-100">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={Boolean(data.tb26_emitir_nfce)}
+                                                        onChange={(event) => setData('tb26_emitir_nfce', event.target.checked)}
+                                                        className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                    Emitir NFC-e
+                                                </label>
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setData('tb26_geracao_automatica_ativa', !fiscalGenerationEnabled)}
-                                                className={`relative inline-flex h-8 w-14 items-center rounded-full transition ${
-                                                    fiscalGenerationEnabled ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
-                                                }`}
-                                                aria-pressed={fiscalGenerationEnabled}
-                                            >
-                                                <span className="sr-only">Alternar geracao automatica de notas fiscais</span>
-                                                <span
-                                                    className={`inline-block h-6 w-6 transform rounded-full bg-white transition ${
-                                                        fiscalGenerationEnabled ? 'translate-x-7' : 'translate-x-1'
-                                                    }`}
-                                                />
-                                            </button>
-                                        </label>
-                                        <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                                            Status atual: {fiscalGenerationEnabled ? 'Ativa' : 'Desligada'}
-                                        </p>
-                                        <InputError message={errors.tb26_geracao_automatica_ativa} className="mt-2" />
-                                    </div>
+                                        </div>
 
-                                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                                        <label className="rounded-2xl border border-gray-200 p-4 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-200">
-                                            <span className="flex items-center gap-3">
+                                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_120px_160px]">
+                                            <div>
+                                                <label className="text-sm font-medium text-slate-700 dark:text-slate-200">CRT</label>
+                                                <select
+                                                    value={data.tb26_crt}
+                                                    onChange={(event) => setData('tb26_crt', event.target.value)}
+                                                    className={fiscalFieldClassName}
+                                                >
+                                                    <option value="">Selecione</option>
+                                                    <option value="1">1 - Simples Nacional</option>
+                                                    <option value="2">2 - Simples excesso sublimite</option>
+                                                    <option value="3">3 - Regime normal</option>
+                                                </select>
+                                                <InputError message={errors.tb26_crt} className="mt-2" />
+                                            </div>
+
+                                            <div>
+                                                <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Ambiente</label>
+                                                <select
+                                                    value={data.tb26_ambiente}
+                                                    onChange={(event) => setData('tb26_ambiente', event.target.value)}
+                                                    className={fiscalFieldClassName}
+                                                >
+                                                    <option value="homologacao">Homologacao</option>
+                                                    <option value="producao">Producao</option>
+                                                </select>
+                                                <InputError message={errors.tb26_ambiente} className="mt-2" />
+                                            </div>
+
+                                            <div>
+                                                <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Serie</label>
                                                 <input
-                                                    type="checkbox"
-                                                    checked={Boolean(data.tb26_emitir_nfe)}
-                                                    onChange={(event) => setData('tb26_emitir_nfe', event.target.checked)}
-                                                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                    type="text"
+                                                    value={data.tb26_serie}
+                                                    onChange={(event) => setData('tb26_serie', event.target.value)}
+                                                    className={fiscalFieldClassName}
                                                 />
-                                                Emitir NF-e
-                                            </span>
-                                        </label>
+                                                <InputError message={errors.tb26_serie} className="mt-2" />
+                                            </div>
 
-                                        <label className="rounded-2xl border border-gray-200 p-4 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-200">
-                                            <span className="flex items-center gap-3">
+                                            <div>
+                                                <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Proximo numero</label>
                                                 <input
-                                                    type="checkbox"
-                                                    checked={Boolean(data.tb26_emitir_nfce)}
-                                                    onChange={(event) => setData('tb26_emitir_nfce', event.target.checked)}
-                                                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                    type="number"
+                                                    min="1"
+                                                    value={data.tb26_proximo_numero}
+                                                    onChange={(event) => setData('tb26_proximo_numero', event.target.value)}
+                                                    className={fiscalFieldClassName}
                                                 />
-                                                Emitir NFC-e
-                                            </span>
-                                        </label>
-
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Ambiente</label>
-                                            <select
-                                                value={data.tb26_ambiente}
-                                                onChange={(event) => setData('tb26_ambiente', event.target.value)}
-                                                className={inputClassName}
-                                            >
-                                                <option value="homologacao">Homologacao</option>
-                                                <option value="producao">Producao</option>
-                                            </select>
-                                            <InputError message={errors.tb26_ambiente} className="mt-2" />
-                                        </div>
-
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Serie</label>
-                                            <input
-                                                type="text"
-                                                value={data.tb26_serie}
-                                                onChange={(event) => setData('tb26_serie', event.target.value)}
-                                                className={inputClassName}
-                                            />
-                                            <InputError message={errors.tb26_serie} className="mt-2" />
-                                        </div>
-
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Proximo numero</label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                value={data.tb26_proximo_numero}
-                                                onChange={(event) => setData('tb26_proximo_numero', event.target.value)}
-                                                className={inputClassName}
-                                            />
-                                            <InputError message={errors.tb26_proximo_numero} className="mt-2" />
-                                        </div>
-
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">CRT</label>
-                                            <select
-                                                value={data.tb26_crt}
-                                                onChange={(event) => setData('tb26_crt', event.target.value)}
-                                                className={inputClassName}
-                                            >
-                                                <option value="">Selecione</option>
-                                                <option value="1">1 - Simples Nacional</option>
-                                                <option value="2">2 - Simples excesso sublimite</option>
-                                                <option value="3">3 - Regime normal</option>
-                                            </select>
-                                            <InputError message={errors.tb26_crt} className="mt-2" />
+                                                <InputError message={errors.tb26_proximo_numero} className="mt-2" />
+                                            </div>
                                         </div>
                                     </div>
                                 </section>
 
                                 <section className="space-y-4">
-                                    <div>
-                                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                            Credenciais fiscais
-                                        </h3>
-                                        <p className="text-sm text-gray-500 dark:text-gray-300">
-                                            Configure CSC para NFC-e e o certificado digital da unidade.
-                                        </p>
-                                    </div>
+                                    <FiscalSectionHeader
+                                        title="Credenciais fiscais"
+                                        description="Configure CSC para NFC-e e o certificado digital da unidade."
+                                    />
 
-                                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                    <div className="grid gap-4 xl:grid-cols-5">
                                         <div>
-                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">CSC ID</label>
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">CSC ID</label>
                                             <input
                                                 type="text"
                                                 value={data.tb26_csc_id}
                                                 onChange={(event) => setData('tb26_csc_id', event.target.value)}
-                                                className={inputClassName}
+                                                className={fiscalFieldClassName}
                                             />
                                             <InputError message={errors.tb26_csc_id} className="mt-2" />
                                         </div>
 
-                                        <div className="md:col-span-2">
-                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">CSC</label>
+                                        <div className="xl:col-span-2">
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">CSC</label>
                                             <input
                                                 type="text"
                                                 value={data.tb26_csc}
                                                 onChange={(event) => setData('tb26_csc', event.target.value)}
-                                                className={inputClassName}
+                                                className={fiscalFieldClassName}
                                             />
                                             <InputError message={errors.tb26_csc} className="mt-2" />
                                         </div>
 
                                         <div>
-                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Tipo de certificado</label>
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Tipo de certificado</label>
                                             <select
                                                 value={data.tb26_certificado_tipo}
                                                 onChange={(event) => setData('tb26_certificado_tipo', event.target.value)}
-                                                className={inputClassName}
+                                                className={fiscalFieldClassName}
                                             >
                                                 <option value="A1">A1</option>
                                                 <option value="A3">A3</option>
@@ -626,104 +682,134 @@ export default function FiscalConfig({
                                         </div>
 
                                         <div>
-                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Nome do certificado</label>
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Nome do certificado</label>
                                             <input
                                                 type="text"
                                                 value={data.tb26_certificado_nome}
                                                 onChange={(event) => setData('tb26_certificado_nome', event.target.value)}
-                                                className={inputClassName}
+                                                className={fiscalFieldClassName}
                                             />
                                             <InputError message={errors.tb26_certificado_nome} className="mt-2" />
                                         </div>
 
                                         <div>
-                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">CNPJ do certificado</label>
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">CNPJ do certificado</label>
                                             <input
                                                 type="text"
                                                 value={data.tb26_certificado_cnpj}
                                                 onChange={(event) => setData('tb26_certificado_cnpj', event.target.value)}
-                                                className={inputClassName}
+                                                className={fiscalFieldClassName}
                                                 placeholder="Somente o certificado desta loja"
                                             />
                                             <InputError message={errors.tb26_certificado_cnpj} className="mt-2" />
                                         </div>
 
-                                        <div className="md:col-span-2">
-                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Arquivo do certificado</label>
-                                            <input
-                                                type="file"
-                                                accept=".pfx,.p12"
-                                                onChange={(event) => setData('tb26_certificado_arquivo_upload', event.target.files?.[0] ?? null)}
-                                                className={`${inputClassName} file:mr-4 file:rounded-full file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 dark:file:bg-blue-500/10 dark:file:text-blue-200`}
-                                            />
-                                            <InputError message={errors.tb26_certificado_arquivo_upload} className="mt-2" />
-                                        </div>
-
                                         <div>
-                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">Senha do certificado</label>
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Senha do certificado</label>
                                             <input
                                                 type="password"
                                                 value={data.tb26_certificado_senha}
                                                 onChange={(event) => setData('tb26_certificado_senha', event.target.value)}
-                                                className={inputClassName}
+                                                className={fiscalFieldClassName}
                                                 placeholder={configuration?.has_certificate_password ? 'Ja cadastrada' : ''}
                                             />
                                             <InputError message={errors.tb26_certificado_senha} className="mt-2" />
                                         </div>
+
+                                        <div className="xl:col-span-2">
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Arquivo do certificado</label>
+                                            <input
+                                                type="file"
+                                                accept=".pfx,.p12"
+                                                onChange={(event) => setData('tb26_certificado_arquivo_upload', event.target.files?.[0] ?? null)}
+                                                className={fiscalFileInputClassName}
+                                            />
+                                            <InputError message={errors.tb26_certificado_arquivo_upload} className="mt-2" />
+                                        </div>
                                     </div>
 
-                                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
-                                        <div className="flex flex-col gap-2 text-sm text-gray-700 dark:text-gray-200">
-                                            <span>Arquivo atual: {configuration?.tb26_certificado_arquivo || 'Nenhum certificado enviado'}</span>
-                                            <label className="flex items-center gap-3">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={Boolean(data.remover_certificado)}
-                                                    onChange={(event) => setData('remover_certificado', event.target.checked)}
-                                                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                />
-                                                Remover certificado atual
+                                    <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,0.7fr)_minmax(0,1fr)]">
+                                        <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+                                            <div className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
+                                                <span>Arquivo atual: {configuration?.tb26_certificado_arquivo || 'Nenhum certificado enviado'}</span>
+                                                <label className="flex items-center gap-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={Boolean(data.remover_certificado)}
+                                                        onChange={(event) => setData('remover_certificado', event.target.checked)}
+                                                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                    Remover certificado atual
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <section className="rounded-[22px] border border-dashed border-blue-200 bg-blue-50/70 p-4 text-sm text-blue-900 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
+                                            <p className="font-semibold">Reprocessamento fiscal</p>
+                                            <p className="mt-1">
+                                                Use este botao depois de corrigir certificado, CSC ou cadastro fiscal dos produtos.
+                                            </p>
+                                            <div className="mt-4">
+                                                <PrimaryButton
+                                                    type="button"
+                                                    onClick={handleReprocess}
+                                                    disabled={reprocess.processing}
+                                                    className="w-full justify-center px-5 py-3 text-sm font-semibold normal-case tracking-normal"
+                                                >
+                                                    Reprocessar notas pendentes
+                                                </PrimaryButton>
+                                            </div>
+                                        </section>
+
+                                        <div className={`${fiscalPanelClassName} flex flex-col justify-between`}>
+                                            <label className="flex items-start justify-between gap-4">
+                                                <div className="space-y-1">
+                                                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                                        Geracao automatica de notas fiscais
+                                                    </p>
+                                                    <p className="text-sm text-slate-500 dark:text-slate-300">
+                                                        Desligue para concluir vendas sem preparar nota fiscal automaticamente nesta loja.
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setData('tb26_geracao_automatica_ativa', !fiscalGenerationEnabled)}
+                                                    className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition ${
+                                                        fiscalGenerationEnabled ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
+                                                    }`}
+                                                    aria-pressed={fiscalGenerationEnabled}
+                                                >
+                                                    <span className="sr-only">Alternar geracao automatica de notas fiscais</span>
+                                                    <span
+                                                        className={`inline-block h-6 w-6 transform rounded-full bg-white transition ${
+                                                            fiscalGenerationEnabled ? 'translate-x-7' : 'translate-x-1'
+                                                        }`}
+                                                    />
+                                                </button>
                                             </label>
+                                            <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                                                Status atual: {fiscalGenerationEnabled ? 'Ativa' : 'Desligada'}
+                                            </p>
+                                            <InputError message={errors.tb26_geracao_automatica_ativa} className="mt-2" />
                                         </div>
                                     </div>
                                 </section>
 
-                                <section className="rounded-2xl border border-dashed border-blue-200 bg-blue-50/70 p-4 text-sm text-blue-900 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
-                                    <p className="font-semibold">Reprocessamento fiscal</p>
-                                    <p className="mt-1">
-                                        Use este botao depois de corrigir certificado, CSC ou cadastro fiscal dos produtos para refazer as notas pendentes desta loja.
-                                    </p>
-                                    <div className="mt-4">
-                                        <PrimaryButton
-                                            type="button"
-                                            onClick={handleReprocess}
-                                            disabled={reprocess.processing}
-                                            className="px-5 py-3 text-sm font-semibold normal-case tracking-normal"
-                                        >
-                                            Reprocessar notas pendentes
-                                        </PrimaryButton>
-                                    </div>
-                                </section>
-
                                 <section className="space-y-4">
-                                    <div>
-                                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                            Dados do emitente
-                                        </h3>
-                                        <p className="text-sm text-gray-500 dark:text-gray-300">
-                                            Esses dados alimentam o XML fiscal da unidade emitente.
-                                        </p>
-                                    </div>
+                                    <FiscalSectionHeader
+                                        title="Dados do emitente"
+                                        description="Esses dados alimentam o XML fiscal da unidade emitente."
+                                    />
 
-                                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                    <div className="grid gap-x-4 gap-y-5 md:grid-cols-2 xl:grid-cols-4">
                                         {EMITTER_FIELDS.map(([field, label, extraClass]) => (
                                             <div key={field} className={extraClass ?? ''}>
-                                                <label className="text-sm font-medium text-gray-700 dark:text-gray-200">{label}</label>
+                                                <label className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</label>
                                                 <input
                                                     type="text"
                                                     value={data[field]}
                                                     onChange={(event) => setData(field, event.target.value)}
-                                                    className={inputClassName}
+                                                    className={fiscalFieldClassName}
                                                 />
                                                 <InputError message={errors[field]} className="mt-2" />
                                             </div>
@@ -744,6 +830,8 @@ export default function FiscalConfig({
 
                             <InvoiceTable
                                 invoices={invoices}
+                                selectedUnitId={selectedUnitId}
+                                invoiceStatusFilter={invoiceStatusFilter}
                                 onDeleteInvoice={handleDeleteInvoice}
                                 onPrintFiscalReceipt={handlePrintFiscalReceipt}
                             />
