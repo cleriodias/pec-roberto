@@ -1,4 +1,5 @@
-IMPORTANT:
+codexIMPORTANT:
+- Qualquer Update ou Delete na base de dados deve ser informado na primeira linha do plano detalhado cercado com asteriscos e a quantidade de registros afetada
 - Sempre ler o C:\xampp\htdocs\pec-rodrigo\SYNC.md nele estao as instruçoes das disferenças a serem sincronizadas.
 - Este projeto é uma copia do projeto em: "C:\xampp\htdocs\pec-rodrigo" que vamos chamar de original
 - Com exeçao da conexao com o banco de dados e o dominio, todos o sistema deve ser identico, paginas, regras, etc...
