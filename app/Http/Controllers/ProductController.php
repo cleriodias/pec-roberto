@@ -307,16 +307,15 @@ class ProductController extends Controller
             return response()->json([]);
         }
 
-        $safeTerm = str_replace(['%', '_'], ['\\%', '\\_'], $term);
-        $likeTerm = '%' . $safeTerm . '%';
         $numericTerm = $isNumeric ? (int) $term : null;
         $isLongNumeric = $isNumeric && mb_strlen($term) > 4;
+        $booleanSearchTerm = $isNumeric ? null : $this->buildBooleanFullTextSearchTerm($term);
 
         $productsQuery = Produto::query()
-            ->where(function ($query) use ($isNumeric, $isLongNumeric, $likeTerm, $numericTerm) {
+            ->where(function ($query) use ($isNumeric, $isLongNumeric, $numericTerm, $term, $booleanSearchTerm) {
                 if ($isNumeric) {
                     if ($isLongNumeric) {
-                        $query->where('tb1_codbar', 'like', $likeTerm);
+                        $query->where('tb1_codbar', $term);
                     } else {
                         $query->where('tb1_id', $numericTerm);
                     }
@@ -324,7 +323,7 @@ class ProductController extends Controller
                     return;
                 }
 
-                $query->where('tb1_nome', 'like', $likeTerm);
+                $query->whereRaw('MATCH(tb1_nome) AGAINST (? IN BOOLEAN MODE)', [$booleanSearchTerm]);
             });
 
         if ($typeFilter !== null && $typeFilter !== '') {
@@ -334,6 +333,9 @@ class ProductController extends Controller
 
         $products = $productsQuery
             ->orderByDesc('tb1_status')
+            ->when(! $isNumeric, function ($query) use ($booleanSearchTerm) {
+                $query->orderByRaw('MATCH(tb1_nome) AGAINST (? IN BOOLEAN MODE) DESC', [$booleanSearchTerm]);
+            })
             ->orderBy('tb1_nome')
             ->limit(10)
             ->get([
@@ -349,6 +351,22 @@ class ProductController extends Controller
             ]);
 
         return response()->json($products);
+    }
+
+    private function buildBooleanFullTextSearchTerm(string $term): string
+    {
+        $words = preg_split('/\s+/', trim($term)) ?: [];
+        $words = array_values(array_filter(array_map(function (string $word) {
+            $word = preg_replace('/[^\pL\pN]+/u', '', $word);
+
+            if ($word === '') {
+                return '';
+            }
+
+            return (mb_strlen($word) >= 3 ? '+' : '') . $word . '*';
+        }, $words)));
+
+        return $words !== [] ? implode(' ', $words) : trim($term);
     }
 
     private function validateProduct(Request $request, ?Produto $product = null): array

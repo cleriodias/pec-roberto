@@ -2927,3 +2927,4 @@ Stack trace:
 #16 Standard input code(15): Illuminate\\Database\\Query\\Builder->get()
 #17 {main}
 "} 
+[2026-04-23 22:36:30] local.INFO: Database tools executed {"user_id":1,"action":"migrate"} 

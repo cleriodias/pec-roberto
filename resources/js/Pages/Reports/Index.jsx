@@ -80,6 +80,13 @@ const fallbackReports = [
         route: 'reports.faturar',
     },
     {
+        key: 'notas-fiscais-emitidas',
+        label: 'Notas Fiscais Emitidas',
+        description: 'Notas fiscais por loja, situacao e periodo.',
+        icon: 'bi-receipt-cutoff',
+        route: 'reports.notas-fiscais-emitidas',
+    },
+    {
         key: 'adiantamentos',
         label: 'Adiantamento',
         description: 'Adiantamentos realizados no periodo.',

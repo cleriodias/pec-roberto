@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ConfiguracaoFiscal;
 use App\Models\Unidade;
 use App\Support\ManagementScope;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
@@ -27,6 +28,8 @@ class UnitController extends Controller
         $this->ensureAuthorized();
 
         $user = request()->user();
+        $todayStart = Carbon::today()->startOfDay();
+        $todayEnd = Carbon::today()->endOfDay();
         $unitsQuery = Unidade::query()
             ->select('tb2_unidades.*')
             ->with('configuracaoFiscal:tb26_id,tb2_id,tb26_geracao_automatica_ativa')
@@ -35,6 +38,7 @@ class UnitController extends Controller
                     ->join('tb4_vendas_pg', 'tb4_vendas_pg.tb4_id', '=', 'tb27_notas_fiscais.tb4_id')
                     ->whereColumn('tb27_notas_fiscais.tb2_id', 'tb2_unidades.tb2_id')
                     ->where('tb27_notas_fiscais.tb27_status', 'emitida')
+                    ->whereBetween('tb27_notas_fiscais.tb27_emitida_em', [$todayStart, $todayEnd])
                     ->selectRaw('COALESCE(SUM(tb4_vendas_pg.valor_total), 0)'),
                 'tb2_nf_total'
             )

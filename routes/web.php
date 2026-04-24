@@ -243,6 +243,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/reports/vale', [SalesReportController::class, 'vale'])->name('reports.vale');
     Route::get('/reports/refeicao', [SalesReportController::class, 'refeicao'])->name('reports.refeicao');
     Route::get('/reports/faturar', [SalesReportController::class, 'faturar'])->name('reports.faturar');
+    Route::get('/reports/notas-fiscais-emitidas', [SalesReportController::class, 'notasFiscaisEmitidas'])->name('reports.notas-fiscais-emitidas');
     Route::get('/reports/adiantamentos', [SalesReportController::class, 'adiantamentos'])->name('reports.adiantamentos');
     Route::get('/reports/fornecedores', [SalesReportController::class, 'fornecedores'])->name('reports.fornecedores');
     Route::get('/reports/gastos', [SalesReportController::class, 'gastos'])->name('reports.gastos');

@@ -271,11 +271,31 @@ class BoletoController extends Controller
         }
 
         $activeUnitId = (int) ($activeUnit['id'] ?? 0);
-        if ($activeUnitId > 0 && ManagementScope::canManageUnit($user, $activeUnitId)) {
-            return $activeUnit;
+        if ($activeUnitId > 0 && $this->canWriteBoletoToUnit($user, $activeUnitId)) {
+            return [
+                'id' => $activeUnitId,
+                'name' => (string) ($activeUnit['name'] ?? ('Unidade #' . $activeUnitId)),
+            ];
         }
 
         return null;
+    }
+
+    private function canWriteBoletoToUnit($user, int $unitId): bool
+    {
+        if (! $user || $unitId <= 0) {
+            return false;
+        }
+
+        if (ManagementScope::isAdmin($user)) {
+            return ManagementScope::canManageUnit($user, $unitId);
+        }
+
+        if (! in_array((int) $user->funcao, [0, 1, 3], true)) {
+            return false;
+        }
+
+        return ManagementScope::targetUserUnitIds($user)->contains($unitId);
     }
 
     private function validateBoletoPayload(Request $request): array

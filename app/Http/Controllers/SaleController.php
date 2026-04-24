@@ -325,10 +325,24 @@ class SaleController extends Controller
                 ]);
             }
 
+            $products = Produto::query()
+                ->whereIn('tb1_id', array_values(array_unique(array_map(
+                    fn (array $item) => (int) $item['product_id'],
+                    $groupedItems
+                ))))
+                ->get(['tb1_id', 'tb1_nome', 'tb1_vlr_venda', 'tb1_vr_credit'])
+                ->keyBy('tb1_id');
+
             foreach ($groupedItems as $groupedItem) {
                 $productId = (int) $groupedItem['product_id'];
                 $quantity = (int) $groupedItem['quantity'];
-                $product = Produto::select('tb1_id', 'tb1_nome', 'tb1_vlr_venda', 'tb1_vr_credit')->findOrFail($productId);
+                $product = $products->get($productId);
+
+                if (! $product) {
+                    throw ValidationException::withMessages([
+                        'items' => 'Um dos produtos informados nao foi encontrado.',
+                    ]);
+                }
 
                 if ($requiresVrEligible && ! $product->tb1_vr_credit) {
                     throw ValidationException::withMessages([

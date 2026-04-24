@@ -18,20 +18,6 @@ const MetricCard = ({ title, value, description, accent }) => (
     </div>
 );
 
-const normalizeDateInput = (value) => {
-    const digits = String(value ?? '').replace(/\D/g, '').slice(0, 6);
-
-    if (digits.length <= 2) {
-        return digits;
-    }
-
-    if (digits.length <= 4) {
-        return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    }
-
-    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-};
-
 export default function ControlPanel({
     period,
     paymentType,
@@ -143,14 +129,9 @@ export default function ControlPanel({
                             <div>
                                 <label className="text-sm font-medium text-gray-700">Inicio</label>
                                 <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    maxLength={8}
-                                    placeholder="DD/MM/AA"
+                                    type="date"
                                     value={data.start_date}
-                                    onChange={(event) =>
-                                        setData('start_date', normalizeDateInput(event.target.value))
-                                    }
+                                    onChange={(event) => setData('start_date', event.target.value)}
                                     className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                                 />
                             </div>
@@ -158,12 +139,9 @@ export default function ControlPanel({
                             <div>
                                 <label className="text-sm font-medium text-gray-700">Fim</label>
                                 <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    maxLength={8}
-                                    placeholder="DD/MM/AA"
+                                    type="date"
                                     value={data.end_date}
-                                    onChange={(event) => setData('end_date', normalizeDateInput(event.target.value))}
+                                    onChange={(event) => setData('end_date', event.target.value)}
                                     className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                                 />
                             </div>

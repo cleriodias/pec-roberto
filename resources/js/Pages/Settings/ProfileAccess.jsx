@@ -21,6 +21,7 @@ const MENU_OPTIONS = [
     { key: 'reports_vale', label: 'Relatorio Vales' },
     { key: 'reports_refeicao', label: 'Relatorio Refeicao' },
     { key: 'reports_faturar', label: 'Relatorio Faturar' },
+    { key: 'reports_notas_fiscais_emitidas', label: 'Notas Fiscais Emitidas' },
     { key: 'reports_adiantamentos', label: 'Relatorio Adiantamentos' },
     { key: 'reports_fornecedores', label: 'Relatorio Fornecedores' },
     { key: 'supplier_disputes', label: 'Disputas Fornecedor' },

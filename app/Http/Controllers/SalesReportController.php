@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CashierClosure;
 use App\Models\Expense;
+use App\Models\NotaFiscal;
 use App\Models\ProductDiscard;
 use App\Models\SalaryAdvance;
 use App\Models\Supplier;
@@ -24,6 +25,22 @@ use Inertia\Response;
 
 class SalesReportController extends Controller
 {
+    private const FISCAL_INVOICE_STATUS_FILTERS = [
+        'assinada' => ['xml_assinado'],
+        'erro' => ['erro_validacao', 'erro_transmissao'],
+        'emitida' => ['emitida'],
+    ];
+
+    private const FISCAL_INVOICE_STATUS_LABELS = [
+        'pendente_configuracao' => 'Pendente configuracao',
+        'erro_validacao' => 'Erro',
+        'erro_transmissao' => 'Erro',
+        'pendente_emissao' => 'Pendente emissao',
+        'xml_assinado' => 'Assinada',
+        'emitida' => 'Emitida',
+        'cancelada' => 'Cancelada',
+    ];
+
     private const TYPE_META = [
         'dinheiro' => ['label' => 'Dinheiro', 'color' => '#16a34a'],
         'maquina' => ['label' => 'Maquina', 'color' => '#2563eb'],
@@ -128,6 +145,13 @@ class SalesReportController extends Controller
                 'description' => 'Cupons com pagamento faturado, agrupados por caixa e loja.',
                 'icon' => 'bi-journal-text',
                 'route' => 'reports.faturar',
+            ],
+            [
+                'key' => 'notas-fiscais-emitidas',
+                'label' => 'Notas Fiscais Emitidas',
+                'description' => 'Notas fiscais por loja, situacao e periodo.',
+                'icon' => 'bi-receipt-cutoff',
+                'route' => 'reports.notas-fiscais-emitidas',
             ],
             [
                 'key' => 'adiantamentos',
@@ -1006,6 +1030,287 @@ class SalesReportController extends Controller
             'filterUnits' => $filterUnits,
             'selectedUnitId' => $filterUnitId,
         ]);
+    }
+
+    public function notasFiscaisEmitidas(Request $request): Response
+    {
+        $this->ensureManager($request);
+        [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
+        $allowedUnitIds = $this->reportUnitIds($filterUnits);
+        [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
+        $selectedStatus = $this->resolveFiscalInvoiceStatusFilter($request->query('status'));
+
+        $rows = NotaFiscal::query()
+            ->with([
+                'unidade:tb2_id,tb2_nome,tb2_endereco,tb2_cnpj',
+                'pagamento' => function ($query) {
+                    $query->select([
+                        'tb4_id',
+                        'valor_total',
+                        'tipo_pagamento',
+                        'valor_pago',
+                        'troco',
+                        'dois_pgto',
+                        'created_at',
+                    ]);
+                },
+                'pagamento.vendas' => function ($query) {
+                    $query
+                        ->with(['caixa:id,name', 'unidade:tb2_id,tb2_nome,tb2_endereco,tb2_cnpj', 'valeUser:id,name'])
+                        ->orderBy('tb3_id')
+                        ->select([
+                            'tb3_id',
+                            'tb4_id',
+                            'tb1_id',
+                            'id_comanda',
+                            'id_user_caixa',
+                            'id_user_vale',
+                            'id_unidade',
+                            'produto_nome',
+                            'valor_unitario',
+                            'quantidade',
+                            'valor_total',
+                            'data_hora',
+                        ]);
+                },
+            ])
+            ->when($filterUnitId, function ($query) use ($filterUnitId) {
+                $query->where('tb2_id', $filterUnitId);
+            }, function ($query) use ($allowedUnitIds) {
+                if ($allowedUnitIds->isNotEmpty()) {
+                    $query->whereIn('tb2_id', $allowedUnitIds);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
+            })
+            ->when($selectedStatus !== 'all', function ($query) use ($selectedStatus) {
+                $query->whereIn('tb27_status', self::FISCAL_INVOICE_STATUS_FILTERS[$selectedStatus]);
+            })
+            ->whereBetween('created_at', [$start, $end])
+            ->orderByDesc('created_at')
+            ->get([
+                'tb27_id',
+                'tb4_id',
+                'tb2_id',
+                'tb27_modelo',
+                'tb27_ambiente',
+                'tb27_serie',
+                'tb27_numero',
+                'tb27_status',
+                'tb27_payload',
+                'tb27_chave_acesso',
+                'tb27_protocolo',
+                'tb27_recibo',
+                'tb27_xml_envio',
+                'tb27_mensagem',
+                'tb27_emitida_em',
+                'tb27_ultima_tentativa_em',
+                'created_at',
+            ])
+            ->map(function (NotaFiscal $invoice) {
+                $sales = $invoice->pagamento?->vendas?->values() ?? collect();
+                $firstSale = $sales->first();
+
+                return [
+                    'id' => (int) $invoice->tb27_id,
+                    'payment_id' => (int) $invoice->tb4_id,
+                    'unit_name' => $invoice->unidade?->tb2_nome ?? '---',
+                    'status' => $invoice->tb27_status,
+                    'status_label' => self::FISCAL_INVOICE_STATUS_LABELS[$invoice->tb27_status] ?? $invoice->tb27_status,
+                    'modelo' => $invoice->tb27_modelo,
+                    'ambiente' => $invoice->tb27_ambiente,
+                    'serie' => $invoice->tb27_serie,
+                    'numero' => $invoice->tb27_numero,
+                    'access_key' => $invoice->tb27_chave_acesso,
+                    'protocol' => $invoice->tb27_protocolo,
+                    'message' => $invoice->tb27_mensagem,
+                    'created_at' => $invoice->created_at?->toIso8601String(),
+                    'issued_at' => $invoice->tb27_emitida_em?->toIso8601String(),
+                    'last_attempt_at' => $invoice->tb27_ultima_tentativa_em?->toIso8601String(),
+                    'total' => round((float) ($invoice->pagamento?->valor_total ?? 0), 2),
+                    'payment_type' => $this->normalizePaymentTypeForDisplay($invoice->pagamento?->tipo_pagamento),
+                    'comanda' => $this->resolveReceiptComanda($sales),
+                    'cashier' => $firstSale?->caixa?->name ?? null,
+                    'items_count' => (int) $sales->sum('quantidade'),
+                    'items_label' => $sales
+                        ->map(function (Venda $sale) {
+                            return trim(sprintf('%sx %s', (int) $sale->quantidade, $sale->produto_nome));
+                        })
+                        ->filter()
+                        ->implode(', '),
+                    'fiscal_receipt' => $this->buildReportFiscalReceiptPayload($invoice),
+                ];
+            })
+            ->values();
+
+        return Inertia::render('Reports/FiscalInvoices', [
+            'rows' => $rows,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+            'unit' => $selectedUnit,
+            'filterUnits' => $filterUnits,
+            'selectedUnitId' => $filterUnitId,
+            'selectedStatus' => $selectedStatus,
+            'statusOptions' => [
+                ['value' => 'all', 'label' => 'Todas'],
+                ['value' => 'assinada', 'label' => 'Assinada'],
+                ['value' => 'erro', 'label' => 'Erro'],
+                ['value' => 'emitida', 'label' => 'Emitida'],
+            ],
+        ]);
+    }
+
+    private function buildReportFiscalReceiptPayload(NotaFiscal $invoice): ?array
+    {
+        $payment = $invoice->pagamento;
+
+        if (! $payment) {
+            return null;
+        }
+
+        $payload = is_array($invoice->tb27_payload) ? $invoice->tb27_payload : [];
+        $sales = $payment->vendas?->values() ?? collect();
+        $firstSale = $sales->first();
+        $consumer = is_array($payload['consumer'] ?? null) ? $payload['consumer'] : [];
+        $consumerType = trim((string) ($consumer['type'] ?? ''));
+        $consumerName = trim((string) ($consumer['name'] ?? ''));
+        $consumerDocument = trim((string) ($consumer['document'] ?? ''));
+        $fiscalItems = collect($payload['itens'] ?? []);
+        $unit = $invoice->unidade ?? $firstSale?->unidade;
+        $xmlData = $this->extractReportFiscalReceiptXmlData($invoice->tb27_xml_envio);
+
+        if ($consumerType === '') {
+            $consumerType = $consumerDocument !== ''
+                ? ($consumerName === '' ? 'cupom_fiscal' : 'consumidor')
+                : 'balcao';
+        }
+
+        return [
+            'title' => strtolower((string) $invoice->tb27_modelo) === 'nfce' ? 'DANFE NFC-e' : 'Documento fiscal',
+            'subtitle' => 'Documento auxiliar da nota fiscal eletronica para impressao em 80mm',
+            'payment_id' => (int) $invoice->tb4_id,
+            'invoice_id' => (int) $invoice->tb27_id,
+            'model_label' => strtoupper((string) $invoice->tb27_modelo) === 'NFCE' ? 'NFC-e' : strtoupper((string) $invoice->tb27_modelo),
+            'environment' => $invoice->tb27_ambiente === 'producao' ? 'Producao' : 'Homologacao',
+            'serie' => $invoice->tb27_serie,
+            'number' => $invoice->tb27_numero,
+            'status' => $invoice->tb27_status,
+            'status_message' => $invoice->tb27_mensagem,
+            'issued_at' => ($invoice->tb27_emitida_em ?? $firstSale?->data_hora ?? $invoice->created_at)?->toIso8601String(),
+            'emitter_name' => $unit?->tb2_nome ?? 'EMITENTE NAO INFORMADO',
+            'emitter_document' => $unit?->tb2_cnpj,
+            'emitter_address' => $unit?->tb2_endereco,
+            'consumer_type' => $consumerType,
+            'consumer_name' => $consumerType === 'cupom_fiscal'
+                ? 'CONSUMIDOR IDENTIFICADO POR CPF'
+                : ($consumerName !== '' ? $consumerName : 'CONSUMIDOR NAO IDENTIFICADO'),
+            'consumer_document' => $consumerDocument !== '' ? $consumerDocument : null,
+            'consumer_address' => $this->buildReportFiscalConsumerAddress($consumerType, $consumer),
+            'payment_label' => $this->resolveReportPaymentLabel($payment->tipo_pagamento),
+            'total' => round((float) ($payload['valor_total_documento'] ?? $payment->valor_total), 2),
+            'amount_paid' => $payment->valor_pago !== null ? round((float) $payment->valor_pago, 2) : null,
+            'change' => $payment->troco !== null ? round((float) $payment->troco, 2) : null,
+            'additional_payment' => $payment->dois_pgto !== null ? round((float) $payment->dois_pgto, 2) : null,
+            'access_key' => $invoice->tb27_chave_acesso ?: ($xmlData['access_key'] ?? null),
+            'protocol' => $invoice->tb27_protocolo,
+            'receipt' => $invoice->tb27_recibo,
+            'consulta_url' => $xmlData['consulta_url'] ?? null,
+            'qr_code_data' => $xmlData['qr_code_data'] ?? null,
+            'is_preview' => $invoice->tb27_status !== 'emitida',
+            'items' => $fiscalItems->isNotEmpty()
+                ? $fiscalItems
+                    ->map(fn (array $item) => [
+                        'id' => $item['produto_id'] ?? null,
+                        'product_name' => $item['descricao'] ?? 'ITEM FISCAL',
+                        'quantity' => (float) ($item['quantidade'] ?? 0),
+                        'unit_price' => round((float) ($item['valor_unitario'] ?? 0), 2),
+                        'subtotal' => round((float) ($item['valor_total'] ?? 0), 2),
+                    ])
+                    ->values()
+                    ->all()
+                : $sales
+                    ->map(fn (Venda $sale) => [
+                        'id' => $sale->tb1_id,
+                        'product_name' => $sale->produto_nome,
+                        'quantity' => (float) $sale->quantidade,
+                        'unit_price' => round((float) $sale->valor_unitario, 2),
+                        'subtotal' => round((float) $sale->valor_total, 2),
+                    ])
+                    ->values()
+                    ->all(),
+        ];
+    }
+
+    private function buildReportFiscalConsumerAddress(string $consumerType, array $consumer): ?string
+    {
+        if ($consumerType !== 'consumidor') {
+            return null;
+        }
+
+        $lineOne = trim(implode(', ', array_filter([
+            trim((string) ($consumer['street'] ?? '')),
+            trim((string) ($consumer['number'] ?? '')),
+            trim((string) ($consumer['complement'] ?? '')),
+        ])));
+        $lineTwo = trim(implode(' - ', array_filter([
+            trim((string) ($consumer['neighborhood'] ?? '')),
+            trim((string) ($consumer['city'] ?? '')),
+            trim((string) ($consumer['state'] ?? '')),
+        ])));
+        $cep = trim((string) ($consumer['cep'] ?? ''));
+
+        return trim(implode(' | ', array_filter([
+            $lineOne,
+            $lineTwo,
+            $cep !== '' ? 'CEP ' . $cep : null,
+        ]))) ?: null;
+    }
+
+    private function resolveReportPaymentLabel(?string $paymentType): string
+    {
+        return match ((string) $paymentType) {
+            'dinheiro' => 'Dinheiro',
+            'cartao_credito' => 'Cartao credito',
+            'cartao_debito' => 'Cartao debito',
+            'dinheiro_cartao_credito' => 'Dinheiro + Cartao credito',
+            'dinheiro_cartao_debito' => 'Dinheiro + Cartao debito',
+            'maquina' => 'Cartao',
+            'vale' => 'Vale',
+            'refeicao' => 'Refeicao',
+            'faturar' => 'Faturar',
+            default => strtoupper(str_replace('_', ' ', trim((string) $paymentType))) ?: 'Nao informado',
+        };
+    }
+
+    private function extractReportFiscalReceiptXmlData(?string $xml): array
+    {
+        if (! $xml || ! class_exists(\DOMDocument::class) || ! class_exists(\DOMXPath::class)) {
+            return [];
+        }
+
+        $document = new \DOMDocument();
+
+        if (! @$document->loadXML($xml)) {
+            return [];
+        }
+
+        $xpath = new \DOMXPath($document);
+        $xpath->registerNamespace('nfe', 'http://www.portalfiscal.inf.br/nfe');
+
+        $accessKey = trim((string) $xpath->evaluate('string(//nfe:infNFe/@Id)'));
+
+        return [
+            'access_key' => $accessKey !== '' ? preg_replace('/^NFe/', '', $accessKey) : null,
+            'qr_code_data' => $this->reportStringOrNull($xpath->evaluate('string(//nfe:infNFeSupl/nfe:qrCode)')),
+            'consulta_url' => $this->reportStringOrNull($xpath->evaluate('string(//nfe:infNFeSupl/nfe:urlChave)')),
+        ];
+    }
+
+    private function reportStringOrNull(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
     }
 
     public function descarte(Request $request): Response
@@ -3260,6 +3565,15 @@ class SalesReportController extends Controller
         $userId = (int) $requestedUserId;
 
         return $userId > 0 ? $userId : null;
+    }
+
+    private function resolveFiscalInvoiceStatusFilter(mixed $status): string
+    {
+        $status = (string) ($status ?? 'all');
+
+        return $status === 'all' || array_key_exists($status, self::FISCAL_INVOICE_STATUS_FILTERS)
+            ? $status
+            : 'all';
     }
 
     private function reportUnitIds(iterable $units): Collection

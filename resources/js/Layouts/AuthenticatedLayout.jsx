@@ -72,6 +72,7 @@ const DEFAULT_MENU_KEYS = [
     'reports_vale',
     'reports_refeicao',
     'reports_faturar',
+    'reports_notas_fiscais_emitidas',
     'reports_adiantamentos',
     'reports_fornecedores',
     'supplier_disputes',
@@ -106,6 +107,7 @@ const MENU_ORDER_PRIORITY = [
     'reports_sales_period',
     'reports_descarte_consolidado',
     'reports_sales_detailed',
+    'reports_notas_fiscais_emitidas',
     'online_users',
     'settings',
 ];
@@ -541,6 +543,15 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                 node: (
                     <Dropdown.Link href={route('reports.sales.detailed')}>
                         <MenuLabel icon="bi bi-card-checklist" text="Detalhado" />
+                    </Dropdown.Link>
+                ),
+            },
+            {
+                key: 'reports_notas_fiscais_emitidas',
+                visible: canSeeReports && hasMenuAccess('reports_notas_fiscais_emitidas'),
+                node: (
+                    <Dropdown.Link href={route('reports.notas-fiscais-emitidas')}>
+                        <MenuLabel icon="bi bi-receipt-cutoff" text="Notas Fiscais" />
                     </Dropdown.Link>
                 ),
             },
