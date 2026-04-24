@@ -1,3 +1,28 @@
+## 24/04/26 - Busca textual do Dashboard sem FULLTEXT
+
+Causa:
+- a busca textual do Dashboard em `app/Http/Controllers/ProductController.php` ainda dependia de `MATCH ... AGAINST`;
+- foi solicitado remover o indice `FULLTEXT` `tb1_produto_nome_fulltext`;
+- sem ajuste no backend, a remocao do indice faria a busca por nome falhar.
+
+O que foi alterado:
+- `ProductController::search()` deixou de usar `FULLTEXT` para termos textuais;
+- a busca textual passou a usar somente `LIKE '%termo%'` em `tb1_nome`;
+- a busca numerica por `tb1_id` e `tb1_codbar` foi mantida como estava;
+- criada a migration `2026_04_24_000000_drop_tb1_produto_nome_fulltext_index.php` para remover o indice `tb1_produto_nome_fulltext` sem mexer em registros;
+- o `down()` da migration recria o `FULLTEXT` caso seja necessario reverter.
+
+Como sincronizar no projeto espelho:
+- copiar `app/Http/Controllers/ProductController.php`;
+- copiar `database/migrations/2026_04_24_000000_drop_tb1_produto_nome_fulltext_index.php`;
+- executar a migration somente quando quiser remover o indice no banco;
+- nao envolve update ou delete em registros.
+
+Arquivos alterados:
+- `app/Http/Controllers/ProductController.php`
+- `database/migrations/2026_04_24_000000_drop_tb1_produto_nome_fulltext_index.php`
+- `SYNC.md`
+
 ## 24/04/26 - Fallback com LIKE na busca de produtos do Dashboard
 
 Causa:

@@ -310,7 +310,6 @@ class ProductController extends Controller
 
         $numericTerm = $isNumeric ? (int) $term : null;
         $isLongNumeric = $isNumeric && mb_strlen($term) > 4;
-        $booleanSearchTerm = $isNumeric ? null : $this->buildBooleanFullTextSearchTerm($term);
 
         $selectedColumns = [
             'tb1_id',
@@ -347,23 +346,13 @@ class ProductController extends Controller
             return response()->json($products);
         }
 
+        $safeLikeTerm = str_replace(['%', '_'], ['\%', '\_'], $term);
         $products = (clone $baseQuery)
-            ->whereRaw('MATCH(tb1_nome) AGAINST (? IN BOOLEAN MODE)', [$booleanSearchTerm])
+            ->where('tb1_nome', 'like', '%' . $safeLikeTerm . '%')
             ->orderByDesc('tb1_status')
-            ->orderByRaw('MATCH(tb1_nome) AGAINST (? IN BOOLEAN MODE) DESC', [$booleanSearchTerm])
             ->orderBy('tb1_nome')
             ->limit(10)
             ->get($selectedColumns);
-
-        if ($products->isEmpty()) {
-            $safeLikeTerm = str_replace(['%', '_'], ['\%', '\_'], $term);
-            $products = (clone $baseQuery)
-                ->where('tb1_nome', 'like', '%' . $safeLikeTerm . '%')
-                ->orderByDesc('tb1_status')
-                ->orderBy('tb1_nome')
-                ->limit(10)
-                ->get($selectedColumns);
-        }
 
         return response()->json($products);
     }
@@ -412,22 +401,6 @@ class ProductController extends Controller
         $quickLookupCache->rememberProductForRequest($product, $request);
 
         return response()->json($quickLookupCache->productPayload($product));
-    }
-
-    private function buildBooleanFullTextSearchTerm(string $term): string
-    {
-        $words = preg_split('/\s+/', trim($term)) ?: [];
-        $words = array_values(array_filter(array_map(function (string $word) {
-            $word = preg_replace('/[^\pL\pN]+/u', '', $word);
-
-            if ($word === '') {
-                return '';
-            }
-
-            return (mb_strlen($word) >= 3 ? '+' : '') . $word . '*';
-        }, $words)));
-
-        return $words !== [] ? implode(' ', $words) : trim($term);
     }
 
     private function parseWeightedBarcode(?string $barcode): ?array

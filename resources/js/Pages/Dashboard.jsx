@@ -793,24 +793,19 @@ export default function Dashboard({ quickLookupProducts = [] }) {
         setLoading(true);
         setError('');
 
-        fetch(route('products.search', { q: term }), {
-            headers: {
-                Accept: 'application/json',
-            },
-        })
-            .then((response) => {
-                if (!response.ok) {
-                    throw new Error('Falha ao carregar produtos');
-                }
-
-                return response.json();
+        axios
+            .get(route('products.search'), {
+                params: { q: term },
+                headers: {
+                    Accept: 'application/json',
+                },
             })
-            .then((data) => {
+            .then((response) => {
                 if (!isCurrent) {
                     return;
                 }
 
-                setSuggestions(data);
+                setSuggestions(Array.isArray(response.data) ? response.data : []);
             })
             .catch(() => {
                 if (!isCurrent) {
@@ -1021,31 +1016,30 @@ export default function Dashboard({ quickLookupProducts = [] }) {
         setAddingItem(true);
         setSaleError('');
 
-        fetch(route('products.quick-lookup', { q: query }), {
-            headers: {
-                Accept: 'application/json',
-            },
-        })
-            .then((response) => {
-                return response.json().then((data) => {
-                    if (!response.ok) {
-                        throw new Error(data?.message || 'Produto nao encontrado.');
-                    }
-
-                    return data;
-                });
+        axios
+            .get(route('products.quick-lookup'), {
+                params: { q: query },
+                headers: {
+                    Accept: 'application/json',
+                },
             })
             .then((product) => {
-                cacheDirectProductLookup(directProductLookupCache.current, product);
+                const resolvedProduct = product?.data ?? null;
+
+                if (!resolvedProduct) {
+                    throw new Error('Produto nao encontrado.');
+                }
+
+                cacheDirectProductLookup(directProductLookupCache.current, resolvedProduct);
                 clearInputIdleTimeout();
-                addItemFromProduct(product, {
+                addItemFromProduct(resolvedProduct, {
                     unitPrice: weightedBarcodeData?.unitPrice ?? null,
                     barcode: weightedBarcodeData?.barcode ?? null,
                     isWeighted: Boolean(weightedBarcodeData),
                 });
             })
             .catch((err) => {
-                setSaleError(err.message || 'Nao foi possivel adicionar o produto.');
+                setSaleError(err?.response?.data?.message || err.message || 'Nao foi possivel adicionar o produto.');
             })
             .finally(() => {
                 setAddingItem(false);
