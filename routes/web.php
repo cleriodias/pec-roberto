@@ -29,6 +29,7 @@ use App\Http\Controllers\UnitController;
 use App\Http\Controllers\UnitSwitchController;
 use App\Http\Controllers\UserController;
 use App\Models\Unidade;
+use App\Support\ProductQuickLookupCache;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -66,8 +67,10 @@ if (class_exists(\App\Http\Controllers\MobileRevenueController::class)) {
 }
 
 
-Route::get('/dashboard', function () {
-    return Inertia::render('Dashboard');
+Route::get('/dashboard', function (Request $request, ProductQuickLookupCache $quickLookupCache) {
+    return Inertia::render('Dashboard', [
+        'quickLookupProducts' => fn () => $quickLookupCache->forRequest($request),
+    ]);
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::get('/supplier/access', [SupplierPortalController::class, 'access'])->name('supplier.access');
@@ -220,6 +223,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('/products/{product}/fiscal-queue', [ProductController::class, 'updateFiscalQueueItem'])->name('products.fiscal-queue.update');
     Route::get('/products/production-stock', [ProductStockController::class, 'index'])->name('products.production-stock');
     Route::post('/products/production-stock', [ProductStockController::class, 'store'])->name('products.production-stock.store');
+    Route::get('/products/quick-lookup', [ProductController::class, 'quickLookup'])->name('products.quick-lookup');
     Route::get('/products/search', [ProductController::class, 'search'])->name('products.search');
     Route::get('/products/favorites', [ProductController::class, 'favorites'])->name('products.favorites');
     Route::post('/products/{product}/favorite', [ProductController::class, 'toggleFavorite'])->name('products.favorite');

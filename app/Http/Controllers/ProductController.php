@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Produto;
 use App\Models\User;
+use App\Support\ProductQuickLookupCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -311,34 +312,89 @@ class ProductController extends Controller
         $isLongNumeric = $isNumeric && mb_strlen($term) > 4;
         $booleanSearchTerm = $isNumeric ? null : $this->buildBooleanFullTextSearchTerm($term);
 
-        $productsQuery = Produto::query()
-            ->where(function ($query) use ($isNumeric, $isLongNumeric, $numericTerm, $term, $booleanSearchTerm) {
-                if ($isNumeric) {
-                    if ($isLongNumeric) {
-                        $query->where('tb1_codbar', $term);
-                    } else {
-                        $query->where('tb1_id', $numericTerm);
-                    }
+        $columns = [
+            'tb1_id',
+            'tb1_nome',
+            'tb1_codbar',
+            'tb1_vlr_custo',
+            'tb1_vlr_venda',
+            'tb1_tipo',
+            'tb1_qtd',
+            'tb1_status',
+            'tb1_vr_credit',
+        ];
 
-                    return;
-                }
+        if ($isNumeric) {
+            $products = Produto::query()
+                ->when($isLongNumeric, function ($query) use ($term) {
+                    $query->where('tb1_codbar', $term);
+                })
+                ->when(! $isLongNumeric, function ($query) use ($numericTerm) {
+                    $query->where('tb1_id', $numericTerm);
+                })
+                ->when($typeFilter !== null && $typeFilter !== '', function ($query) use ($typeFilter) {
+                    $query->where('tb1_tipo', (int) $typeFilter);
+                })
+                ->orderByDesc('tb1_status')
+                ->orderBy('tb1_nome')
+                ->limit(10)
+                ->get($columns);
 
-                $query->whereRaw('MATCH(tb1_nome) AGAINST (? IN BOOLEAN MODE)', [$booleanSearchTerm]);
-            });
-
-        if ($typeFilter !== null && $typeFilter !== '') {
-            $typeValue = (int) $typeFilter;
-            $productsQuery->where('tb1_tipo', $typeValue);
+            return response()->json($products);
         }
 
-        $products = $productsQuery
-            ->orderByDesc('tb1_status')
-            ->when(! $isNumeric, function ($query) use ($booleanSearchTerm) {
-                $query->orderByRaw('MATCH(tb1_nome) AGAINST (? IN BOOLEAN MODE) DESC', [$booleanSearchTerm]);
+        $products = Produto::query()
+            ->whereRaw('MATCH(tb1_nome) AGAINST (? IN BOOLEAN MODE)', [$booleanSearchTerm])
+            ->when($typeFilter !== null && $typeFilter !== '', function ($query) use ($typeFilter) {
+                $query->where('tb1_tipo', (int) $typeFilter);
             })
+            ->orderByDesc('tb1_status')
+            ->orderByRaw('MATCH(tb1_nome) AGAINST (? IN BOOLEAN MODE) DESC', [$booleanSearchTerm])
             ->orderBy('tb1_nome')
             ->limit(10)
-            ->get([
+            ->get($columns);
+
+        if ($products->isEmpty()) {
+            $safeLikeTerm = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term);
+
+            $products = Produto::query()
+                ->where('tb1_nome', 'like', '%' . $safeLikeTerm . '%')
+                ->when($typeFilter !== null && $typeFilter !== '', function ($query) use ($typeFilter) {
+                    $query->where('tb1_tipo', (int) $typeFilter);
+                })
+                ->orderByDesc('tb1_status')
+                ->orderBy('tb1_nome')
+                ->limit(10)
+                ->get($columns);
+        }
+
+        return response()->json($products);
+    }
+
+    public function quickLookup(Request $request, ProductQuickLookupCache $quickLookupCache): JsonResponse
+    {
+        $term = trim((string) $request->input('q', ''));
+
+        if ($term === '' || ! ctype_digit($term)) {
+            return response()->json([
+                'message' => 'Informe um codigo de barras ou ID numerico.',
+            ], 422);
+        }
+
+        $weightedBarcode = $this->parseWeightedBarcode($term);
+        $isLongNumeric = mb_strlen($term) > 4;
+
+        $product = Produto::query()
+            ->when($weightedBarcode !== null, function ($query) use ($weightedBarcode) {
+                $query->where('tb1_id', $weightedBarcode['product_id']);
+            })
+            ->when($weightedBarcode === null && $isLongNumeric, function ($query) use ($term) {
+                $query->where('tb1_codbar', $term);
+            })
+            ->when($weightedBarcode === null && ! $isLongNumeric, function ($query) use ($term) {
+                $query->where('tb1_id', (int) $term);
+            })
+            ->first([
                 'tb1_id',
                 'tb1_nome',
                 'tb1_codbar',
@@ -350,7 +406,15 @@ class ProductController extends Controller
                 'tb1_vr_credit',
             ]);
 
-        return response()->json($products);
+        if (! $product) {
+            return response()->json([
+                'message' => 'Produto nao encontrado.',
+            ], 404);
+        }
+
+        $quickLookupCache->rememberProductForRequest($product, $request);
+
+        return response()->json($quickLookupCache->productPayload($product));
     }
 
     private function buildBooleanFullTextSearchTerm(string $term): string
@@ -367,6 +431,30 @@ class ProductController extends Controller
         }, $words)));
 
         return $words !== [] ? implode(' ', $words) : trim($term);
+    }
+
+    private function parseWeightedBarcode(?string $barcode): ?array
+    {
+        $barcode = trim((string) $barcode);
+
+        if (
+            $barcode === '' ||
+            ! preg_match('/^\d{13}$/', $barcode) ||
+            substr($barcode, 0, 1) !== '2'
+        ) {
+            return null;
+        }
+
+        $productId = (int) substr($barcode, 1, 4);
+
+        if ($productId <= 0) {
+            return null;
+        }
+
+        return [
+            'barcode' => $barcode,
+            'product_id' => $productId,
+        ];
     }
 
     private function validateProduct(Request $request, ?Produto $product = null): array
