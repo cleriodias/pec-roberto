@@ -6,6 +6,7 @@ import { buildFiscalReceiptHtml, buildReceiptHtml, resolveReceiptComanda, resolv
 import axios from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+
 const MIN_CHARACTERS = 3;
 const numericRegex = /^\d+$/;
 const BARCODE_MIN_LENGTH = 5;
