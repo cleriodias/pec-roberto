@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\Unidade;
 use App\Support\DiscardAlertService;
 use App\Support\ManagementScope;
+use App\Support\ProductQuickLookupCache;
 use Carbon\Carbon;
 use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Http\JsonResponse;
@@ -119,6 +120,13 @@ class SalesReportController extends Controller
                 'route' => 'reports.lanchonete',
             ],
             [
+                'key' => 'pdr-cache',
+                'label' => 'PDR CACHE',
+                'description' => 'Produtos carregados no cache de leitura rapida do Dashboard.',
+                'icon' => 'bi-lightning-charge',
+                'route' => 'reports.pdr-cache',
+            ],
+            [
                 'key' => 'comandas-aberto',
                 'label' => 'Comandas em Aberto',
                 'description' => 'Comandas abertas agrupadas por numero com filtros por loja e usuario.',
@@ -192,6 +200,28 @@ class SalesReportController extends Controller
 
         return Inertia::render('Reports/Index', [
             'reports' => $reports,
+        ]);
+    }
+
+    public function pdrCache(Request $request, ProductQuickLookupCache $quickLookupCache): Response
+    {
+        $this->ensureManager($request);
+
+        $products = collect($quickLookupCache->forRequest($request))
+            ->values()
+            ->map(fn (array $product, int $index) => [
+                'position' => $index + 1,
+                'id' => (int) ($product['tb1_id'] ?? 0),
+                'name' => (string) ($product['tb1_nome'] ?? ''),
+                'barcode' => (string) ($product['tb1_codbar'] ?? ''),
+                'sale_price' => (float) ($product['tb1_vlr_venda'] ?? 0),
+            ])
+            ->all();
+
+        return Inertia::render('Reports/PdrCache', [
+            'products' => $products,
+            'cacheLimit' => $quickLookupCache->limit(),
+            'cacheHours' => $quickLookupCache->ttlHours(),
         ]);
     }
 

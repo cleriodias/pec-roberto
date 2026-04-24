@@ -52,6 +52,13 @@ const fallbackReports = [
         route: 'reports.lanchonete',
     },
     {
+        key: 'pdr-cache',
+        label: 'PDR CACHE',
+        description: 'Produtos carregados no cache de leitura rapida do Dashboard.',
+        icon: 'bi-lightning-charge',
+        route: 'reports.pdr-cache',
+    },
+    {
         key: 'comandas-aberto',
         label: 'Comandas em Aberto',
         description: 'Comandas abertas agrupadas por numero com filtros por periodo, loja e usuario.',

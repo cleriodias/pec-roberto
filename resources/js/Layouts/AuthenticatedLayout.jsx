@@ -79,6 +79,7 @@ const DEFAULT_MENU_KEYS = [
     'reports_gastos',
     'reports_descarte',
     'reports_descarte_consolidado',
+    'reports_pdr_cache',
     'reports_hoje',
     'discard',
     'switch_unit',
@@ -107,6 +108,7 @@ const MENU_ORDER_PRIORITY = [
     'reports_sales_period',
     'reports_descarte_consolidado',
     'reports_sales_detailed',
+    'reports_pdr_cache',
     'reports_notas_fiscais_emitidas',
     'online_users',
     'settings',
@@ -543,6 +545,15 @@ export default function AuthenticatedLayout({ header, headerClassName = '', chil
                 node: (
                     <Dropdown.Link href={route('reports.sales.detailed')}>
                         <MenuLabel icon="bi bi-card-checklist" text="Detalhado" />
+                    </Dropdown.Link>
+                ),
+            },
+            {
+                key: 'reports_pdr_cache',
+                visible: canSeeReports && hasMenuAccess('reports_pdr_cache'),
+                node: (
+                    <Dropdown.Link href={route('reports.pdr-cache')}>
+                        <MenuLabel icon="bi bi-lightning-charge" text="PDR CACHE" />
                     </Dropdown.Link>
                 ),
             },
