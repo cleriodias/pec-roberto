@@ -14,6 +14,7 @@ const WEIGHTED_BARCODE_PREFIX = '2';
 const WEIGHTED_BARCODE_LENGTH = 13;
 const paymentLabels = {
     maquina: 'Maquina',
+    pix: 'PiX',
     cartao_credito: 'Cartao credito',
     cartao_debito: 'Cartao debito',
     dinheiro: 'Dinheiro',
@@ -33,6 +34,11 @@ const cardTypeOptions = [
         value: 'cartao_debito',
         label: paymentLabels.cartao_debito,
         classes: 'bg-sky-600 hover:bg-sky-700 focus:ring-sky-200 text-white',
+    },
+    {
+        value: 'pix',
+        label: paymentLabels.pix,
+        classes: 'bg-cyan-600 hover:bg-cyan-700 focus:ring-cyan-200 text-white',
     },
 ];
 const fiscalStatusLabels = {
@@ -2116,14 +2122,14 @@ export default function Dashboard({ quickLookupProducts = [] }) {
                                         <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
                                         </p>
                                     </div>
-                                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
                                         {paymentOptions.map((option) => (
                                             <button
                                                 type="button"
                                                 key={option.value}
                                                 onClick={() => handlePaymentClick(option.value)}
                                                 disabled={saleLoading || items.length === 0 || isSalesBlocked}
-                                                className={`rounded-lg px-4 py-3 text-center text-base font-semibold shadow focus:outline-none focus:ring-4 disabled:cursor-not-allowed disabled:opacity-60 ${option.classes}`}
+                                                className={`rounded-lg px-3 py-2 text-center text-sm font-semibold shadow focus:outline-none focus:ring-4 disabled:cursor-not-allowed disabled:opacity-60 ${option.classes}`}
                                             >
                                                 {option.label}
                                             </button>

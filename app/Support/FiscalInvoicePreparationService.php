@@ -672,6 +672,7 @@ class FiscalInvoicePreparationService
     {
         return in_array((string) $paymentType, [
             'dinheiro',
+            'pix',
             'cartao_credito',
             'cartao_debito',
             'dinheiro_cartao_credito',
@@ -686,6 +687,7 @@ class FiscalInvoicePreparationService
             'vale' => 'Vale',
             'refeicao' => 'Refeicao',
             'faturar' => 'Faturar',
+            'pix' => 'PiX',
             default => strtoupper(str_replace('_', ' ', trim((string) $paymentType))) ?: 'NAO INFORMADO',
         };
 

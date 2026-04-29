@@ -844,6 +844,7 @@ class FiscalConfigurationController extends Controller
     {
         return match ((string) $paymentType) {
             'dinheiro' => 'Dinheiro',
+            'pix' => 'PiX',
             'cartao_credito' => 'Cartao credito',
             'cartao_debito' => 'Cartao debito',
             'dinheiro_cartao_credito' => 'Dinheiro + Cartao credito',

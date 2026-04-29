@@ -48,6 +48,7 @@ const statusClassName = (label) =>
 
 const PAYMENT_META = {
     dinheiro: { label: 'Dinheiro', icon: 'bi-cash-coin', className: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200' },
+    pix: { label: 'PiX', icon: 'bi-qr-code', className: 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200' },
     dinheiro_cartao_credito: { label: 'Dinheiro + Cartao credito', icon: 'bi-cash-stack', className: 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200' },
     dinheiro_cartao_debito: { label: 'Dinheiro + Cartao debito', icon: 'bi-cash-stack', className: 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200' },
     maquina: { label: 'Cartao', icon: 'bi-credit-card', className: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200' },

@@ -6,6 +6,7 @@ import { useState } from 'react';
 const PAYMENT_LABELS = {
     dinheiro: 'Dinheiro',
     maquina: 'Maquina',
+    pix: 'PiX',
     vale: 'Vale',
     refeicao: 'Refeicao',
     faturar: 'Faturar',

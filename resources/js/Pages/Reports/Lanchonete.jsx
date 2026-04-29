@@ -20,6 +20,7 @@ const paymentTypeLabels = {
     dinheiro: 'Dinheiro',
     maquina: 'Cartao',
     cartao: 'Cartao',
+    pix: 'PiX',
     vale: 'Vale',
     refeicao: 'Refeicao',
     faturar: 'Faturar',
