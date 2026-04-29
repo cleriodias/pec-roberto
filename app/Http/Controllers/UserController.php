@@ -66,7 +66,7 @@ class UserController extends Controller
             })
             ->when($request->filled('funcao'), function ($query) use ($request) {
                 $funcao = (int) $request->input('funcao');
-                $query->where('funcao', $funcao);
+                $query->where('funcao_original', $funcao);
             })
             ->when($request->filled('unit'), function ($query) use ($request) {
                 $unitId = (int) $request->input('unit');
@@ -161,12 +161,14 @@ class UserController extends Controller
         $authUser = $request->user();
         $request->merge([
             'name' => $this->normalizeUserName((string) $request->input('name', '')),
+            'phone' => $this->normalizePhone((string) $request->input('phone', '')) ?: null,
         ]);
 
         $request->validate(
             [
                 'name' => ['required', 'string', 'max:15', 'regex:/^\pL+(?: \pL+)?$/u'],
                 'email' => 'required|string|email|max:255|unique:users',
+                'phone' => 'nullable|digits_between:10,11',
                 'password' => 'required|string|min:4|max:255|confirmed',
                 'funcao' => 'required|integer|between:0,6',
                 'hr_ini' => 'required|date_format:H:i',
@@ -234,6 +236,7 @@ class UserController extends Controller
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
+            'phone' => $request->phone ?: null,
             'password' => $request->password,
             'cod_acesso' => $request->password,
             'funcao' => $request->funcao,
@@ -264,11 +267,15 @@ class UserController extends Controller
     public function update(Request $request, User $user)
     {
         $this->ensureCanManageUser($request->user(), $user);
+        $request->merge([
+            'phone' => $this->normalizePhone((string) $request->input('phone', '')) ?: null,
+        ]);
 
         $request->validate(
             [
                 'name' => 'required|string|max:255',
                 'email' => "required|string|email|max:255|unique:users,email,{$user->id}",
+                'phone' => 'nullable|digits_between:10,11',
                 'funcao' => 'required|integer|between:0,6',
                 'hr_ini' => 'required|date_format:H:i',
                 'hr_fim' => 'required|date_format:H:i|after:hr_ini',
@@ -326,17 +333,23 @@ class UserController extends Controller
 
         $primaryUnit = $unitIds[0] ?? 1;
 
-        $user->update([
+        $updateData = [
             'name' => $request->name,
             'email' => $request->email,
+            'phone' => $request->phone ?: null,
             'funcao' => $request->funcao,
-            'funcao_original' => $request->funcao,
             'hr_ini' => $request->hr_ini,
             'hr_fim' => $request->hr_fim,
             'salario' => $request->salario,
             'vr_cred' => $request->vr_cred,
             'tb2_id' => $primaryUnit,
-        ]);
+        ];
+
+        if ($user->funcao_original === null) {
+            $updateData['funcao_original'] = $user->funcao ?? $request->funcao;
+        }
+
+        $user->update($updateData);
 
         $user->units()->sync($unitIds);
 
@@ -429,6 +442,11 @@ class UserController extends Controller
     private function resolveRefeicaoDailyLimit(Carbon $date): float
     {
         return $date->isSunday() ? 24.0 : 12.0;
+    }
+
+    private function normalizePhone(string $value): string
+    {
+        return preg_replace('/\D/', '', $value) ?? '';
     }
 
     public function destroy(User $user)

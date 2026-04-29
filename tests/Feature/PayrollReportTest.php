@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ContraChequeCredito;
 use App\Models\Produto;
 use App\Models\SalaryAdvance;
 use App\Models\Unidade;
@@ -156,24 +157,24 @@ class PayrollReportTest extends TestCase
         $response->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Settings/FolhaPagamento')
             ->where('summary.employees_count', 2)
-            ->where('summary.salary_total', 2000.0)
-            ->where('summary.advances_total', 150.0)
-            ->where('summary.vales_total', 25.0)
-            ->where('summary.balance_total', 1825.0)
+            ->where('summary.salary_total', 2000)
+            ->where('summary.advances_total', 150)
+            ->where('summary.vales_total', 25)
+            ->where('summary.balance_total', 1825)
             ->has('rows', 2)
             ->where('rows.0.name', 'Admin')
-            ->where('rows.0.salary', 0.0)
-            ->where('rows.0.advances_total', 0.0)
-            ->where('rows.0.vales_total', 0.0)
-            ->where('rows.0.balance', 0.0)
+            ->where('rows.0.salary', 0)
+            ->where('rows.0.advances_total', 0)
+            ->where('rows.0.vales_total', 0)
+            ->where('rows.0.balance', 0)
             ->where('rows.1.name', 'Bruno')
-            ->where('rows.1.salary', 2000.0)
-            ->where('rows.1.advances_total', 150.0)
-            ->where('rows.1.vales_total', 25.0)
-            ->where('rows.1.balance', 1825.0)
+            ->where('rows.1.salary', 2000)
+            ->where('rows.1.advances_total', 150)
+            ->where('rows.1.vales_total', 25)
+            ->where('rows.1.balance', 1825)
             ->where('rows.1.detail.advances_count', 2)
             ->where('rows.1.detail.vales_count', 1)
-            ->where('rows.1.detail.vales.0.total', 25.0)
+            ->where('rows.1.detail.vales.0.total', 25)
         );
     }
 
@@ -239,6 +240,62 @@ class PayrollReportTest extends TestCase
             ->has('rows', 1)
             ->where('rows.0.name', 'Caixa Perfil')
             ->where('rows.0.role_label', 'Caixa')
+        );
+    }
+
+    public function test_admin_can_view_contra_cheque_with_extra_credits_hidden_multi_unit_badges_and_phone(): void
+    {
+        $unitA = $this->makeUnit('Loja A');
+        $unitB = $this->makeUnit('Loja B');
+
+        $admin = User::factory()->create([
+            'funcao' => 1,
+            'funcao_original' => 1,
+            'tb2_id' => $unitA->tb2_id,
+        ]);
+        $admin->units()->sync([$unitA->tb2_id, $unitB->tb2_id]);
+
+        $employee = User::factory()->create([
+            'name' => 'Bruno',
+            'email' => 'bruno@example.com',
+            'phone' => '62999998888',
+            'funcao' => 5,
+            'funcao_original' => 5,
+            'salario' => 2000,
+            'tb2_id' => $unitA->tb2_id,
+        ]);
+        $employee->units()->sync([$unitA->tb2_id, $unitB->tb2_id]);
+
+        ContraChequeCredito::create([
+            'user_id' => $employee->id,
+            'tb28_periodo_inicio' => '2026-04-01',
+            'tb28_periodo_fim' => '2026-04-30',
+            'tb28_tipo' => 'feriado',
+            'tb28_descricao' => null,
+            'tb28_valor' => 120.50,
+        ]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->get(route('settings.contra-cheque', [
+                'start_date' => '2026-04-01',
+                'end_date' => '2026-04-30',
+                'user_id' => $employee->id,
+            ]));
+
+        $response->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Settings/ContraCheque')
+            ->where('summary.employees_count', 1)
+            ->where('summary.extra_credits_total', 120.5)
+            ->where('rows.0.name', 'Bruno')
+            ->where('rows.0.phone', '62999998888')
+            ->where('rows.0.unit_names', [])
+            ->where('rows.0.extra_credits_total', 120.5)
+            ->where('rows.0.balance', 2120.5)
+            ->where('rows.0.detail.extra_credits_count', 1)
+            ->where('rows.0.detail.extra_credits.0.type', 'feriado')
+            ->where('rows.0.detail.extra_credits.0.type_label', 'Feriado')
+            ->where('rows.0.detail.extra_credits.0.description', 'Feriado')
         );
     }
 

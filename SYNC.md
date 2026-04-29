@@ -1,3 +1,52 @@
+## 29/04/26 - Contra-cheque com creditos extras, PDF tradicional e WhatsApp
+
+Causa:
+- a tela `settings/contra-cheque` ainda mostrava badges de loja para usuarios com multiplas unidades, o que conflita com a regra solicitada de nao exibir nenhuma nesses casos;
+- nao existia cadastro de creditos extras por periodo/usuario, entao o contra-cheque nao permitia lancamentos como `Primeiro Domingo`, `Feriado`, `Bonificacao` ou `Outros`;
+- a impressao 80mm nao discriminava o tipo gravado desses creditos e nao havia opcao de PDF no formato tradicional brasileiro;
+- o cadastro de usuario ainda nao possuia campo `telefone`, impedindo o envio do resumo do contra-cheque por WhatsApp;
+- o `UserController` local ainda sobrescrevia `funcao_original` na edicao e filtrava a listagem por `funcao` atual, divergindo do projeto original.
+
+O que foi alterado:
+- `settings/contra-cheque` recebeu o botao `+` ao lado das acoes do card, abrindo modal para cadastrar credito extra com os tipos `Primeiro Domingo`, `Feriado`, `Bonificacao` e `Outros`;
+- foi criada a tabela `tb28_contra_cheque_creditos` e o model `ContraChequeCredito` para armazenar os creditos por usuario e periodo;
+- `PayrollController` passou a carregar, somar e discriminar os creditos extras no payload do contra-cheque;
+- quando o usuario tiver mais de uma loja vinculada, `resolveUserUnitNames()` agora retorna vazio e a interface nao mostra nenhuma badge de unidade;
+- a impressao 80mm passou a listar cada credito com o tipo gravado, sem usar o texto generico `Creditos extras`;
+- foi adicionado o botao `PDF`, reaproveitando a mesma base do contra-cheque para abrir uma impressao em layout tradicional brasileiro;
+- foi adicionado o botao `WhatsApp`, que usa o telefone do funcionario para abrir o envio de um resumo do contra-cheque;
+- o cadastro e a edicao de usuario passaram a aceitar e persistir o campo `phone`;
+- `UserController` foi sincronizado com a regra atual do original: filtro de `funcao` usando `funcao_original` e preservacao de `funcao_original` na edicao;
+- testes de usuarios e folha foram ajustados para cobrir telefone, preservacao de `funcao_original`, creditos extras e ocultacao de lojas em usuarios multiunidade.
+
+Como sincronizar no projeto espelho:
+- copiar `routes/web.php`;
+- copiar `app/Http/Controllers/PayrollController.php`;
+- copiar `app/Http/Controllers/UserController.php`;
+- copiar `app/Models/User.php` e o novo `app/Models/ContraChequeCredito.php`;
+- copiar `resources/js/Pages/Settings/ContraCheque.jsx`;
+- copiar `resources/js/Utils/contraChequePrint.js`;
+- copiar `resources/js/Pages/Users/UserCreate.jsx` e `resources/js/Pages/Users/UserEdit.jsx`;
+- copiar as migrations `2026_04_29_040000_create_tb28_contra_cheque_creditos_table.php` e `2026_04_29_050000_add_phone_to_users_table.php`;
+- copiar os ajustes de `tests/Feature/UserManagementTest.php` e `tests/Feature/PayrollReportTest.php` se quiser manter a mesma cobertura automatizada;
+- nao ha update nem delete em registros nesta etapa; a mudanca de banco e apenas estrutural.
+
+Arquivos alterados:
+- `routes/web.php`
+- `app/Http/Controllers/PayrollController.php`
+- `app/Http/Controllers/UserController.php`
+- `app/Models/User.php`
+- `app/Models/ContraChequeCredito.php`
+- `resources/js/Pages/Settings/ContraCheque.jsx`
+- `resources/js/Utils/contraChequePrint.js`
+- `resources/js/Pages/Users/UserCreate.jsx`
+- `resources/js/Pages/Users/UserEdit.jsx`
+- `tests/Feature/UserManagementTest.php`
+- `tests/Feature/PayrollReportTest.php`
+- `database/migrations/2026_04_29_040000_create_tb28_contra_cheque_creditos_table.php`
+- `database/migrations/2026_04_29_050000_add_phone_to_users_table.php`
+- `SYNC.md`
+
 ## 24/04/26 - Busca textual do Dashboard sem FULLTEXT
 
 Causa:

@@ -22,6 +22,24 @@ const formatTime = (value) => {
     return value.substring(0, 5);
 };
 
+const formatPhoneInput = (value) => {
+    const digits = String(value ?? '').replace(/\D/g, '').slice(0, 11);
+
+    if (digits.length <= 2) {
+        return digits;
+    }
+
+    if (digits.length <= 7) {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    }
+
+    if (digits.length <= 10) {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
+
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+};
+
 export default function UserEdit({ auth, user, units = [] }) {
     const pageProps = usePage().props;
     const csrfToken = pageProps?.csrf_token ?? '';
@@ -33,6 +51,7 @@ export default function UserEdit({ auth, user, units = [] }) {
         id: user.id || '',
         name: user.name || '',
         email: user.email || '',
+        phone: formatPhoneInput(user.phone || ''),
         funcao: user.funcao !== undefined && user.funcao !== null ? String(user.funcao) : '5',
         hr_ini: formatTime(user.hr_ini) || '08:00',
         hr_fim: formatTime(user.hr_fim) || '17:00',
@@ -136,6 +155,20 @@ export default function UserEdit({ auth, user, units = [] }) {
                                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 />
                                 {errors.email && <span className="text-red-600">{errors.email}</span>}
+                            </div>
+
+                            <div className="mb-4">
+                                <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Telefone</label>
+                                <input
+                                    id="phone"
+                                    type="text"
+                                    inputMode="numeric"
+                                    placeholder="(99) 99999-9999"
+                                    value={data.phone}
+                                    onChange={(e) => setData('phone', formatPhoneInput(e.target.value))}
+                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                />
+                                {errors.phone && <span className="text-red-600">{errors.phone}</span>}
                             </div>
 
                             <div className="mb-4">

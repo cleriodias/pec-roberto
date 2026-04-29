@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ContraChequeCredito;
 use App\Models\SalaryAdvance;
 use App\Models\Unidade;
 use App\Models\User;
@@ -9,8 +10,11 @@ use App\Models\Venda;
 use App\Support\ManagementScope;
 use Carbon\Carbon;
 use Carbon\Exceptions\InvalidFormatException;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -26,6 +30,13 @@ class PayrollController extends Controller
         6 => 'Cliente',
     ];
 
+    private const EXTRA_CREDIT_TYPE_LABELS = [
+        'primeiro_domingo' => 'Primeiro Domingo',
+        'feriado' => 'Feriado',
+        'bonificacao' => 'Bonificacao',
+        'outros' => 'Outros',
+    ];
+
     public function index(Request $request): Response
     {
         $this->ensureAdmin($request->user());
@@ -38,6 +49,63 @@ class PayrollController extends Controller
         $this->ensureAdmin($request->user());
 
         return Inertia::render('Settings/ContraCheque', $this->buildPayrollPayload($request, true));
+    }
+
+    public function storeContraChequeCredit(Request $request, User $user): RedirectResponse
+    {
+        $this->ensureAdmin($request->user());
+        $this->ensureManagedPayrollUser($request->user(), $user);
+
+        $data = $request->validate([
+            'start_date' => ['required', 'string'],
+            'end_date' => ['required', 'string'],
+            'unit_id' => ['nullable', 'string'],
+            'role' => ['nullable', 'string'],
+            'user_id' => ['nullable', 'string'],
+            'credit_type' => ['required', 'string', Rule::in(array_keys(self::EXTRA_CREDIT_TYPE_LABELS))],
+            'other_description' => ['nullable', 'string', 'max:255'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+        ], [
+            'start_date.required' => 'Informe o inicio do periodo.',
+            'end_date.required' => 'Informe o fim do periodo.',
+            'credit_type.required' => 'Selecione o tipo do credito.',
+            'credit_type.in' => 'O tipo do credito selecionado e invalido.',
+            'amount.required' => 'Informe o valor do credito.',
+            'amount.numeric' => 'O valor do credito deve ser numerico.',
+            'amount.min' => 'O valor do credito deve ser maior que zero.',
+            'other_description.max' => 'A descricao de Outros deve ter no maximo 255 caracteres.',
+        ]);
+
+        $startDate = $this->parseRequiredDate((string) $data['start_date'], 'start_date');
+        $endDate = $this->parseRequiredDate((string) $data['end_date'], 'end_date');
+
+        if ($endDate->lt($startDate)) {
+            throw ValidationException::withMessages([
+                'end_date' => 'A data final nao pode ser menor que a data inicial.',
+            ]);
+        }
+
+        $creditType = (string) $data['credit_type'];
+        $otherDescription = trim((string) ($data['other_description'] ?? ''));
+
+        if ($creditType === 'outros' && $otherDescription === '') {
+            throw ValidationException::withMessages([
+                'other_description' => 'Informe a descricao para o tipo Outros.',
+            ]);
+        }
+
+        ContraChequeCredito::create([
+            'user_id' => (int) $user->id,
+            'tb28_periodo_inicio' => $startDate->toDateString(),
+            'tb28_periodo_fim' => $endDate->toDateString(),
+            'tb28_tipo' => $creditType,
+            'tb28_descricao' => $creditType === 'outros' ? $otherDescription : null,
+            'tb28_valor' => round((float) $data['amount'], 2),
+        ]);
+
+        return redirect()
+            ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $startDate, $endDate))
+            ->with('success', 'Credito adicional do contra-cheque cadastrado com sucesso.');
     }
 
     private function buildPayrollPayload(Request $request, bool $onlyWithSalary = false): array
@@ -141,7 +209,7 @@ class PayrollController extends Controller
             $selectedUserId = null;
         }
 
-        $users = $usersQuery->get(['id', 'name', 'funcao', 'salario', 'tb2_id']);
+        $users = $usersQuery->get(['id', 'name', 'phone', 'funcao', 'salario', 'tb2_id']);
 
         $userIds = $users->pluck('id')->map(fn ($value) => (int) $value)->values();
 
@@ -170,11 +238,28 @@ class PayrollController extends Controller
                     'data_hora',
                 ]);
 
+        $extraCredits = $userIds->isEmpty()
+            ? collect()
+            : ContraChequeCredito::query()
+                ->whereIn('user_id', $userIds)
+                ->whereDate('tb28_periodo_inicio', $startDate)
+                ->whereDate('tb28_periodo_fim', $endDate)
+                ->orderBy('created_at')
+                ->orderBy('tb28_id')
+                ->get([
+                    'tb28_id',
+                    'user_id',
+                    'tb28_tipo',
+                    'tb28_descricao',
+                    'tb28_valor',
+                ]);
+
         $advancesByUser = $advances->groupBy('user_id');
         $valeSalesByUser = $valeSales->groupBy('id_user_vale');
+        $extraCreditsByUser = $extraCredits->groupBy('user_id');
 
         $rows = $users
-            ->map(function (User $user) use ($advancesByUser, $valeSalesByUser, $startDate, $endDate) {
+            ->map(function (User $user) use ($advancesByUser, $valeSalesByUser, $extraCreditsByUser, $startDate, $endDate) {
                 $advanceRecords = $advancesByUser
                     ->get($user->id, collect())
                     ->map(function (SalaryAdvance $advance) {
@@ -209,24 +294,46 @@ class PayrollController extends Controller
                     ->sortBy('date_time')
                     ->values();
 
+                $extraCreditRecords = $extraCreditsByUser
+                    ->get($user->id, collect())
+                    ->map(function (ContraChequeCredito $credit) {
+                        $typeLabel = self::EXTRA_CREDIT_TYPE_LABELS[$credit->tb28_tipo] ?? 'Outros';
+                        $description = $credit->tb28_tipo === 'outros' && filled($credit->tb28_descricao)
+                            ? sprintf('%s: %s', $typeLabel, trim((string) $credit->tb28_descricao))
+                            : $typeLabel;
+
+                        return [
+                            'id' => (int) $credit->tb28_id,
+                            'type' => $credit->tb28_tipo,
+                            'type_label' => $typeLabel,
+                            'description' => $description,
+                            'amount' => round((float) $credit->tb28_valor, 2),
+                        ];
+                    })
+                    ->values();
+
                 $advanceTotal = round((float) $advanceRecords->sum('amount'), 2);
                 $valeTotal = round((float) $valeRecords->sum('total'), 2);
+                $extraCreditTotal = round((float) $extraCreditRecords->sum('amount'), 2);
                 $salary = round((float) ($user->salario ?? 0), 2);
-                $balance = round($salary - $advanceTotal - $valeTotal, 2);
+                $balance = round($salary + $extraCreditTotal - $advanceTotal - $valeTotal, 2);
                 $unitNames = $this->resolveUserUnitNames($user);
 
                 return [
                     'id' => (int) $user->id,
                     'name' => $user->name,
+                    'phone' => $user->phone,
                     'role_label' => self::ROLE_LABELS[(int) $user->funcao] ?? '---',
                     'salary' => $salary,
                     'advances_total' => $advanceTotal,
                     'vales_total' => $valeTotal,
+                    'extra_credits_total' => $extraCreditTotal,
                     'balance' => $balance,
                     'unit_names' => $unitNames->values()->all(),
                     'detail' => [
                         'user_id' => (int) $user->id,
                         'user_name' => $user->name,
+                        'phone' => $user->phone,
                         'role_label' => self::ROLE_LABELS[(int) $user->funcao] ?? '---',
                         'unit_names' => $unitNames->values()->all(),
                         'start_date' => $startDate,
@@ -234,11 +341,14 @@ class PayrollController extends Controller
                         'salary' => $salary,
                         'advances_total' => $advanceTotal,
                         'vales_total' => $valeTotal,
+                        'extra_credits_total' => $extraCreditTotal,
                         'balance' => $balance,
                         'advances_count' => $advanceRecords->count(),
                         'vales_count' => $valeRecords->count(),
+                        'extra_credits_count' => $extraCreditRecords->count(),
                         'advances' => $advanceRecords->all(),
                         'vales' => $valeRecords->all(),
+                        'extra_credits' => $extraCreditRecords->all(),
                     ],
                 ];
             })
@@ -249,6 +359,7 @@ class PayrollController extends Controller
             'salary_total' => round((float) $rows->sum('salary'), 2),
             'advances_total' => round((float) $rows->sum('advances_total'), 2),
             'vales_total' => round((float) $rows->sum('vales_total'), 2),
+            'extra_credits_total' => round((float) $rows->sum('extra_credits_total'), 2),
             'balance_total' => round((float) $rows->sum('balance'), 2),
         ];
 
@@ -304,6 +415,27 @@ class PayrollController extends Controller
         }
 
         return $fallback->copy();
+    }
+
+    private function parseRequiredDate(string $value, string $field): Carbon
+    {
+        $normalized = trim($value);
+
+        foreach (['d/m/y', 'd/m/Y', 'Y-m-d'] as $format) {
+            try {
+                $date = Carbon::createFromFormat($format, $normalized);
+            } catch (\Throwable $exception) {
+                continue;
+            }
+
+            if ($date && $date->format($format) === $normalized) {
+                return $date->startOfDay();
+            }
+        }
+
+        throw ValidationException::withMessages([
+            $field => 'Informe a data no formato DD/MM/AA.',
+        ]);
     }
 
     private function resolveSelectedUnitId(mixed $requestedUnitId, Collection $allowedUnitIds): ?int
@@ -438,6 +570,43 @@ class PayrollController extends Controller
             $units->push($user->primaryUnit->tb2_nome);
         }
 
-        return $units->unique()->sort()->values();
+        $uniqueUnits = $units->unique()->sort()->values();
+
+        if ($uniqueUnits->count() > 1) {
+            return collect();
+        }
+
+        return $uniqueUnits;
+    }
+
+    private function ensureManagedPayrollUser($authUser, User $user): void
+    {
+        $query = User::query()
+            ->whereKey($user->id)
+            ->where('funcao', '!=', 6);
+
+        ManagementScope::applyManagedUserScope($query, $authUser);
+
+        if (! $query->exists()) {
+            abort(403);
+        }
+    }
+
+    private function buildContraChequeRedirectFilters(array $data, Carbon $startDate, Carbon $endDate): array
+    {
+        $filters = [
+            'start_date' => $startDate->toDateString(),
+            'end_date' => $endDate->toDateString(),
+        ];
+
+        foreach (['unit_id', 'role', 'user_id'] as $field) {
+            $value = $data[$field] ?? null;
+
+            if ($value !== null && $value !== '' && $value !== 'all') {
+                $filters[$field] = $value;
+            }
+        }
+
+        return $filters;
     }
 }

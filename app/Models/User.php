@@ -23,6 +23,7 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'phone',
         'password',
         'funcao',
         'funcao_original',
@@ -54,6 +55,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'phone' => 'string',
             'funcao' => 'integer',
             'funcao_original' => 'integer',
             'hr_ini' => 'string',

@@ -31,6 +31,24 @@ const formatNameInput = (value) => {
     return formattedName.slice(0, 15);
 };
 
+const formatPhoneInput = (value) => {
+    const digits = String(value ?? '').replace(/\D/g, '').slice(0, 11);
+
+    if (digits.length <= 2) {
+        return digits;
+    }
+
+    if (digits.length <= 7) {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    }
+
+    if (digits.length <= 10) {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
+
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+};
+
 export default function UserCreate({ auth, units = [] }) {
     const now = new Date();
     const generatedPassword = `${String(now.getHours()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
@@ -41,7 +59,8 @@ export default function UserCreate({ auth, units = [] }) {
 
     const { data, setData, post, processing, errors } = useForm({
         name: '',
-        email: '@paoecafe83.com.br',
+        email: '@paoecafepremium.com.br',
+        phone: '',
         password: generatedPassword,
         password_confirmation: generatedPassword,
         funcao: '4',
@@ -112,13 +131,27 @@ export default function UserCreate({ auth, units = [] }) {
                                     <input
                                         id="email"
                                         type="email"
-                                        placeholder={'@paoecafe83.com.br'}
+                                        placeholder={'@paoecafepremium.com.br'}
                                         value={data.email}
                                         onChange={(e) => setData('email', e.target.value)}
                                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                     />
                                     {errors.email && <span className="text-red-600">{errors.email}</span>}
                                 </div>
+                            </div>
+
+                            <div className="mb-4">
+                                <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Telefone</label>
+                                <input
+                                    id="phone"
+                                    type="text"
+                                    inputMode="numeric"
+                                    placeholder="(99) 99999-9999"
+                                    value={data.phone}
+                                    onChange={(e) => setData('phone', formatPhoneInput(e.target.value))}
+                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                />
+                                {errors.phone && <span className="text-red-600">{errors.phone}</span>}
                             </div>
 
                             <div className="mb-4">

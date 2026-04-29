@@ -1,6 +1,10 @@
+import AlertMessage from '@/Components/Alert/AlertMessage';
 import PrimaryButton from '@/Components/Button/PrimaryButton';
+import InputError from '@/Components/InputError';
+import Modal from '@/Components/Modal';
+import SecondaryButton from '@/Components/SecondaryButton';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { printContraCheque } from '@/Utils/contraChequePrint';
+import { printContraCheque, printContraChequePdf } from '@/Utils/contraChequePrint';
 import {
     formatBrazilShortDate,
     isoToBrazilShortDateInput,
@@ -15,14 +19,56 @@ import {
     getUnitBadgeClassName,
     getUnitBadgeStyle,
 } from '@/Utils/brandBadges';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
+
+const EXTRA_CREDIT_TYPE_OPTIONS = [
+    { value: 'primeiro_domingo', label: 'Primeiro Domingo' },
+    { value: 'feriado', label: 'Feriado' },
+    { value: 'bonificacao', label: 'Bonificacao' },
+    { value: 'outros', label: 'Outros' },
+];
 
 const formatCurrency = (value) =>
     Number(value ?? 0).toLocaleString('pt-BR', {
         style: 'currency',
         currency: 'BRL',
     });
+
+const normalizeWhatsappPhone = (value) => {
+    const digits = String(value ?? '').replace(/\D/g, '');
+
+    if (digits.length === 10 || digits.length === 11) {
+        return `55${digits}`;
+    }
+
+    if (digits.length === 12 || digits.length === 13) {
+        return digits;
+    }
+
+    return '';
+};
+
+const buildWhatsappSummaryMessage = (detail) => {
+    const extraCredits = detail?.extra_credits_total ?? 0;
+    const extraCreditLines = (detail?.extra_credits ?? [])
+        .map((credit) => `- ${credit.description || credit.type_label}: ${formatCurrency(credit.amount)}`)
+        .join('\n');
+
+    return [
+        'Resumo do contra-cheque',
+        `Funcionario: ${detail?.user_name ?? '---'}`,
+        `Periodo: ${formatBrazilShortDate(detail?.start_date)} a ${formatBrazilShortDate(detail?.end_date)}`,
+        `Salario base: ${formatCurrency(detail?.salary)}`,
+        `Creditos extras: ${formatCurrency(extraCredits)}`,
+        extraCreditLines ? `Lancamentos:\n${extraCreditLines}` : null,
+        `Adiantamentos: ${formatCurrency(detail?.advances_total)}`,
+        `Vales: ${formatCurrency(detail?.vales_total)}`,
+        `Liquido a receber: ${formatCurrency(detail?.balance)}`,
+    ]
+        .filter(Boolean)
+        .join('\n');
+};
 
 export default function ContraCheque({
     rows = [],
@@ -37,6 +83,7 @@ export default function ContraCheque({
     selectedUserId = null,
     unit = null,
 }) {
+    const { flash } = usePage().props;
     const { data, setData, get, processing } = useForm({
         start_date: isoToBrazilShortDateInput(startDate ?? ''),
         end_date: isoToBrazilShortDateInput(endDate ?? ''),
@@ -53,7 +100,27 @@ export default function ContraCheque({
                 ? String(selectedUserId)
                 : 'all',
     });
+    const [selectedCreditRow, setSelectedCreditRow] = useState(null);
     const [printError, setPrintError] = useState('');
+    const creditForm = useForm({
+        start_date: startDate ?? '',
+        end_date: endDate ?? '',
+        unit_id:
+            selectedUnitId !== null && selectedUnitId !== undefined
+                ? String(selectedUnitId)
+                : 'all',
+        role:
+            selectedRole !== null && selectedRole !== undefined
+                ? String(selectedRole)
+                : 'all',
+        user_id:
+            selectedUserId !== null && selectedUserId !== undefined
+                ? String(selectedUserId)
+                : 'all',
+        credit_type: 'primeiro_domingo',
+        other_description: '',
+        amount: '',
+    });
 
     const summaryCards = useMemo(
         () => [
@@ -78,6 +145,11 @@ export default function ContraCheque({
                 value: formatCurrency(summary.vales_total),
             },
             {
+                key: 'credits',
+                label: 'Creditos extras',
+                value: formatCurrency(summary.extra_credits_total),
+            },
+            {
                 key: 'balance',
                 label: 'Saldo a receber',
                 value: formatCurrency(summary.balance_total),
@@ -94,6 +166,24 @@ export default function ContraCheque({
         );
     };
 
+    const handlePrintPdf = (detail) => {
+        setPrintError(
+            printContraChequePdf(detail, 'Permita pop-ups para gerar o PDF do contra-cheque.'),
+        );
+    };
+
+    const handleOpenWhatsapp = (detail) => {
+        const phone = normalizeWhatsappPhone(detail?.phone);
+
+        if (!phone) {
+            setPrintError('Cadastre um telefone valido para enviar o resumo do contra-cheque por WhatsApp.');
+            return;
+        }
+
+        const message = buildWhatsappSummaryMessage(detail);
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+    };
+
     const handleSubmit = (event) => {
         event.preventDefault();
 
@@ -107,6 +197,51 @@ export default function ContraCheque({
                 unit_id: data.unit_id,
                 role: data.role,
                 user_id: data.user_id,
+            },
+        });
+    };
+
+    const openCreditModal = (row) => {
+        setSelectedCreditRow(row);
+        creditForm.clearErrors();
+        creditForm.setData({
+            start_date: row?.detail?.start_date ?? startDate ?? '',
+            end_date: row?.detail?.end_date ?? endDate ?? '',
+            unit_id:
+                selectedUnitId !== null && selectedUnitId !== undefined
+                    ? String(selectedUnitId)
+                    : 'all',
+            role:
+                selectedRole !== null && selectedRole !== undefined
+                    ? String(selectedRole)
+                    : 'all',
+            user_id:
+                selectedUserId !== null && selectedUserId !== undefined
+                    ? String(selectedUserId)
+                    : 'all',
+            credit_type: 'primeiro_domingo',
+            other_description: '',
+            amount: '',
+        });
+    };
+
+    const closeCreditModal = () => {
+        setSelectedCreditRow(null);
+        creditForm.clearErrors();
+    };
+
+    const handleCreditSubmit = (event) => {
+        event.preventDefault();
+
+        if (!selectedCreditRow?.id) {
+            return;
+        }
+
+        creditForm.post(route('settings.contra-cheque.creditos.store', selectedCreditRow.id), {
+            preserveScroll: true,
+            onSuccess: () => {
+                closeCreditModal();
+                creditForm.reset('credit_type', 'other_description', 'amount');
             },
         });
     };
@@ -136,6 +271,8 @@ export default function ContraCheque({
 
             <div className="py-8">
                 <div className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8">
+                    <AlertMessage message={flash} />
+
                     {printError && (
                         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
                             {printError}
@@ -249,7 +386,7 @@ export default function ContraCheque({
                             </span>
                         </div>
 
-                        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
                             {summaryCards.map((card) => (
                                 <div
                                     key={card.key}
@@ -329,6 +466,14 @@ export default function ContraCheque({
                                         </div>
                                         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
                                             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+                                                Creditos extras
+                                            </p>
+                                            <p className="mt-2 text-base font-semibold text-blue-600 dark:text-blue-300">
+                                                {formatCurrency(row.extra_credits_total)}
+                                            </p>
+                                        </div>
+                                        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:col-span-2 dark:border-gray-700 dark:bg-gray-900">
+                                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
                                                 Saldo
                                             </p>
                                             <p className={`mt-2 text-base font-semibold ${row.balance < 0 ? 'text-red-600 dark:text-red-300' : 'text-green-600 dark:text-green-300'}`}>
@@ -337,13 +482,39 @@ export default function ContraCheque({
                                         </div>
                                     </div>
 
-                                    <div className="mt-5">
+                                    <div className="mt-5 flex gap-3">
                                         <PrimaryButton
                                             type="button"
                                             onClick={() => handlePrint(row.detail)}
-                                            className="w-full justify-center rounded-2xl px-4 py-3 text-sm font-semibold normal-case tracking-normal"
+                                            className="flex-1 justify-center rounded-2xl px-4 py-3 text-sm font-semibold normal-case tracking-normal"
                                         >
                                             Imprimir 80mm
+                                        </PrimaryButton>
+                                        <PrimaryButton
+                                            type="button"
+                                            onClick={() => handlePrintPdf(row.detail)}
+                                            className="flex-1 justify-center rounded-2xl px-4 py-3 text-sm font-semibold normal-case tracking-normal"
+                                        >
+                                            PDF
+                                        </PrimaryButton>
+                                        <PrimaryButton
+                                            type="button"
+                                            onClick={() => handleOpenWhatsapp(row.detail)}
+                                            disabled={!normalizeWhatsappPhone(row.phone)}
+                                            className="justify-center rounded-2xl px-4 py-3 text-sm font-semibold normal-case tracking-normal"
+                                            aria-label={`Enviar resumo do contra-cheque de ${row.name} por WhatsApp`}
+                                            title={normalizeWhatsappPhone(row.phone) ? 'Enviar resumo por WhatsApp' : 'Telefone nao cadastrado'}
+                                        >
+                                            WhatsApp
+                                        </PrimaryButton>
+                                        <PrimaryButton
+                                            type="button"
+                                            onClick={() => openCreditModal(row)}
+                                            className="justify-center rounded-2xl px-4 py-3 text-lg font-semibold normal-case tracking-normal"
+                                            aria-label={`Adicionar credito ao contra-cheque de ${row.name}`}
+                                            title={`Adicionar credito ao contra-cheque de ${row.name}`}
+                                        >
+                                            +
                                         </PrimaryButton>
                                     </div>
                                 </article>
@@ -352,6 +523,85 @@ export default function ContraCheque({
                     )}
                 </div>
             </div>
+
+            <Modal show={Boolean(selectedCreditRow)} onClose={closeCreditModal} maxWidth="lg" tone="light">
+                <form onSubmit={handleCreditSubmit}>
+                    <div className="border-b border-gray-200 px-6 py-5">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                            Adicionar valor ao contra-cheque
+                        </h3>
+                        <p className="mt-1 text-sm text-gray-600">
+                            {selectedCreditRow?.name ?? '---'} • Periodo {formatBrazilShortDate(creditForm.data.start_date)} a {formatBrazilShortDate(creditForm.data.end_date)}
+                        </p>
+                    </div>
+
+                    <div className="space-y-5 px-6 py-5">
+                        <div>
+                            <label className="text-sm font-medium text-gray-700">
+                                Tipo
+                            </label>
+                            <select
+                                value={creditForm.data.credit_type}
+                                onChange={(event) => creditForm.setData('credit_type', event.target.value)}
+                                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                            >
+                                {EXTRA_CREDIT_TYPE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <InputError message={creditForm.errors.credit_type} className="mt-2" />
+                        </div>
+
+                        {creditForm.data.credit_type === 'outros' && (
+                            <div>
+                                <label className="text-sm font-medium text-gray-700">
+                                    Informe o tipo
+                                </label>
+                                <input
+                                    type="text"
+                                    value={creditForm.data.other_description}
+                                    onChange={(event) => creditForm.setData('other_description', event.target.value)}
+                                    className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                    placeholder="Descreva o credito"
+                                />
+                                <InputError message={creditForm.errors.other_description} className="mt-2" />
+                            </div>
+                        )}
+
+                        <div>
+                            <label className="text-sm font-medium text-gray-700">
+                                Valor a ser creditado
+                            </label>
+                            <input
+                                type="text"
+                                inputMode="decimal"
+                                value={creditForm.data.amount}
+                                onChange={(event) => {
+                                    const normalizedValue = event.target.value
+                                        .replace(/[^0-9,.-]/g, '')
+                                        .replace(',', '.');
+
+                                    creditForm.setData('amount', normalizedValue);
+                                }}
+                                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                placeholder="0,00"
+                            />
+                            <InputError message={creditForm.errors.amount} className="mt-2" />
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
+                        <SecondaryButton type="button" onClick={closeCreditModal} className="rounded-xl normal-case tracking-normal">
+                            Cancelar
+                        </SecondaryButton>
+                        <PrimaryButton type="submit" disabled={creditForm.processing} className="rounded-xl px-4 py-2 normal-case tracking-normal">
+                            Salvar credito
+                        </PrimaryButton>
+                    </div>
+                </form>
+            </Modal>
         </AuthenticatedLayout>
     );
 }
