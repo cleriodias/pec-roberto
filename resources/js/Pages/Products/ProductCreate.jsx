@@ -27,6 +27,13 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
         tb1_csosn: "",
         tb1_cst: "",
         tb1_aliquota_icms: "0.00",
+        tb1_cst_ibscbs: "",
+        tb1_cclasstrib: "",
+        tb1_ind_doacao: false,
+        tb1_aliquota_ibs_uf: "",
+        tb1_aliquota_ibs_mun: "",
+        tb1_aliquota_cbs: "",
+        tb1_aliquota_is: "",
         tb1_qtd: "0",
         tb1_status: defaultStatus,
         tb1_vr_credit: false,
@@ -284,6 +291,9 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
                                     <p className="mt-1 text-xs font-medium text-amber-700">
                                         Todos os campos fiscais sao opcionais no cadastro. Preencha quando quiser deixar o produto pronto para emissao fiscal.
                                     </p>
+                                    <p className="mt-1 text-xs text-blue-700">
+                                        Reforma 2026: se quiser destacar CBS e IBS na NFC-e, preencha tambem os campos do bloco IBS/CBS abaixo.
+                                    </p>
                                 </div>
 
                                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -335,6 +345,42 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
                                         <label htmlFor="tb1_aliquota_icms" className="block text-sm font-medium text-gray-700">Aliquota ICMS</label>
                                         <input id="tb1_aliquota_icms" type="number" step="0.01" min="0" max="100" value={data.tb1_aliquota_icms} onChange={(e) => setData("tb1_aliquota_icms", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
                                         {errors.tb1_aliquota_icms && <span className="text-red-600">{errors.tb1_aliquota_icms}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_cst_ibscbs" className="block text-sm font-medium text-gray-700">CST IBS/CBS</label>
+                                        <input id="tb1_cst_ibscbs" type="text" maxLength="3" value={data.tb1_cst_ibscbs} onChange={(e) => setData("tb1_cst_ibscbs", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_cst_ibscbs && <span className="text-red-600">{errors.tb1_cst_ibscbs}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_cclasstrib" className="block text-sm font-medium text-gray-700">cClassTrib</label>
+                                        <input id="tb1_cclasstrib" type="text" maxLength="6" value={data.tb1_cclasstrib} onChange={(e) => setData("tb1_cclasstrib", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_cclasstrib && <span className="text-red-600">{errors.tb1_cclasstrib}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_aliquota_ibs_uf" className="block text-sm font-medium text-gray-700">Aliquota IBS UF</label>
+                                        <input id="tb1_aliquota_ibs_uf" type="number" step="0.0001" min="0" max="100" value={data.tb1_aliquota_ibs_uf} onChange={(e) => setData("tb1_aliquota_ibs_uf", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_aliquota_ibs_uf && <span className="text-red-600">{errors.tb1_aliquota_ibs_uf}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_aliquota_ibs_mun" className="block text-sm font-medium text-gray-700">Aliquota IBS Municipio</label>
+                                        <input id="tb1_aliquota_ibs_mun" type="number" step="0.0001" min="0" max="100" value={data.tb1_aliquota_ibs_mun} onChange={(e) => setData("tb1_aliquota_ibs_mun", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_aliquota_ibs_mun && <span className="text-red-600">{errors.tb1_aliquota_ibs_mun}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_aliquota_cbs" className="block text-sm font-medium text-gray-700">Aliquota CBS</label>
+                                        <input id="tb1_aliquota_cbs" type="number" step="0.0001" min="0" max="100" value={data.tb1_aliquota_cbs} onChange={(e) => setData("tb1_aliquota_cbs", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_aliquota_cbs && <span className="text-red-600">{errors.tb1_aliquota_cbs}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_aliquota_is" className="block text-sm font-medium text-gray-700">Aliquota IS</label>
+                                        <input id="tb1_aliquota_is" type="number" step="0.0001" min="0" max="100" value={data.tb1_aliquota_is} onChange={(e) => setData("tb1_aliquota_is", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_aliquota_is && <span className="text-red-600">{errors.tb1_aliquota_is}</span>}
+                                    </div>
+                                    <div className="flex items-end">
+                                        <label className="flex items-center gap-2 text-sm text-gray-700">
+                                            <input type="checkbox" checked={Boolean(data.tb1_ind_doacao)} onChange={(e) => setData("tb1_ind_doacao", e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                                            Operacao de doacao
+                                        </label>
                                     </div>
                                 </div>
                             </div>

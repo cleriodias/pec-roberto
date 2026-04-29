@@ -1,13 +1,10 @@
 codexIMPORTANT:
 - Qualquer Update ou Delete na base de dados deve ser informado na primeira linha do plano detalhado cercado com asteriscos e a quantidade de registros afetada
-- Sempre ler o C:\xampp\htdocs\pec-rodrigo\SYNC.md nele estao as instruçoes das disferenças a serem sincronizadas.
-- Este projeto é uma copia do projeto em: "C:\xampp\htdocs\pec-rodrigo" que vamos chamar de original
-- Com exeçao da conexao com o banco de dados e o dominio, todos o sistema deve ser identico, paginas, regras, etc...
-- Na tela de login o email fixado é @paoecafepremium.com.br
 - Sempre que for questionado sobre a igualdade entre os sistemas verificar o projeto original e aplicar as alteraçoes.
 - Sempre informe os arquivos que serao alterados e aguarde o ok para proceguir com a alteraçao.
-- A pagina antes do login(resources/js/Pages/Welcome.jsx) nunca deve ser sincronizada, ele é diferente mesmo. a Original é Pao e Cafe este projeto é Pao e Cafe Premium
-- Sempre que for nescessario voce pode adicione algo que seja importante para proximas sincronizaçoes no AGENST.md
-- Em sincronizaçoes que alterem banco de dados, nao colocar `php artisan migrate` no startup/deploy automatico do App Service. Gerar tambem um script SQL manual para execuçao direta no banco quando solicitado.
-- Quando uma sincronizacao de banco for aplicada direto por SQL manual, registrar tambem as migrations equivalentes na tabela `migrations`; sem isso a tela `settings/database` tenta reaplicar a estrutura e continua falhando.
-- Em ajustes de deploy manter a limpeza de `public/hot`, pois esse arquivo pode fazer a aplicaçao carregar assets errados e gerar tela em branco.
+- Conexao com produçao, estritamente para consultas em produçao, jamais fazer Delete/Update.
+    hostname=pdv.mysql.database.azure.com
+    port=3306
+    username=pdv
+    base: paoecafe8301
+    password=6yh&UJ8ik

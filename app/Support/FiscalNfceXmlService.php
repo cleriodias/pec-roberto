@@ -332,6 +332,12 @@ class FiscalNfceXmlService
             $this->appendTextElement($document, $cofinsOther, 'vBC', '0.00');
             $this->appendTextElement($document, $cofinsOther, 'pCOFINS', '0.00');
             $this->appendTextElement($document, $cofinsOther, 'vCOFINS', '0.00');
+
+            $rtcTaxes = $this->resolveRtcTaxes($sale, $product);
+
+            if ($rtcTaxes !== null) {
+                $this->appendRtcTaxGroup($document, $imposto, $rtcTaxes);
+            }
         }
     }
 
@@ -561,6 +567,40 @@ class FiscalNfceXmlService
         $parent->appendChild($element);
     }
 
+    private function appendRtcTaxGroup(DOMDocument $document, DOMElement $imposto, array $rtcTaxes): void
+    {
+        $ibsCbs = $document->createElement('IBSCBS');
+        $imposto->appendChild($ibsCbs);
+
+        $this->appendTextElement($document, $ibsCbs, 'CST', $rtcTaxes['CST']);
+        $this->appendTextElement($document, $ibsCbs, 'cClassTrib', $rtcTaxes['cClassTrib']);
+
+        if ($rtcTaxes['indDoacao']) {
+            $this->appendTextElement($document, $ibsCbs, 'indDoacao', '1');
+        }
+
+        $gIbsCbs = $document->createElement('gIBSCBS');
+        $ibsCbs->appendChild($gIbsCbs);
+        $this->appendTextElement($document, $gIbsCbs, 'vBC', $rtcTaxes['vBC']);
+
+        $gIbsUf = $document->createElement('gIBSUF');
+        $gIbsCbs->appendChild($gIbsUf);
+        $this->appendTextElement($document, $gIbsUf, 'pIBSUF', $rtcTaxes['pIBSUF']);
+        $this->appendTextElement($document, $gIbsUf, 'vIBSUF', $rtcTaxes['vIBSUF']);
+
+        $gIbsMun = $document->createElement('gIBSMun');
+        $gIbsCbs->appendChild($gIbsMun);
+        $this->appendTextElement($document, $gIbsMun, 'pIBSMun', $rtcTaxes['pIBSMun']);
+        $this->appendTextElement($document, $gIbsMun, 'vIBSMun', $rtcTaxes['vIBSMun']);
+
+        $this->appendTextElement($document, $gIbsCbs, 'vIBS', $rtcTaxes['vIBS']);
+
+        $gCbs = $document->createElement('gCBS');
+        $gIbsCbs->appendChild($gCbs);
+        $this->appendTextElement($document, $gCbs, 'pCBS', $rtcTaxes['pCBS']);
+        $this->appendTextElement($document, $gCbs, 'vCBS', $rtcTaxes['vCBS']);
+    }
+
     private function appendOptionalTextElement(DOMDocument $document, DOMElement $parent, string $tag, ?string $value): void
     {
         $value = trim((string) $value);
@@ -575,6 +615,64 @@ class FiscalNfceXmlService
     private function onlyDigits(?string $value): string
     {
         return preg_replace('/\D+/', '', (string) $value);
+    }
+
+    private function resolveRtcTaxes(Venda $sale, Produto $product): ?array
+    {
+        $cstIbsCbs = $this->optionalDigits($product->tb1_cst_ibscbs, 3);
+        $cClassTrib = $this->optionalDigits($product->tb1_cclasstrib, 6);
+
+        if ($cstIbsCbs === null || $cClassTrib === null) {
+            return null;
+        }
+
+        if (
+            $product->tb1_aliquota_ibs_uf === null
+            || $product->tb1_aliquota_ibs_mun === null
+            || $product->tb1_aliquota_cbs === null
+        ) {
+            return null;
+        }
+
+        $base = round((float) $sale->valor_total, 2);
+        $aliquotaIbsUf = round((float) $product->tb1_aliquota_ibs_uf, 4);
+        $aliquotaIbsMun = round((float) $product->tb1_aliquota_ibs_mun, 4);
+        $aliquotaCbs = round((float) $product->tb1_aliquota_cbs, 4);
+        $aliquotaIs = round((float) ($product->tb1_aliquota_is ?? 0), 4);
+        $valorIbsUf = $this->calculateRtcTaxValue($base, $aliquotaIbsUf);
+        $valorIbsMun = $this->calculateRtcTaxValue($base, $aliquotaIbsMun);
+        $valorCbs = $this->calculateRtcTaxValue($base, $aliquotaCbs);
+        $valorIs = $this->calculateRtcTaxValue($base, $aliquotaIs);
+
+        return [
+            'CST' => $cstIbsCbs,
+            'cClassTrib' => $cClassTrib,
+            'indDoacao' => (bool) $product->tb1_ind_doacao,
+            'vBC' => $this->formatMoney($base),
+            'pIBSUF' => $this->formatRate($aliquotaIbsUf),
+            'vIBSUF' => $this->formatMoney($valorIbsUf),
+            'pIBSMun' => $this->formatRate($aliquotaIbsMun),
+            'vIBSMun' => $this->formatMoney($valorIbsMun),
+            'vIBS' => $this->formatMoney($valorIbsUf + $valorIbsMun),
+            'pCBS' => $this->formatRate($aliquotaCbs),
+            'vCBS' => $this->formatMoney($valorCbs),
+            'vIS' => $this->formatMoney($valorIs),
+        ];
+    }
+
+    private function calculateRtcTaxValue(float $base, float $rate): float
+    {
+        return round($base * ($rate / 100), 2);
+    }
+
+    private function formatMoney(float $value): string
+    {
+        return number_format($value, 2, '.', '');
+    }
+
+    private function formatRate(float $value): string
+    {
+        return number_format($value, 4, '.', '');
     }
 
     private function normalizeSerie(?string $serie): string

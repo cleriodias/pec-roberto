@@ -286,6 +286,41 @@ class FiscalNfceXmlServiceTest extends TestCase
         );
     }
 
+    public function test_append_rtc_tax_group_includes_required_gross_tax_fields(): void
+    {
+        $service = new FiscalNfceXmlService(new FiscalWebserviceResolverService());
+        $reflection = new ReflectionClass($service);
+        $method = $reflection->getMethod('appendRtcTaxGroup');
+        $method->setAccessible(true);
+
+        $document = new DOMDocument('1.0', 'UTF-8');
+        $imposto = $document->createElement('imposto');
+        $document->appendChild($imposto);
+
+        $method->invoke($service, $document, $imposto, [
+            'CST' => '000',
+            'cClassTrib' => '000001',
+            'indDoacao' => false,
+            'vBC' => '12.00',
+            'pIBSUF' => '0.1000',
+            'vIBSUF' => '0.01',
+            'pIBSMun' => '0.0000',
+            'vIBSMun' => '0.00',
+            'vIBS' => '0.01',
+            'pCBS' => '0.9000',
+            'vCBS' => '0.11',
+            'vIS' => '0.00',
+        ]);
+
+        $xml = $document->saveXML();
+
+        $this->assertNotFalse($xml);
+        $this->assertStringNotContainsString('<vIS>', $xml);
+        $this->assertStringContainsString('<gIBSUF><pIBSUF>0.1000</pIBSUF><vIBSUF>0.01</vIBSUF></gIBSUF>', $xml);
+        $this->assertStringContainsString('<gIBSMun><pIBSMun>0.0000</pIBSMun><vIBSMun>0.00</vIBSMun></gIBSMun>', $xml);
+        $this->assertStringContainsString('<gCBS><pCBS>0.9000</pCBS><vCBS>0.11</vCBS></gCBS>', $xml);
+    }
+
     public function test_append_payment_uses_official_codes_for_card_and_splits_cash_with_card(): void
     {
         $service = new FiscalNfceXmlService(new FiscalWebserviceResolverService());

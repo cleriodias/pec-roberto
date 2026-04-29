@@ -388,7 +388,6 @@ export default function FiscalConfig({
             unit_id: unitId,
             invoice_status: invoiceStatusFilter,
         }, {
-            preserveState: true,
             preserveScroll: true,
             replace: true,
         });

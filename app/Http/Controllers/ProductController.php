@@ -84,7 +84,17 @@ class ProductController extends Controller
 
         if (in_array($fiscalStatus, ['complete', 'incomplete'], true)) {
             $query->where(function ($builder) use ($fiscalStatus) {
-                $requiredFiscalFields = ['tb1_ncm', 'tb1_cfop', 'tb1_csosn', 'tb1_cst'];
+                $requiredFiscalFields = [
+                    'tb1_ncm',
+                    'tb1_cfop',
+                    'tb1_csosn',
+                    'tb1_cst',
+                    'tb1_cst_ibscbs',
+                    'tb1_cclasstrib',
+                    'tb1_aliquota_ibs_uf',
+                    'tb1_aliquota_ibs_mun',
+                    'tb1_aliquota_cbs',
+                ];
 
                 foreach ($requiredFiscalFields as $field) {
                     if ($fiscalStatus === 'complete') {
@@ -192,6 +202,11 @@ class ProductController extends Controller
                 'tb1_cfop' => ['required', 'string', 'size:4'],
                 'tb1_csosn' => ['required', 'string', 'max:4'],
                 'tb1_cst' => ['required', 'string', 'max:3'],
+                'tb1_cst_ibscbs' => ['required', 'string', 'size:3'],
+                'tb1_cclasstrib' => ['required', 'string', 'size:6'],
+                'tb1_aliquota_ibs_uf' => ['required', 'numeric', 'min:0', 'max:100'],
+                'tb1_aliquota_ibs_mun' => ['required', 'numeric', 'min:0', 'max:100'],
+                'tb1_aliquota_cbs' => ['required', 'numeric', 'min:0', 'max:100'],
             ],
             [
                 'tb1_ncm.required' => 'Informe o NCM.',
@@ -202,6 +217,22 @@ class ProductController extends Controller
                 'tb1_csosn.max' => 'O CSOSN deve ter no maximo :max caracteres.',
                 'tb1_cst.required' => 'Informe o CST.',
                 'tb1_cst.max' => 'O CST deve ter no maximo :max caracteres.',
+                'tb1_cst_ibscbs.required' => 'Informe o CST do IBS/CBS.',
+                'tb1_cst_ibscbs.size' => 'O CST do IBS/CBS deve ter exatamente 3 digitos.',
+                'tb1_cclasstrib.required' => 'Informe o cClassTrib.',
+                'tb1_cclasstrib.size' => 'O cClassTrib deve ter exatamente 6 digitos.',
+                'tb1_aliquota_ibs_uf.required' => 'Informe a aliquota IBS UF.',
+                'tb1_aliquota_ibs_uf.numeric' => 'A aliquota IBS UF deve ser numerica.',
+                'tb1_aliquota_ibs_uf.min' => 'A aliquota IBS UF nao pode ser negativa.',
+                'tb1_aliquota_ibs_uf.max' => 'A aliquota IBS UF nao pode ultrapassar 100%.',
+                'tb1_aliquota_ibs_mun.required' => 'Informe a aliquota IBS Municipio.',
+                'tb1_aliquota_ibs_mun.numeric' => 'A aliquota IBS Municipio deve ser numerica.',
+                'tb1_aliquota_ibs_mun.min' => 'A aliquota IBS Municipio nao pode ser negativa.',
+                'tb1_aliquota_ibs_mun.max' => 'A aliquota IBS Municipio nao pode ultrapassar 100%.',
+                'tb1_aliquota_cbs.required' => 'Informe a aliquota CBS.',
+                'tb1_aliquota_cbs.numeric' => 'A aliquota CBS deve ser numerica.',
+                'tb1_aliquota_cbs.min' => 'A aliquota CBS nao pode ser negativa.',
+                'tb1_aliquota_cbs.max' => 'A aliquota CBS nao pode ultrapassar 100%.',
             ]
         );
 
@@ -210,6 +241,11 @@ class ProductController extends Controller
             'tb1_cfop' => $this->normalizeDigitsField($data['tb1_cfop'], 4),
             'tb1_csosn' => $this->normalizeDigitsField($data['tb1_csosn'], 4),
             'tb1_cst' => $this->normalizeDigitsField($data['tb1_cst'], 3),
+            'tb1_cst_ibscbs' => $this->normalizeDigitsField($data['tb1_cst_ibscbs'], 3),
+            'tb1_cclasstrib' => $this->normalizeDigitsField($data['tb1_cclasstrib'], 6),
+            'tb1_aliquota_ibs_uf' => $this->normalizeNullableDecimal($data['tb1_aliquota_ibs_uf'], 4),
+            'tb1_aliquota_ibs_mun' => $this->normalizeNullableDecimal($data['tb1_aliquota_ibs_mun'], 4),
+            'tb1_aliquota_cbs' => $this->normalizeNullableDecimal($data['tb1_aliquota_cbs'], 4),
         ]);
 
         return response()->json([
@@ -462,6 +498,13 @@ class ProductController extends Controller
                 'tb1_csosn' => ['nullable', 'string', 'max:4'],
                 'tb1_cst' => ['nullable', 'string', 'max:3'],
                 'tb1_aliquota_icms' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'tb1_cst_ibscbs' => ['nullable', 'string', 'size:3'],
+                'tb1_cclasstrib' => ['nullable', 'string', 'size:6'],
+                'tb1_ind_doacao' => ['nullable', 'boolean'],
+                'tb1_aliquota_ibs_uf' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'tb1_aliquota_ibs_mun' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'tb1_aliquota_cbs' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'tb1_aliquota_is' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'tb1_qtd' => [
                     Rule::requiredIf(fn () => (int) $request->input('tb1_tipo') === 3),
                     'nullable',
@@ -513,6 +556,21 @@ class ProductController extends Controller
                 'tb1_aliquota_icms.numeric' => 'A aliquota de ICMS deve ser numerica.',
                 'tb1_aliquota_icms.min' => 'A aliquota de ICMS nao pode ser negativa.',
                 'tb1_aliquota_icms.max' => 'A aliquota de ICMS nao pode ultrapassar 100%.',
+                'tb1_cst_ibscbs.size' => 'O CST IBS/CBS deve ter exatamente 3 digitos.',
+                'tb1_cclasstrib.size' => 'O cClassTrib deve ter exatamente 6 digitos.',
+                'tb1_ind_doacao.boolean' => 'Valor invalido para indicador de doacao.',
+                'tb1_aliquota_ibs_uf.numeric' => 'A aliquota IBS UF deve ser numerica.',
+                'tb1_aliquota_ibs_uf.min' => 'A aliquota IBS UF nao pode ser negativa.',
+                'tb1_aliquota_ibs_uf.max' => 'A aliquota IBS UF nao pode ultrapassar 100%.',
+                'tb1_aliquota_ibs_mun.numeric' => 'A aliquota IBS Municipio deve ser numerica.',
+                'tb1_aliquota_ibs_mun.min' => 'A aliquota IBS Municipio nao pode ser negativa.',
+                'tb1_aliquota_ibs_mun.max' => 'A aliquota IBS Municipio nao pode ultrapassar 100%.',
+                'tb1_aliquota_cbs.numeric' => 'A aliquota CBS deve ser numerica.',
+                'tb1_aliquota_cbs.min' => 'A aliquota CBS nao pode ser negativa.',
+                'tb1_aliquota_cbs.max' => 'A aliquota CBS nao pode ultrapassar 100%.',
+                'tb1_aliquota_is.numeric' => 'A aliquota IS deve ser numerica.',
+                'tb1_aliquota_is.min' => 'A aliquota IS nao pode ser negativa.',
+                'tb1_aliquota_is.max' => 'A aliquota IS nao pode ultrapassar 100%.',
                 'tb1_qtd.required' => 'Informe a quantidade em estoque para o produto de Producao.',
                 'tb1_qtd.integer' => 'A quantidade em estoque deve ser numerica e inteira.',
                 'tb1_qtd.min' => 'A quantidade em estoque nao pode ser negativa.',
@@ -607,6 +665,11 @@ class ProductController extends Controller
                 'tb1_cfop',
                 'tb1_csosn',
                 'tb1_cst',
+                'tb1_cst_ibscbs',
+                'tb1_cclasstrib',
+                'tb1_aliquota_ibs_uf',
+                'tb1_aliquota_ibs_mun',
+                'tb1_aliquota_cbs',
             ])
             ->when($typeFilter !== null, function ($query) use ($typeFilter) {
                 $query->where('tb1_tipo', $typeFilter);
@@ -641,7 +704,14 @@ class ProductController extends Controller
                     ->orWhereNull('tb1_csosn')
                     ->orWhere('tb1_csosn', '=', '')
                     ->orWhereNull('tb1_cst')
-                    ->orWhere('tb1_cst', '=', '');
+                    ->orWhere('tb1_cst', '=', '')
+                    ->orWhereNull('tb1_cst_ibscbs')
+                    ->orWhere('tb1_cst_ibscbs', '=', '')
+                    ->orWhereNull('tb1_cclasstrib')
+                    ->orWhere('tb1_cclasstrib', '=', '')
+                    ->orWhereNull('tb1_aliquota_ibs_uf')
+                    ->orWhereNull('tb1_aliquota_ibs_mun')
+                    ->orWhereNull('tb1_aliquota_cbs');
             })
             ->orderBy('tb1_id');
     }
@@ -681,6 +751,13 @@ class ProductController extends Controller
         $data['tb1_csosn'] = $this->normalizeDigitsField($data['tb1_csosn'] ?? $product?->tb1_csosn ?? null, 4);
         $data['tb1_cst'] = $this->normalizeDigitsField($data['tb1_cst'] ?? $product?->tb1_cst ?? null, 3);
         $data['tb1_aliquota_icms'] = round((float) ($data['tb1_aliquota_icms'] ?? $product?->tb1_aliquota_icms ?? 0), 2);
+        $data['tb1_cst_ibscbs'] = $this->normalizeDigitsField($data['tb1_cst_ibscbs'] ?? $product?->tb1_cst_ibscbs ?? null, 3);
+        $data['tb1_cclasstrib'] = $this->normalizeDigitsField($data['tb1_cclasstrib'] ?? $product?->tb1_cclasstrib ?? null, 6);
+        $data['tb1_ind_doacao'] = (bool) ($data['tb1_ind_doacao'] ?? $product?->tb1_ind_doacao ?? false);
+        $data['tb1_aliquota_ibs_uf'] = $this->normalizeNullableDecimal($data['tb1_aliquota_ibs_uf'] ?? $product?->tb1_aliquota_ibs_uf ?? null, 4);
+        $data['tb1_aliquota_ibs_mun'] = $this->normalizeNullableDecimal($data['tb1_aliquota_ibs_mun'] ?? $product?->tb1_aliquota_ibs_mun ?? null, 4);
+        $data['tb1_aliquota_cbs'] = $this->normalizeNullableDecimal($data['tb1_aliquota_cbs'] ?? $product?->tb1_aliquota_cbs ?? null, 4);
+        $data['tb1_aliquota_is'] = $this->normalizeNullableDecimal($data['tb1_aliquota_is'] ?? $product?->tb1_aliquota_is ?? null, 4);
 
         $data['tb1_qtd'] = $type === 3
             ? (int) ($data['tb1_qtd'] ?? $product?->tb1_qtd ?? 0)
@@ -852,5 +929,14 @@ class ProductController extends Controller
         $normalized = $normalized === '' ? $fallback : $normalized;
 
         return mb_strtoupper($normalized, self::PRODUCT_NAME_ENCODING);
+    }
+
+    private function normalizeNullableDecimal(mixed $value, int $scale = 2): ?float
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        return round((float) $value, $scale);
     }
 }

@@ -243,7 +243,7 @@ class PayrollReportTest extends TestCase
         );
     }
 
-    public function test_admin_can_view_contra_cheque_with_extra_credits_hidden_multi_unit_badges_and_phone(): void
+    public function test_admin_can_view_contra_cheque_with_extra_credits_and_extra_discounts_hidden_multi_unit_badges_and_phone(): void
     {
         $unitA = $this->makeUnit('Loja A');
         $unitB = $this->makeUnit('Loja B');
@@ -275,6 +275,15 @@ class PayrollReportTest extends TestCase
             'tb28_valor' => 120.50,
         ]);
 
+        ContraChequeCredito::create([
+            'user_id' => $employee->id,
+            'tb28_periodo_inicio' => '2026-04-01',
+            'tb28_periodo_fim' => '2026-04-30',
+            'tb28_tipo' => 'inss',
+            'tb28_descricao' => null,
+            'tb28_valor' => 220.25,
+        ]);
+
         $response = $this
             ->actingAs($admin)
             ->get(route('settings.contra-cheque', [
@@ -287,15 +296,21 @@ class PayrollReportTest extends TestCase
             ->component('Settings/ContraCheque')
             ->where('summary.employees_count', 1)
             ->where('summary.extra_credits_total', 120.5)
+            ->where('summary.extra_discounts_total', 220.25)
             ->where('rows.0.name', 'Bruno')
             ->where('rows.0.phone', '62999998888')
             ->where('rows.0.unit_names', [])
             ->where('rows.0.extra_credits_total', 120.5)
-            ->where('rows.0.balance', 2120.5)
+            ->where('rows.0.extra_discounts_total', 220.25)
+            ->where('rows.0.balance', 1900.25)
             ->where('rows.0.detail.extra_credits_count', 1)
+            ->where('rows.0.detail.extra_discounts_count', 1)
             ->where('rows.0.detail.extra_credits.0.type', 'feriado')
             ->where('rows.0.detail.extra_credits.0.type_label', 'Feriado')
             ->where('rows.0.detail.extra_credits.0.description', 'Feriado')
+            ->where('rows.0.detail.extra_discounts.0.type', 'inss')
+            ->where('rows.0.detail.extra_discounts.0.type_label', 'INSS')
+            ->where('rows.0.detail.extra_discounts.0.description', 'INSS')
         );
     }
 

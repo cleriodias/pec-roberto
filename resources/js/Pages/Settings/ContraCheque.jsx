@@ -26,6 +26,7 @@ const EXTRA_CREDIT_TYPE_OPTIONS = [
     { value: 'primeiro_domingo', label: 'Primeiro Domingo' },
     { value: 'feriado', label: 'Feriado' },
     { value: 'bonificacao', label: 'Bonificacao' },
+    { value: 'inss', label: 'INSS' },
     { value: 'outros', label: 'Outros' },
 ];
 
@@ -51,8 +52,12 @@ const normalizeWhatsappPhone = (value) => {
 
 const buildWhatsappSummaryMessage = (detail) => {
     const extraCredits = detail?.extra_credits_total ?? 0;
+    const extraDiscounts = detail?.extra_discounts_total ?? 0;
     const extraCreditLines = (detail?.extra_credits ?? [])
         .map((credit) => `- ${credit.description || credit.type_label}: ${formatCurrency(credit.amount)}`)
+        .join('\n');
+    const extraDiscountLines = (detail?.extra_discounts ?? [])
+        .map((discount) => `- ${discount.description || discount.type_label}: ${formatCurrency(discount.amount)}`)
         .join('\n');
 
     return [
@@ -61,9 +66,11 @@ const buildWhatsappSummaryMessage = (detail) => {
         `Periodo: ${formatBrazilShortDate(detail?.start_date)} a ${formatBrazilShortDate(detail?.end_date)}`,
         `Salario base: ${formatCurrency(detail?.salary)}`,
         `Creditos extras: ${formatCurrency(extraCredits)}`,
-        extraCreditLines ? `Lancamentos:\n${extraCreditLines}` : null,
+        extraCreditLines ? `Lancamentos creditados:\n${extraCreditLines}` : null,
         `Adiantamentos: ${formatCurrency(detail?.advances_total)}`,
         `Vales: ${formatCurrency(detail?.vales_total)}`,
+        `Descontos extras: ${formatCurrency(extraDiscounts)}`,
+        extraDiscountLines ? `Descontos adicionais:\n${extraDiscountLines}` : null,
         `Liquido a receber: ${formatCurrency(detail?.balance)}`,
     ]
         .filter(Boolean)
@@ -148,6 +155,11 @@ export default function ContraCheque({
                 key: 'credits',
                 label: 'Creditos extras',
                 value: formatCurrency(summary.extra_credits_total),
+            },
+            {
+                key: 'discounts',
+                label: 'Descontos extras',
+                value: formatCurrency(summary.extra_discounts_total),
             },
             {
                 key: 'balance',
@@ -386,7 +398,7 @@ export default function ContraCheque({
                             </span>
                         </div>
 
-                        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+                        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-7">
                             {summaryCards.map((card) => (
                                 <div
                                     key={card.key}
@@ -472,6 +484,14 @@ export default function ContraCheque({
                                                 {formatCurrency(row.extra_credits_total)}
                                             </p>
                                         </div>
+                                        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
+                                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+                                                Descontos extras
+                                            </p>
+                                            <p className="mt-2 text-base font-semibold text-red-600 dark:text-red-300">
+                                                {formatCurrency(row.extra_discounts_total)}
+                                            </p>
+                                        </div>
                                         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:col-span-2 dark:border-gray-700 dark:bg-gray-900">
                                             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
                                                 Saldo
@@ -511,8 +531,8 @@ export default function ContraCheque({
                                             type="button"
                                             onClick={() => openCreditModal(row)}
                                             className="justify-center rounded-2xl px-4 py-3 text-lg font-semibold normal-case tracking-normal"
-                                            aria-label={`Adicionar credito ao contra-cheque de ${row.name}`}
-                                            title={`Adicionar credito ao contra-cheque de ${row.name}`}
+                                            aria-label={`Adicionar lancamento ao contra-cheque de ${row.name}`}
+                                            title={`Adicionar lancamento ao contra-cheque de ${row.name}`}
                                         >
                                             +
                                         </PrimaryButton>
@@ -528,7 +548,7 @@ export default function ContraCheque({
                 <form onSubmit={handleCreditSubmit}>
                     <div className="border-b border-gray-200 px-6 py-5">
                         <h3 className="text-lg font-semibold text-gray-900">
-                            Adicionar valor ao contra-cheque
+                            Adicionar lancamento ao contra-cheque
                         </h3>
                         <p className="mt-1 text-sm text-gray-600">
                             {selectedCreditRow?.name ?? '---'} • Periodo {formatBrazilShortDate(creditForm.data.start_date)} a {formatBrazilShortDate(creditForm.data.end_date)}
@@ -564,7 +584,7 @@ export default function ContraCheque({
                                     value={creditForm.data.other_description}
                                     onChange={(event) => creditForm.setData('other_description', event.target.value)}
                                     className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                                    placeholder="Descreva o credito"
+                                    placeholder="Descreva o lancamento"
                                 />
                                 <InputError message={creditForm.errors.other_description} className="mt-2" />
                             </div>
@@ -572,7 +592,7 @@ export default function ContraCheque({
 
                         <div>
                             <label className="text-sm font-medium text-gray-700">
-                                Valor a ser creditado
+                                Valor do lancamento
                             </label>
                             <input
                                 type="text"
@@ -597,7 +617,7 @@ export default function ContraCheque({
                             Cancelar
                         </SecondaryButton>
                         <PrimaryButton type="submit" disabled={creditForm.processing} className="rounded-xl px-4 py-2 normal-case tracking-normal">
-                            Salvar credito
+                            Salvar lancamento
                         </PrimaryButton>
                     </div>
                 </form>

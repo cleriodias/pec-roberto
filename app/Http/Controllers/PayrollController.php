@@ -30,11 +30,16 @@ class PayrollController extends Controller
         6 => 'Cliente',
     ];
 
-    private const EXTRA_CREDIT_TYPE_LABELS = [
+    private const EXTRA_ENTRY_TYPE_LABELS = [
         'primeiro_domingo' => 'Primeiro Domingo',
         'feriado' => 'Feriado',
         'bonificacao' => 'Bonificacao',
+        'inss' => 'INSS',
         'outros' => 'Outros',
+    ];
+
+    private const EXTRA_DEDUCTION_TYPES = [
+        'inss',
     ];
 
     public function index(Request $request): Response
@@ -62,17 +67,17 @@ class PayrollController extends Controller
             'unit_id' => ['nullable', 'string'],
             'role' => ['nullable', 'string'],
             'user_id' => ['nullable', 'string'],
-            'credit_type' => ['required', 'string', Rule::in(array_keys(self::EXTRA_CREDIT_TYPE_LABELS))],
+            'credit_type' => ['required', 'string', Rule::in(array_keys(self::EXTRA_ENTRY_TYPE_LABELS))],
             'other_description' => ['nullable', 'string', 'max:255'],
             'amount' => ['required', 'numeric', 'min:0.01'],
         ], [
             'start_date.required' => 'Informe o inicio do periodo.',
             'end_date.required' => 'Informe o fim do periodo.',
-            'credit_type.required' => 'Selecione o tipo do credito.',
-            'credit_type.in' => 'O tipo do credito selecionado e invalido.',
-            'amount.required' => 'Informe o valor do credito.',
-            'amount.numeric' => 'O valor do credito deve ser numerico.',
-            'amount.min' => 'O valor do credito deve ser maior que zero.',
+            'credit_type.required' => 'Selecione o tipo do lancamento.',
+            'credit_type.in' => 'O tipo do lancamento selecionado e invalido.',
+            'amount.required' => 'Informe o valor do lancamento.',
+            'amount.numeric' => 'O valor do lancamento deve ser numerico.',
+            'amount.min' => 'O valor do lancamento deve ser maior que zero.',
             'other_description.max' => 'A descricao de Outros deve ter no maximo 255 caracteres.',
         ]);
 
@@ -105,7 +110,7 @@ class PayrollController extends Controller
 
         return redirect()
             ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $startDate, $endDate))
-            ->with('success', 'Credito adicional do contra-cheque cadastrado com sucesso.');
+            ->with('success', 'Lancamento adicional do contra-cheque cadastrado com sucesso.');
     }
 
     private function buildPayrollPayload(Request $request, bool $onlyWithSalary = false): array
@@ -294,10 +299,11 @@ class PayrollController extends Controller
                     ->sortBy('date_time')
                     ->values();
 
-                $extraCreditRecords = $extraCreditsByUser
+                $extraEntryRecords = $extraCreditsByUser
                     ->get($user->id, collect())
                     ->map(function (ContraChequeCredito $credit) {
-                        $typeLabel = self::EXTRA_CREDIT_TYPE_LABELS[$credit->tb28_tipo] ?? 'Outros';
+                        $typeLabel = self::EXTRA_ENTRY_TYPE_LABELS[$credit->tb28_tipo] ?? 'Outros';
+                        $isDeduction = in_array($credit->tb28_tipo, self::EXTRA_DEDUCTION_TYPES, true);
                         $description = $credit->tb28_tipo === 'outros' && filled($credit->tb28_descricao)
                             ? sprintf('%s: %s', $typeLabel, trim((string) $credit->tb28_descricao))
                             : $typeLabel;
@@ -308,15 +314,24 @@ class PayrollController extends Controller
                             'type_label' => $typeLabel,
                             'description' => $description,
                             'amount' => round((float) $credit->tb28_valor, 2),
+                            'kind' => $isDeduction ? 'deduction' : 'credit',
+                            'is_deduction' => $isDeduction,
                         ];
                     })
                     ->values();
 
+                $extraCreditRecords = $extraEntryRecords
+                    ->filter(fn (array $entry) => ! $entry['is_deduction'])
+                    ->values();
+                $extraDiscountRecords = $extraEntryRecords
+                    ->filter(fn (array $entry) => $entry['is_deduction'])
+                    ->values();
                 $advanceTotal = round((float) $advanceRecords->sum('amount'), 2);
                 $valeTotal = round((float) $valeRecords->sum('total'), 2);
                 $extraCreditTotal = round((float) $extraCreditRecords->sum('amount'), 2);
+                $extraDiscountTotal = round((float) $extraDiscountRecords->sum('amount'), 2);
                 $salary = round((float) ($user->salario ?? 0), 2);
-                $balance = round($salary + $extraCreditTotal - $advanceTotal - $valeTotal, 2);
+                $balance = round($salary + $extraCreditTotal - $extraDiscountTotal - $advanceTotal - $valeTotal, 2);
                 $unitNames = $this->resolveUserUnitNames($user);
 
                 return [
@@ -328,6 +343,7 @@ class PayrollController extends Controller
                     'advances_total' => $advanceTotal,
                     'vales_total' => $valeTotal,
                     'extra_credits_total' => $extraCreditTotal,
+                    'extra_discounts_total' => $extraDiscountTotal,
                     'balance' => $balance,
                     'unit_names' => $unitNames->values()->all(),
                     'detail' => [
@@ -342,13 +358,16 @@ class PayrollController extends Controller
                         'advances_total' => $advanceTotal,
                         'vales_total' => $valeTotal,
                         'extra_credits_total' => $extraCreditTotal,
+                        'extra_discounts_total' => $extraDiscountTotal,
                         'balance' => $balance,
                         'advances_count' => $advanceRecords->count(),
                         'vales_count' => $valeRecords->count(),
                         'extra_credits_count' => $extraCreditRecords->count(),
+                        'extra_discounts_count' => $extraDiscountRecords->count(),
                         'advances' => $advanceRecords->all(),
                         'vales' => $valeRecords->all(),
                         'extra_credits' => $extraCreditRecords->all(),
+                        'extra_discounts' => $extraDiscountRecords->all(),
                     ],
                 ];
             })
@@ -360,6 +379,7 @@ class PayrollController extends Controller
             'advances_total' => round((float) $rows->sum('advances_total'), 2),
             'vales_total' => round((float) $rows->sum('vales_total'), 2),
             'extra_credits_total' => round((float) $rows->sum('extra_credits_total'), 2),
+            'extra_discounts_total' => round((float) $rows->sum('extra_discounts_total'), 2),
             'balance_total' => round((float) $rows->sum('balance'), 2),
         ];
 

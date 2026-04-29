@@ -21,6 +21,11 @@ const buildRows = (items = []) =>
         tb1_cfop: item.tb1_cfop ?? "",
         tb1_csosn: item.tb1_csosn ?? "",
         tb1_cst: item.tb1_cst ?? "",
+        tb1_cst_ibscbs: item.tb1_cst_ibscbs ?? "",
+        tb1_cclasstrib: item.tb1_cclasstrib ?? "",
+        tb1_aliquota_ibs_uf: item.tb1_aliquota_ibs_uf ?? "",
+        tb1_aliquota_ibs_mun: item.tb1_aliquota_ibs_mun ?? "",
+        tb1_aliquota_cbs: item.tb1_aliquota_cbs ?? "",
     }));
 
 export default function ProductFiscalQueue({
@@ -159,6 +164,11 @@ export default function ProductFiscalQueue({
                 tb1_cfop: row.tb1_cfop,
                 tb1_csosn: row.tb1_csosn,
                 tb1_cst: row.tb1_cst,
+                tb1_cst_ibscbs: row.tb1_cst_ibscbs,
+                tb1_cclasstrib: row.tb1_cclasstrib,
+                tb1_aliquota_ibs_uf: row.tb1_aliquota_ibs_uf,
+                tb1_aliquota_ibs_mun: row.tb1_aliquota_ibs_mun,
+                tb1_aliquota_cbs: row.tb1_aliquota_cbs,
             });
 
             const nextRemaining = Math.max(remainingCount - 1, 0);
@@ -181,6 +191,11 @@ export default function ProductFiscalQueue({
                         tb1_cfop: errors.tb1_cfop?.[0] ?? null,
                         tb1_csosn: errors.tb1_csosn?.[0] ?? null,
                         tb1_cst: errors.tb1_cst?.[0] ?? null,
+                        tb1_cst_ibscbs: errors.tb1_cst_ibscbs?.[0] ?? null,
+                        tb1_cclasstrib: errors.tb1_cclasstrib?.[0] ?? null,
+                        tb1_aliquota_ibs_uf: errors.tb1_aliquota_ibs_uf?.[0] ?? null,
+                        tb1_aliquota_ibs_mun: errors.tb1_aliquota_ibs_mun?.[0] ?? null,
+                        tb1_aliquota_cbs: errors.tb1_aliquota_cbs?.[0] ?? null,
                     },
                 }));
             } else {
@@ -315,6 +330,11 @@ export default function ProductFiscalQueue({
                                             <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">CFOP</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">CSOSN</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">CST</th>
+                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">CST IBS/CBS</th>
+                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">cClassTrib</th>
+                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">IBS UF</th>
+                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">IBS Mun</th>
+                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">CBS</th>
                                             <th className="px-4 py-3 text-center text-sm font-medium text-gray-500">Gravar</th>
                                         </tr>
                                     </thead>
@@ -375,6 +395,67 @@ export default function ProductFiscalQueue({
                                                             className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                                         />
                                                         {errors.tb1_cst && <p className="mt-1 text-xs text-rose-600">{errors.tb1_cst}</p>}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="text"
+                                                            maxLength="3"
+                                                            placeholder="000"
+                                                            value={row.tb1_cst_ibscbs}
+                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_cst_ibscbs", event.target.value)}
+                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                        />
+                                                        {errors.tb1_cst_ibscbs && <p className="mt-1 text-xs text-rose-600">{errors.tb1_cst_ibscbs}</p>}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="text"
+                                                            maxLength="6"
+                                                            placeholder="000000"
+                                                            value={row.tb1_cclasstrib}
+                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_cclasstrib", event.target.value)}
+                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                        />
+                                                        {errors.tb1_cclasstrib && <p className="mt-1 text-xs text-rose-600">{errors.tb1_cclasstrib}</p>}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="number"
+                                                            step="0.0001"
+                                                            min="0"
+                                                            max="100"
+                                                            placeholder="0.0000"
+                                                            value={row.tb1_aliquota_ibs_uf}
+                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_aliquota_ibs_uf", event.target.value)}
+                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                        />
+                                                        {errors.tb1_aliquota_ibs_uf && <p className="mt-1 text-xs text-rose-600">{errors.tb1_aliquota_ibs_uf}</p>}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="number"
+                                                            step="0.0001"
+                                                            min="0"
+                                                            max="100"
+                                                            placeholder="0.0000"
+                                                            value={row.tb1_aliquota_ibs_mun}
+                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_aliquota_ibs_mun", event.target.value)}
+                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                        />
+                                                        {errors.tb1_aliquota_ibs_mun && <p className="mt-1 text-xs text-rose-600">{errors.tb1_aliquota_ibs_mun}</p>}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="number"
+                                                            step="0.0001"
+                                                            min="0"
+                                                            max="100"
+                                                            placeholder="0.0000"
+                                                            value={row.tb1_aliquota_cbs}
+                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_aliquota_cbs", event.target.value)}
+                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                        />
+                                                        {errors.tb1_aliquota_cbs && <p className="mt-1 text-xs text-rose-600">{errors.tb1_aliquota_cbs}</p>}
                                                     </td>
                                                     <td className="px-4 py-3 text-center">
                                                         <SuccessButton

@@ -271,9 +271,17 @@ class FiscalInvoicePreparationService
                     'csosn' => $product?->tb1_csosn,
                     'cst' => $product?->tb1_cst,
                     'aliquota_icms' => $product?->tb1_aliquota_icms,
+                    'cst_ibscbs' => $product?->tb1_cst_ibscbs,
+                    'cclasstrib' => $product?->tb1_cclasstrib,
+                    'ind_doacao' => (bool) ($product?->tb1_ind_doacao ?? false),
+                    'aliquota_ibs_uf' => $product?->tb1_aliquota_ibs_uf,
+                    'aliquota_ibs_mun' => $product?->tb1_aliquota_ibs_mun,
+                    'aliquota_cbs' => $product?->tb1_aliquota_cbs,
+                    'aliquota_is' => $product?->tb1_aliquota_is,
                     'unidade_comercial' => $product?->tb1_unidade_comercial,
                     'unidade_tributavel' => $product?->tb1_unidade_tributavel,
                     'codigo_barras' => $product?->tb1_codbar,
+                    'rtc_emissao_apta' => $this->hasRtcTaxData($product),
                 ];
             })->values()->all(),
             'itens_excluidos' => $excludedItems,
@@ -637,6 +645,19 @@ class FiscalInvoicePreparationService
         }
 
         return [$eligibleSales, $excludedItems];
+    }
+
+    private function hasRtcTaxData(?Produto $product): bool
+    {
+        if (! $product) {
+            return false;
+        }
+
+        return filled($product->tb1_cst_ibscbs)
+            && filled($product->tb1_cclasstrib)
+            && $product->tb1_aliquota_ibs_uf !== null
+            && $product->tb1_aliquota_ibs_mun !== null
+            && $product->tb1_aliquota_cbs !== null;
     }
 
     private function onlyDigits(?string $value): ?string
