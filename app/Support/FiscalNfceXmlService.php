@@ -622,7 +622,7 @@ class FiscalNfceXmlService
     {
         return match ($paymentType) {
             'dinheiro' => ['code' => '01', 'description' => null, 'requires_card' => false],
-            'pix' => ['code' => '17', 'description' => null, 'requires_card' => false],
+            'pix' => ['code' => '17', 'description' => null, 'requires_card' => true],
             'cartao_credito', 'maquina' => ['code' => '03', 'description' => null, 'requires_card' => true],
             'cartao_debito' => ['code' => '04', 'description' => null, 'requires_card' => true],
             'vale' => ['code' => '10', 'description' => null, 'requires_card' => false],
