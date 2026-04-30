@@ -322,7 +322,11 @@ const InvoiceTable = ({ invoices = [], selectedUnitId, invoiceStatusFilter = 'er
     </section>
 );
 
-export default function FiscalConfig({
+export default function FiscalConfig(props) {
+    return <FiscalConfigPage key={props.selectedUnitId ?? 'no-unit-selected'} {...props} />;
+}
+
+function FiscalConfigPage({
     auth,
     units = [],
     selectedUnitId = null,
