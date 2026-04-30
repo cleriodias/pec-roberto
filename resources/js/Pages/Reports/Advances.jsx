@@ -1,3 +1,4 @@
+import AlertMessage from '@/Components/Alert/AlertMessage';
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import {
@@ -7,7 +8,7 @@ import {
     shortBrazilDateInputToIso,
 } from '@/Utils/date';
 import { printSalaryAdvanceDetail } from '@/Utils/salaryAdvancePrint';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 
 const formatCurrency = (value) =>
@@ -24,6 +25,7 @@ export default function AdvancesReport({
     filterUnits = [],
     selectedUnitId = null,
 }) {
+    const { flash } = usePage().props;
     const { data, setData, get, processing } = useForm({
         start_date: isoToBrazilShortDateInput(startDate ?? ''),
         end_date: isoToBrazilShortDateInput(endDate ?? ''),
@@ -81,6 +83,7 @@ export default function AdvancesReport({
 
             <div className="py-8">
                 <div className="mx-auto max-w-6xl space-y-6 px-4 sm:px-6 lg:px-8">
+                    <AlertMessage message={flash} />
                     {printError && (
                         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
                             {printError}
@@ -292,6 +295,9 @@ export default function AdvancesReport({
                                             <th className="px-3 py-2 text-left font-medium text-gray-600">
                                                 Observacao
                                             </th>
+                                            <th className="px-3 py-2 text-center font-medium text-gray-600">
+                                                Acao
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
@@ -308,6 +314,22 @@ export default function AdvancesReport({
                                                 </td>
                                                 <td className="px-3 py-2 text-gray-700">
                                                     {record.reason || '--'}
+                                                </td>
+                                                <td className="px-3 py-2 text-center">
+                                                    <Link
+                                                        href={route('salary-advances.edit', {
+                                                            salaryAdvance: record.id,
+                                                            return_to: 'reports.adiantamentos',
+                                                            start_date: shortBrazilDateInputToIso(data.start_date) || undefined,
+                                                            end_date: shortBrazilDateInputToIso(data.end_date) || undefined,
+                                                            unit_id: data.unit_id !== 'all' ? data.unit_id : undefined,
+                                                        })}
+                                                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-300 text-gray-600 transition hover:bg-gray-100 hover:text-gray-900"
+                                                        title="Editar adiantamento"
+                                                        aria-label="Editar adiantamento"
+                                                    >
+                                                        <i className="bi bi-pencil-square text-base" aria-hidden="true"></i>
+                                                    </Link>
                                                 </td>
                                             </tr>
                                         ))}

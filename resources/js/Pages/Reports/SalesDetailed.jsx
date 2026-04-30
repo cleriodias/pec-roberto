@@ -1,6 +1,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { formatBrazilDateTime } from '@/Utils/date';
-import { Head, Link, useForm } from '@inertiajs/react';
+import axios from 'axios';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
 const formatCurrency = (value) =>
@@ -17,6 +18,25 @@ const formatDateTime = (value) => {
     return formatBrazilDateTime(value);
 };
 
+const resolveErrorMessage = (error, fallback) => {
+    if (error?.response?.data?.errors) {
+        const first = Object.values(error.response.data.errors).flat()[0];
+        if (first) {
+            return String(first);
+        }
+    }
+
+    if (error?.response?.data?.message) {
+        return String(error.response.data.message);
+    }
+
+    if (error?.message) {
+        return String(error.message);
+    }
+
+    return fallback;
+};
+
 export default function SalesDetailed({
     payments,
     dateValue,
@@ -24,6 +44,8 @@ export default function SalesDetailed({
     filterUnits = [],
     selectedUnitId = null,
 }) {
+    const { auth } = usePage().props;
+    const isMaster = Number(auth?.user?.funcao ?? -1) === 0;
     const { data, setData, get, processing } = useForm({
         date: dateValue ?? '',
         unit_id:
@@ -32,6 +54,8 @@ export default function SalesDetailed({
                 : 'all',
     });
     const [selectedPayment, setSelectedPayment] = useState(null);
+    const [deleteError, setDeleteError] = useState('');
+    const [deletingReceiptId, setDeletingReceiptId] = useState(null);
     const totalAmount = payments.reduce(
         (sum, payment) => sum + (Number(payment.valor_total) || 0),
         0,
@@ -45,6 +69,44 @@ export default function SalesDetailed({
             replace: true,
             data,
         });
+    };
+
+    const handleDeleteReceipt = async (receiptId) => {
+        if (!isMaster || deletingReceiptId) {
+            return;
+        }
+
+        const confirmed = window.confirm(`Deseja realmente excluir o cupom #${receiptId}?`);
+        if (!confirmed) {
+            return;
+        }
+
+        setDeleteError('');
+        setDeletingReceiptId(receiptId);
+
+        try {
+            await axios.delete(route('reports.sales.today.destroy', receiptId));
+
+            if (Number(selectedPayment?.tb4_id ?? 0) === Number(receiptId)) {
+                setSelectedPayment(null);
+            }
+
+            router.reload({
+                only: [
+                    'payments',
+                    'dateValue',
+                    'unit',
+                    'filterUnits',
+                    'selectedUnitId',
+                ],
+                preserveScroll: true,
+                preserveState: true,
+            });
+        } catch (error) {
+            setDeleteError(resolveErrorMessage(error, 'Nao foi possivel excluir o cupom.'));
+        } finally {
+            setDeletingReceiptId(null);
+        }
     };
 
     const headerContent = (
@@ -87,6 +149,12 @@ export default function SalesDetailed({
 
             <div className="py-12">
                 <div className="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
+                    {deleteError && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+                            {deleteError}
+                        </div>
+                    )}
+
                     <form
                         onSubmit={handleSubmit}
                         className="rounded-2xl bg-white p-6 shadow dark:bg-gray-800"
@@ -187,7 +255,21 @@ export default function SalesDetailed({
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                                         {payments.map((payment) => (
                                             <tr key={payment.tb4_id}>
-                                                <td className="px-3 py-2 text-gray-800 dark:text-gray-100">#{payment.tb4_id}</td>
+                                                <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
+                                                    {isMaster ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteReceipt(payment.tb4_id)}
+                                                            disabled={deletingReceiptId === payment.tb4_id}
+                                                            className="font-semibold text-red-600 transition hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                            title="Excluir cupom"
+                                                        >
+                                                            #{payment.tb4_id}
+                                                        </button>
+                                                    ) : (
+                                                        <span>#{payment.tb4_id}</span>
+                                                    )}
+                                                </td>
                                                 <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
                                                     {formatDateTime(payment.created_at)}
                                                 </td>

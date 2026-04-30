@@ -99,49 +99,18 @@ class SalaryAdvanceController extends Controller
 
     public function create(Request $request): Response
     {
-        $user = $request->user();
-        $this->ensureManagement($user);
+        return $this->renderForm($request);
+    }
 
-        $users = User::query()->orderBy('name');
-        ManagementScope::applyManagedUserScope($users, $user);
-        $users = $users->get(['id', 'name', 'salario']);
-        $activeUnit = $this->resolveUnit($request);
-        $selectedUser = $this->resolveSelectedUser($request);
-        [$monthStart, $monthEnd] = $this->currentMonthRange();
-        $currentMonthAdvances = $selectedUser
-            ? $this->currentMonthAdvancesQuery($selectedUser, $monthStart, $monthEnd)
-                ->with('unit:tb2_id,tb2_nome')
-                ->get(['id', 'advance_date', 'amount', 'reason', 'unit_id'])
-            : collect();
-        $currentMonthTotal = round((float) $currentMonthAdvances->sum('amount'), 2);
+    public function edit(Request $request, SalaryAdvance $salaryAdvance): Response
+    {
+        $this->ensureManagement($request->user());
 
-        return Inertia::render('Finance/SalaryAdvanceCreate', [
-            'users' => $users->map(fn ($user) => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'salary_limit' => (float) ($user->salario ?? 0),
-                'formatted_limit' => number_format((float) ($user->salario ?? 0), 2, ',', '.'),
-            ]),
-            'activeUnit' => $activeUnit,
-            'selectedUser' => $selectedUser ? [
-                'id' => $selectedUser->id,
-                'name' => $selectedUser->name,
-                'salary_limit' => (float) ($selectedUser->salario ?? 0),
-                'formatted_limit' => number_format((float) ($selectedUser->salario ?? 0), 2, ',', '.'),
-            ] : null,
-            'currentMonthAdvances' => $currentMonthAdvances->map(fn (SalaryAdvance $advance) => [
-                'id' => $advance->id,
-                'advance_date' => $advance->advance_date?->toDateString(),
-                'amount' => (float) $advance->amount,
-                'reason' => $advance->reason,
-                'unit_name' => $advance->unit?->tb2_nome,
-            ])->values()->all(),
-            'currentMonthTotal' => $currentMonthTotal,
-            'currentMonthReference' => now()->format('m/Y'),
-            'currentMonthStart' => $monthStart->toDateString(),
-            'currentMonthEnd' => $monthEnd->toDateString(),
-            'canDeleteAdvances' => ManagementScope::isMaster($user),
-        ]);
+        if (! $this->canManageAdvance($request->user(), $salaryAdvance)) {
+            abort(403);
+        }
+
+        return $this->renderForm($request, $salaryAdvance);
     }
 
     public function store(Request $request): RedirectResponse
@@ -201,6 +170,52 @@ class SalaryAdvanceController extends Controller
         return redirect()
             ->back()
             ->with('success', 'Adiantamento excluido com sucesso!');
+    }
+
+    public function update(Request $request, SalaryAdvance $salaryAdvance): RedirectResponse
+    {
+        $this->ensureManagement($request->user());
+
+        if (! $this->canManageAdvance($request->user(), $salaryAdvance)) {
+            abort(403);
+        }
+
+        $data = $request->validate([
+            'advance_date' => ['required', 'string'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $salaryAdvance->loadMissing('user:id,name,salario,funcao,tb2_id');
+
+        if (! $salaryAdvance->user instanceof User) {
+            abort(404);
+        }
+
+        $advanceDate = $this->parseAdvanceDate((string) $data['advance_date']);
+        $monthStart = $advanceDate->copy()->startOfMonth();
+        $monthEnd = $advanceDate->copy()->endOfMonth();
+
+        $currentMonthTotal = (float) $this->currentMonthAdvancesQuery($salaryAdvance->user, $monthStart, $monthEnd)
+            ->where('id', '!=', $salaryAdvance->id)
+            ->sum('amount');
+        $newTotal = $currentMonthTotal + (float) $data['amount'];
+
+        if ($newTotal > (float) ($salaryAdvance->user->salario ?? 0)) {
+            throw ValidationException::withMessages([
+                'amount' => 'O total de adiantamentos do mes corrente excede o salario deste usuario.',
+            ]);
+        }
+
+        $salaryAdvance->update([
+            'advance_date' => $advanceDate->toDateString(),
+            'amount' => (float) $data['amount'],
+            'reason' => $this->normalizeReason($data['reason'] ?? null),
+        ]);
+
+        return redirect()
+            ->to($this->resolveReturnUrl($request, $salaryAdvance))
+            ->with('success', 'Adiantamento atualizado com sucesso!');
     }
 
     private function ensureManagement($user): void
@@ -333,5 +348,127 @@ class SalaryAdvanceController extends Controller
         $normalized = trim((string) $value);
 
         return $normalized === '' ? null : $normalized;
+    }
+
+    private function renderForm(Request $request, ?SalaryAdvance $editingAdvance = null): Response
+    {
+        $user = $request->user();
+        $this->ensureManagement($user);
+
+        if ($editingAdvance) {
+            $editingAdvance->loadMissing(['user.units:tb2_id,tb2_nome', 'unit:tb2_id,tb2_nome']);
+        }
+
+        $users = User::query()->orderBy('name');
+        ManagementScope::applyManagedUserScope($users, $user);
+        $users = $users->get(['id', 'name', 'salario']);
+        $activeUnit = $this->resolveUnit($request);
+        $selectedUser = $editingAdvance?->user ?? $this->resolveSelectedUser($request);
+        $referenceDate = $editingAdvance?->advance_date?->copy() ?? now();
+        [$monthStart, $monthEnd] = $this->monthRange($referenceDate);
+        $currentMonthAdvances = $selectedUser
+            ? $this->currentMonthAdvancesQuery($selectedUser, $monthStart, $monthEnd)
+                ->with('unit:tb2_id,tb2_nome')
+                ->get(['id', 'advance_date', 'amount', 'reason', 'unit_id'])
+            : collect();
+        $currentMonthTotal = round((float) $currentMonthAdvances->sum('amount'), 2);
+
+        return Inertia::render('Finance/SalaryAdvanceCreate', [
+            'users' => $users->map(fn ($user) => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'salary_limit' => (float) ($user->salario ?? 0),
+                'formatted_limit' => number_format((float) ($user->salario ?? 0), 2, ',', '.'),
+            ]),
+            'activeUnit' => $activeUnit,
+            'selectedUser' => $selectedUser ? [
+                'id' => $selectedUser->id,
+                'name' => $selectedUser->name,
+                'salary_limit' => (float) ($selectedUser->salario ?? 0),
+                'formatted_limit' => number_format((float) ($selectedUser->salario ?? 0), 2, ',', '.'),
+            ] : null,
+            'editingAdvance' => $editingAdvance ? [
+                'id' => $editingAdvance->id,
+                'advance_date' => $editingAdvance->advance_date?->toDateString(),
+                'amount' => (float) $editingAdvance->amount,
+                'reason' => $editingAdvance->reason,
+            ] : null,
+            'currentMonthAdvances' => $currentMonthAdvances->map(fn (SalaryAdvance $advance) => [
+                'id' => $advance->id,
+                'advance_date' => $advance->advance_date?->toDateString(),
+                'amount' => (float) $advance->amount,
+                'reason' => $advance->reason,
+                'unit_name' => $advance->unit?->tb2_nome,
+            ])->values()->all(),
+            'currentMonthTotal' => $currentMonthTotal,
+            'currentMonthReference' => $referenceDate->format('m/Y'),
+            'currentMonthStart' => $monthStart->toDateString(),
+            'currentMonthEnd' => $monthEnd->toDateString(),
+            'returnContext' => $this->resolveReturnContext($request, $selectedUser, $editingAdvance),
+            'canDeleteAdvances' => ManagementScope::isMaster($user),
+        ]);
+    }
+
+    private function monthRange(Carbon $referenceDate): array
+    {
+        return [
+            $referenceDate->copy()->startOfMonth(),
+            $referenceDate->copy()->endOfMonth(),
+        ];
+    }
+
+    private function resolveReturnContext(Request $request, ?User $selectedUser = null, ?SalaryAdvance $editingAdvance = null): array
+    {
+        if ($editingAdvance && $request->query('return_to') === 'reports.adiantamentos') {
+            $params = array_filter([
+                'start_date' => $request->query('start_date'),
+                'end_date' => $request->query('end_date'),
+                'unit_id' => $request->query('unit_id'),
+            ], fn ($value) => $value !== null && $value !== '');
+
+            return [
+                'back_url' => route('reports.adiantamentos', $params),
+                'back_label' => 'Voltar para relatorio',
+                'return_to' => 'reports.adiantamentos',
+                'start_date' => (string) ($request->query('start_date') ?? ''),
+                'end_date' => (string) ($request->query('end_date') ?? ''),
+                'unit_id' => (string) ($request->query('unit_id') ?? ''),
+            ];
+        }
+
+        if ($selectedUser) {
+            return [
+                'back_url' => route('salary-advances.create', ['user' => $selectedUser->id]),
+                'back_label' => 'Voltar para adiantamentos',
+                'return_to' => '',
+                'start_date' => '',
+                'end_date' => '',
+                'unit_id' => '',
+            ];
+        }
+
+        return [
+            'back_url' => route('users.index'),
+            'back_label' => 'Voltar para usuarios',
+            'return_to' => '',
+            'start_date' => '',
+            'end_date' => '',
+            'unit_id' => '',
+        ];
+    }
+
+    private function resolveReturnUrl(Request $request, SalaryAdvance $salaryAdvance): string
+    {
+        if ($request->input('return_to') === 'reports.adiantamentos') {
+            $params = array_filter([
+                'start_date' => $request->input('start_date'),
+                'end_date' => $request->input('end_date'),
+                'unit_id' => $request->input('unit_id'),
+            ], fn ($value) => $value !== null && $value !== '');
+
+            return route('reports.adiantamentos', $params);
+        }
+
+        return route('salary-advances.create', ['user' => $salaryAdvance->user_id]);
     }
 }

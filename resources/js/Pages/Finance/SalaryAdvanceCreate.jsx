@@ -31,26 +31,36 @@ export default function SalaryAdvanceCreate({
     users,
     activeUnit = null,
     selectedUser = null,
+    editingAdvance = null,
     currentMonthAdvances = [],
     currentMonthTotal = 0,
     currentMonthReference = "",
     currentMonthStart = "",
     currentMonthEnd = "",
+    returnContext = {},
     canDeleteAdvances = false,
 }) {
     const { flash } = usePage().props;
+    const isEditing = Boolean(editingAdvance?.id);
     const [form, setForm] = useState({
         user_id: selectedUser?.id ?? 0,
         user_name: selectedUser?.name ?? "",
-        amount: "",
-        advance_date: getBrazilTodayShortInputValue(),
-        reason: "",
+        amount: editingAdvance?.amount ? String(editingAdvance.amount) : "",
+        advance_date: editingAdvance?.advance_date
+            ? formatBrazilShortDate(editingAdvance.advance_date)
+            : getBrazilTodayShortInputValue(),
+        reason: editingAdvance?.reason ?? "",
+        return_to: returnContext.return_to ?? "",
+        start_date: returnContext.start_date ?? "",
+        end_date: returnContext.end_date ?? "",
+        unit_id: returnContext.unit_id ?? "",
     });
     const [errors, setErrors] = useState({});
     const [submitting, setSubmitting] = useState(false);
     const [previewOpen, setPreviewOpen] = useState(false);
     const [printError, setPrintError] = useState("");
     const hasActiveUnit = Boolean(activeUnit?.id);
+    const canSubmit = isEditing || hasActiveUnit;
 
     useEffect(() => {
         if (!selectedUser) {
@@ -65,6 +75,10 @@ export default function SalaryAdvanceCreate({
     }, [selectedUser]);
 
     const filteredUsers = useMemo(() => {
+        if (isEditing) {
+            return [];
+        }
+
         const term = form.user_name.trim().toLowerCase();
 
         if (term.length < 2) {
@@ -78,11 +92,21 @@ export default function SalaryAdvanceCreate({
         return users.filter((user) =>
             user.name.toLowerCase().includes(term),
         );
-    }, [form.user_name, selectedUser, users]);
+    }, [form.user_name, isEditing, selectedUser, users]);
 
     const selectedSalary = Number(selectedUser?.salary_limit ?? 0);
     const enteredAmount = Number(form.amount || 0);
-    const projectedTotal = Number(currentMonthTotal ?? 0) + enteredAmount;
+    const referenceMonthKey = (currentMonthStart || "").slice(0, 7);
+    const targetMonthKey = (shortBrazilDateInputToIso(form.advance_date) || "").slice(0, 7);
+    const changedReferenceMonth = Boolean(
+        isEditing && targetMonthKey && referenceMonthKey && targetMonthKey !== referenceMonthKey,
+    );
+    const baseMonthTotal = isEditing
+        ? Math.max(0, Number(currentMonthTotal ?? 0) - Number(editingAdvance?.amount ?? 0))
+        : Number(currentMonthTotal ?? 0);
+    const projectedTotal = changedReferenceMonth
+        ? enteredAmount
+        : baseMonthTotal + enteredAmount;
     const projectedPercentage =
         selectedSalary > 0 ? (projectedTotal / selectedSalary) * 100 : 0;
     const projectedBalance = selectedSalary - projectedTotal;
@@ -112,7 +136,7 @@ export default function SalaryAdvanceCreate({
     ]);
 
     const handleSelectUser = (userId) => {
-        if (!userId) {
+        if (!userId || isEditing) {
             return;
         }
 
@@ -124,6 +148,10 @@ export default function SalaryAdvanceCreate({
     };
 
     const handleClearUser = () => {
+        if (isEditing) {
+            return;
+        }
+
         router.get(route("salary-advances.create"), {}, { preserveScroll: true });
     };
 
@@ -144,7 +172,7 @@ export default function SalaryAdvanceCreate({
             nextErrors.amount = "Informe um valor maior que zero.";
         }
 
-        if (!hasActiveUnit) {
+        if (!canSubmit) {
             nextErrors.unit = "Nenhuma unidade ativa definida para registrar o adiantamento.";
         }
 
@@ -162,14 +190,21 @@ export default function SalaryAdvanceCreate({
         setSubmitting(true);
         setErrors({});
 
-        router.post(route("salary-advances.store"), form, {
+        const requestOptions = {
             onError: (nextErrors) => {
                 setErrors(nextErrors);
                 setPreviewOpen(false);
             },
             onSuccess: () => setPreviewOpen(false),
             onFinish: () => setSubmitting(false),
-        });
+        };
+
+        if (isEditing) {
+            router.put(route("salary-advances.update", editingAdvance.id), form, requestOptions);
+            return;
+        }
+
+        router.post(route("salary-advances.store"), form, requestOptions);
     };
 
     const handleDeleteAdvance = (advanceId) => {
@@ -227,10 +262,12 @@ export default function SalaryAdvanceCreate({
     const headerContent = (
         <div>
             <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">
-                Adiantamento de salario
+                {isEditing ? "Editar adiantamento de salario" : "Adiantamento de salario"}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-300">
-                Cadastre vales salariais e acompanhe o mes corrente do colaborador.
+                {isEditing
+                    ? "Atualize os dados do adiantamento selecionado."
+                    : "Cadastre vales salariais e acompanhe o mes corrente do colaborador."}
             </p>
         </div>
     );
@@ -245,17 +282,17 @@ export default function SalaryAdvanceCreate({
                         <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 md:flex-row md:items-center md:justify-between">
                             <div>
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                    Inclusao
+                                    {isEditing ? "Edicao" : "Inclusao"}
                                 </h3>
                                 <p className="text-sm text-gray-500 dark:text-gray-300">
                                     Usuario selecionado: {selectedUser?.name ?? "nenhum"}
                                 </p>
                             </div>
                             <Link
-                                href={route("users.index")}
+                                href={returnContext.back_url || route("users.index")}
                                 className="inline-flex items-center justify-center rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-700"
                             >
-                                Voltar para usuarios
+                                {returnContext.back_label || "Voltar para usuarios"}
                             </Link>
                         </div>
 
@@ -275,6 +312,7 @@ export default function SalaryAdvanceCreate({
                                     <input
                                         type="text"
                                         value={form.user_name}
+                                        readOnly={isEditing}
                                         onChange={(event) =>
                                             setForm((prev) => ({
                                                 ...prev,
@@ -285,9 +323,14 @@ export default function SalaryAdvanceCreate({
                                                         : 0,
                                             }))
                                         }
-                                        className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                                        className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 read-only:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:read-only:bg-gray-700"
                                         placeholder="Digite o nome do colaborador"
                                     />
+                                    {isEditing && (
+                                        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                            O colaborador do registro nao pode ser alterado nesta tela.
+                                        </p>
+                                    )}
                                     {filteredUsers.length > 0 && (
                                         <div className="mt-2 rounded-2xl border border-gray-200 bg-white shadow dark:border-gray-700 dark:bg-gray-800">
                                             {filteredUsers.map((user) => (
@@ -322,7 +365,7 @@ export default function SalaryAdvanceCreate({
                                             </span>
                                         </div>
                                         <div className="flex items-center justify-between">
-                                            <span>Total no mes</span>
+                                            <span>{isEditing ? "Total na referencia" : "Total no mes"}</span>
                                             <span className="font-semibold text-gray-900 dark:text-gray-100">
                                                 {formatCurrency(currentMonthTotal)}
                                             </span>
@@ -334,7 +377,7 @@ export default function SalaryAdvanceCreate({
                                             </span>
                                         </div>
                                     </div>
-                                    {selectedUser && (
+                                    {selectedUser && !isEditing && (
                                         <button
                                             type="button"
                                             onClick={handleClearUser}
@@ -343,8 +386,15 @@ export default function SalaryAdvanceCreate({
                                             Trocar usuario
                                         </button>
                                     )}
-                                    {!hasActiveUnit && (
-                                        <p className="mt-3 text-sm text-red-600">{errors.unit ?? "Nenhuma unidade ativa definida para registrar o adiantamento."}</p>
+                                    {!canSubmit && (
+                                        <p className="mt-3 text-sm text-red-600">
+                                            {errors.unit ?? "Nenhuma unidade ativa definida para registrar o adiantamento."}
+                                        </p>
+                                    )}
+                                    {changedReferenceMonth && (
+                                        <p className="mt-3 text-xs text-amber-600 dark:text-amber-300">
+                                            Ao alterar para outro mes, a validacao final considera os adiantamentos da nova referencia.
+                                        </p>
                                     )}
                                 </div>
                             </div>
@@ -420,10 +470,10 @@ export default function SalaryAdvanceCreate({
                             <div className="flex justify-end">
                                 <PrimaryButton
                                     type="submit"
-                                    disabled={submitting || !hasActiveUnit}
+                                    disabled={submitting || !canSubmit}
                                     className="rounded-xl px-4 py-2 text-sm font-semibold normal-case tracking-normal disabled:opacity-50"
                                 >
-                                    Gravar
+                                    {isEditing ? "Salvar alteracoes" : "Gravar"}
                                 </PrimaryButton>
                             </div>
                         </form>
@@ -433,7 +483,7 @@ export default function SalaryAdvanceCreate({
                         <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 md:flex-row md:items-center md:justify-between">
                             <div className="flex flex-col gap-1">
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                    Vales do mes corrente
+                                    {isEditing ? "Vales da referencia do adiantamento" : "Vales do mes corrente"}
                                 </h3>
                                 <p className="text-sm text-gray-500 dark:text-gray-300">
                                     Referencia {currentMonthReference || "--"} para {selectedUser?.name ?? "nenhum usuario selecionado"}.
@@ -491,6 +541,11 @@ export default function SalaryAdvanceCreate({
                                                 </td>
                                                 <td className="px-3 py-2 text-center">
                                                     <div className="flex flex-wrap items-center justify-center gap-2">
+                                                        {isEditing && advance.id === editingAdvance?.id && (
+                                                            <span className="text-xs font-semibold text-blue-600 dark:text-blue-300">
+                                                                Em edicao
+                                                            </span>
+                                                        )}
                                                         <PrimaryButton
                                                             type="button"
                                                             onClick={() => handlePrintAdvance(advance)}
@@ -514,7 +569,9 @@ export default function SalaryAdvanceCreate({
                                             </tr>
                                         ))}
                                         <tr className="bg-gray-50 font-semibold text-gray-800 dark:bg-gray-900/40 dark:text-gray-100">
-                                            <td className="px-3 py-2">Total do mes</td>
+                                            <td className="px-3 py-2">
+                                                {changedReferenceMonth ? "Total da referencia original" : "Total do mes"}
+                                            </td>
                                             <td className="px-3 py-2 text-right">
                                                 {formatCurrency(currentMonthTotal)}
                                             </td>
@@ -534,7 +591,7 @@ export default function SalaryAdvanceCreate({
                 <div className="bg-white p-6 text-gray-900">
                     <h3 className="text-lg font-semibold">Resumo do adiantamento</h3>
                     <p className="mt-1 text-sm text-gray-500">
-                        Confira os valores antes de confirmar o lancamento.
+                        Confira os valores antes de confirmar {isEditing ? "a alteracao" : "o lancamento"}.
                     </p>
 
                     <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -572,7 +629,7 @@ export default function SalaryAdvanceCreate({
                         </div>
                         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
                             <p className="text-xs font-bold uppercase tracking-[0.25em] text-gray-400">
-                                Total no mes corrente
+                                {changedReferenceMonth ? "Valor no novo mes" : "Total no mes corrente"}
                             </p>
                             <p className="mt-2 text-base font-semibold text-gray-900">
                                 {formatCurrency(projectedTotal)}
@@ -593,6 +650,11 @@ export default function SalaryAdvanceCreate({
                             <p className={`mt-2 text-base font-semibold ${projectedBalance < 0 ? "text-red-600" : "text-green-600"}`}>
                                 {formatCurrency(projectedBalance)}
                             </p>
+                            {changedReferenceMonth && (
+                                <p className="mt-2 text-xs text-amber-600">
+                                    O valor final sera revalidado conforme os demais adiantamentos do novo mes informado.
+                                </p>
+                            )}
                         </div>
                     </div>
 
@@ -606,7 +668,7 @@ export default function SalaryAdvanceCreate({
                             disabled={submitting}
                             className="rounded-xl px-4 py-2"
                         >
-                            Confirmar
+                            {isEditing ? "Confirmar alteracao" : "Confirmar"}
                         </SuccessButton>
                     </div>
                 </div>

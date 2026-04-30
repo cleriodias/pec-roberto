@@ -268,7 +268,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/reports/switch-role', [RoleSwitchController::class, 'update'])->name('reports.switch-role.update');
     Route::get('/salary-advances', [SalaryAdvanceController::class, 'index'])->name('salary-advances.index');
     Route::get('/salary-advances/create', [SalaryAdvanceController::class, 'create'])->name('salary-advances.create');
+    Route::get('/salary-advances/{salaryAdvance}/edit', [SalaryAdvanceController::class, 'edit'])->name('salary-advances.edit');
     Route::post('/salary-advances', [SalaryAdvanceController::class, 'store'])->name('salary-advances.store');
+    Route::put('/salary-advances/{salaryAdvance}', [SalaryAdvanceController::class, 'update'])->name('salary-advances.update');
     Route::delete('/salary-advances/{salaryAdvance}', [SalaryAdvanceController::class, 'destroy'])->name('salary-advances.destroy');
     Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
     Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
