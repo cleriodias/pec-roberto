@@ -184,7 +184,7 @@ export default function Welcome({ units = [], flash = {} }) {
                                             </div>
                                         </div>
                                         <p className="mt-3 text-sm text-stone-300">
-                                            Voce recebera informações de produtos feitos na hora.
+                                            Voce recebera informacoes de produtos feitos na hora.
                                         </p>
                                         {showNewsletterForm && (
                                             <form
