@@ -186,6 +186,16 @@ const normalizeCartItem = (item) => {
 
 const ITEMS_STORAGE_KEY = 'dashboard.selectedItems';
 const SAVED_CARTS_STORAGE_KEY = 'dashboard.savedCarts';
+const ROLE_LABELS = {
+    0: 'MASTER',
+    1: 'GERENTE',
+    2: 'SUB-G',
+    3: 'CAIXA',
+    4: 'LANCH',
+    5: 'FUNCIONARIO',
+    6: 'CLIENTE',
+};
+const routeExists = (name) => typeof route === 'function' && route().has && route().has(name);
 
 const formatCurrency = (value) => {
     const parsed = Number(value ?? 0);
@@ -359,6 +369,7 @@ export default function Dashboard({ quickLookupProducts = [] }) {
     const pageProps = usePage().props;
     const { auth } = pageProps;
     const effectiveRole = Number(auth?.user?.funcao ?? -1);
+    const originalRole = Number(auth?.user?.funcao_original ?? effectiveRole);
     const csrfTokenProp = pageProps?.csrf_token ?? '';
     const activeUnitName = auth?.unit?.name ?? '';
     const activeUnitAddress = auth?.unit?.address ?? auth?.unit?.tb2_endereco ?? '';
@@ -406,6 +417,11 @@ export default function Dashboard({ quickLookupProducts = [] }) {
     const [selectedComandaCode, setSelectedComandaCode] = useState(null);
     const [cashierRestrictions, setCashierRestrictions] = useState(null);
     const [cashierRestrictionsLoading, setCashierRestrictionsLoading] = useState(false);
+    const [masterSessionSelection, setMasterSessionSelection] = useState({
+        unitId: Number(auth?.unit?.id ?? 0) || null,
+        role: effectiveRole >= 0 ? effectiveRole : null,
+    });
+    const [masterSessionUpdating, setMasterSessionUpdating] = useState(false);
     const lastAutoOpenComandasKey = useRef('');
 
     useEffect(() => {
@@ -568,6 +584,102 @@ export default function Dashboard({ quickLookupProducts = [] }) {
         (requiresClosure || hasPendingComandas) &&
         visibleComandasList.length > 0;
     const autoOpenComandasKey = `${requiresClosure ? '1' : '0'}-${pendingComandasLabel}-${openComandasDisplayCount}`;
+    const isMasterDashboard = effectiveRole === 0;
+    const masterAvailableUnits = useMemo(() => {
+        const relationUnits = Array.isArray(auth?.user?.units) ? auth.user.units : [];
+        const activeUnitId = Number(auth?.unit?.id ?? 0);
+        const normalized = relationUnits.map((unit) => ({
+            id: Number(unit?.tb2_id ?? unit?.id ?? 0),
+            name: String(unit?.tb2_nome ?? unit?.name ?? '').trim(),
+            status: Number(unit?.tb2_status ?? unit?.status ?? 1),
+        }));
+
+        if (
+            activeUnitId > 0 &&
+            !normalized.some((unit) => unit.id === activeUnitId)
+        ) {
+            normalized.push({
+                id: activeUnitId,
+                name: activeUnitName || `UNIDADE-${activeUnitId}`,
+                status: 1,
+            });
+        }
+
+        return normalized
+            .filter((unit) => unit.id > 0 && unit.name !== '')
+            .filter((unit, index, items) => items.findIndex((candidate) => candidate.id === unit.id) === index)
+            .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
+    }, [activeUnitName, auth?.unit?.id, auth?.user?.units]);
+    const masterAvailableRoles = useMemo(
+        () =>
+            Object.entries(ROLE_LABELS)
+                .map(([value, label]) => ({
+                    value: Number(value),
+                    label,
+                }))
+                .filter((role) => role.value >= originalRole),
+        [originalRole],
+    );
+    const masterShortcutItems = useMemo(
+        () =>
+            [
+                {
+                    key: 'users',
+                    label: 'Usuarios',
+                    icon: 'bi-people-fill',
+                    href: routeExists('users.index') ? route('users.index') : null,
+                },
+                {
+                    key: 'units',
+                    label: 'Unidades',
+                    icon: 'bi-building',
+                    href: routeExists('units.index') ? route('units.index') : null,
+                },
+                {
+                    key: 'reports',
+                    label: 'Relatorios',
+                    icon: 'bi-clipboard-data',
+                    href: routeExists('reports.index') ? route('reports.index') : null,
+                },
+                {
+                    key: 'vale',
+                    label: 'Vale',
+                    icon: 'bi-ticket-perforated',
+                    href: routeExists('reports.vale') ? route('reports.vale') : null,
+                },
+                {
+                    key: 'adiantamento',
+                    label: 'Adiantamento',
+                    icon: 'bi-wallet2',
+                    href: routeExists('salary-advances.index') ? route('salary-advances.index') : null,
+                },
+                {
+                    key: 'descarte',
+                    label: 'Descarte',
+                    icon: 'bi-recycle',
+                    href: routeExists('products.discard') ? route('products.discard') : null,
+                },
+                {
+                    key: 'vendas-hoje',
+                    label: 'Vendas Hoje',
+                    icon: 'bi-calendar-day',
+                    href: routeExists('reports.sales.today') ? route('reports.sales.today') : null,
+                },
+                {
+                    key: 'contra-cheque',
+                    label: 'Contra-cheque',
+                    icon: 'bi-receipt-cutoff',
+                    href: routeExists('settings.contra-cheque') ? route('settings.contra-cheque') : null,
+                },
+                {
+                    key: 'anydesk',
+                    label: 'AnyDesck',
+                    icon: 'bi-pc-display',
+                    href: routeExists('settings.anydesck') ? route('settings.anydesck') : null,
+                },
+            ].filter((item) => item.href),
+        [],
+    );
 
     const hasVrRestrictions = useMemo(
         () => items.some((item) => !item.vrEligible),
@@ -833,6 +945,19 @@ export default function Dashboard({ quickLookupProducts = [] }) {
             isCurrent = false;
         };
     }, [texto, searchTrigger]);
+
+    useEffect(() => {
+        const nextUnitId = Number(auth?.unit?.id ?? 0) || masterAvailableUnits[0]?.id || null;
+        const nextRole =
+            effectiveRole >= 0
+                ? effectiveRole
+                : (masterAvailableRoles[0]?.value ?? null);
+
+        setMasterSessionSelection({
+            unitId: nextUnitId,
+            role: nextRole,
+        });
+    }, [auth?.unit?.id, effectiveRole, masterAvailableRoles, masterAvailableUnits]);
 
     useEffect(() => {
         if (!valePickerVisible) {
@@ -1803,6 +1928,252 @@ export default function Dashboard({ quickLookupProducts = [] }) {
     const handleFavoriteQuickAdd = (product) => {
         addItemFromProduct(product, { preserveInput: true });
     };
+
+    const submitMasterSessionSelection = useCallback(
+        (unitId, role) => {
+            const normalizedUnitId = Number(unitId ?? 0);
+            const normalizedRole = Number(role);
+
+            if (
+                masterSessionUpdating ||
+                !normalizedUnitId ||
+                Number.isNaN(normalizedRole) ||
+                normalizedRole < originalRole
+            ) {
+                return;
+            }
+
+            if (
+                normalizedUnitId === Number(auth?.unit?.id ?? 0) &&
+                normalizedRole === effectiveRole
+            ) {
+                return;
+            }
+
+            setMasterSessionUpdating(true);
+            router.post(
+                route('reports.switch-unit.update'),
+                {
+                    unit_id: normalizedUnitId,
+                    role: normalizedRole,
+                },
+                {
+                    preserveScroll: true,
+                    onFinish: () => setMasterSessionUpdating(false),
+                },
+            );
+        },
+        [auth?.unit?.id, effectiveRole, masterSessionUpdating, originalRole],
+    );
+
+    const handleMasterUnitSelect = (unitId) => {
+        setMasterSessionSelection((current) => ({
+            ...current,
+            unitId,
+        }));
+        submitMasterSessionSelection(unitId, masterSessionSelection.role);
+    };
+
+    const handleMasterRoleSelect = (role) => {
+        setMasterSessionSelection((current) => ({
+            ...current,
+            role,
+        }));
+        submitMasterSessionSelection(masterSessionSelection.unitId, role);
+    };
+
+    if (isMasterDashboard) {
+        return (
+            <AuthenticatedLayout
+                header={
+                    <div className="flex flex-col gap-1">
+                        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                            Dashboard MASTER
+                        </h2>
+                        <p className="text-xs text-gray-500 dark:text-gray-300">
+                            Troca rapida de unidade e funcao para operacao administrativa.
+                        </p>
+                    </div>
+                }
+                headerClassName="py-2"
+            >
+                <Head title="Dashboard" />
+
+                <div className="pt-2 pb-8">
+                    <div className="mx-auto max-w-7xl space-y-4 sm:px-6 lg:px-8">
+                        <div className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-gray-800">
+                            <div className="space-y-4 p-3 text-gray-900 dark:text-gray-100 sm:p-4">
+                                <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-amber-900 dark:border-amber-400/40 dark:bg-amber-900/20 dark:text-amber-100">
+                                    <p className="text-[13px] font-semibold">
+                                        Apenas o perfil CAIXA pode fazer lancamentos no Dashboard.
+                                    </p>
+                                    <p className="mt-0.5 text-[12px]">
+                                        Para registrar vendas, troque o perfil atual para CAIXA na tela de troca de funcao.
+                                    </p>
+                                </div>
+
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-900/40 sm:px-4">
+                                    <div className="space-y-1">
+                                        <h3 className="text-lg font-semibold text-slate-900 dark:text-gray-100">
+                                            Troca rapida do perfil MASTER
+                                        </h3>
+                                        <p className="text-xs text-slate-500 dark:text-gray-300">
+                                            Selecione uma unidade e uma funcao. Ao marcar uma de cada, a sessao e atualizada automaticamente.
+                                        </p>
+                                    </div>
+
+                                    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold sm:text-xs">
+                                        <span className="text-slate-500 dark:text-gray-300">SESSAO ATUAL</span>
+                                        <span className="rounded-full bg-violet-600 px-2 py-0.5 text-white shadow-sm">
+                                            {activeUnitName || 'SEM UNIDADE'}
+                                        </span>
+                                        <span className="rounded-full bg-amber-500 px-2 py-0.5 text-white shadow-sm">
+                                            {ROLE_LABELS[effectiveRole] ?? '---'}
+                                        </span>
+                                        {masterSessionUpdating && (
+                                            <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] text-slate-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                                                Atualizando sessao...
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-5 grid gap-6 xl:grid-cols-2">
+                                        <div>
+                                            <h4 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-gray-100">
+                                                Unidades
+                                            </h4>
+                                            <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+                                                {masterAvailableUnits.map((unit) => {
+                                                    const isSelected = Number(masterSessionSelection.unitId) === unit.id;
+                                                    const isCurrent = Number(auth?.unit?.id ?? 0) === unit.id;
+                                                    const isInactive = unit.status !== 1;
+
+                                                    return (
+                                                        <button
+                                                            key={`master-unit-${unit.id}`}
+                                                            type="button"
+                                                            onClick={() => handleMasterUnitSelect(unit.id)}
+                                                            disabled={masterSessionUpdating}
+                                                            className="flex items-center gap-2.5 rounded-lg border border-transparent px-1.5 py-1 text-left transition hover:bg-white/70 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-gray-800/70"
+                                                        >
+                                                            <span
+                                                                className={`relative inline-flex h-6 w-10 shrink-0 rounded-full transition ${
+                                                                    isSelected ? 'bg-violet-600' : 'bg-slate-300 dark:bg-gray-600'
+                                                                }`}
+                                                            >
+                                                                <span
+                                                                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition ${
+                                                                        isSelected ? 'left-4.5' : 'left-0.5'
+                                                                    }`}
+                                                                ></span>
+                                                            </span>
+                                                            <span className="min-w-0">
+                                                                <span className="block text-sm font-semibold uppercase tracking-wide text-slate-900 dark:text-gray-100">
+                                                                    {unit.name}
+                                                                </span>
+                                                                <span className="mt-0.5 flex flex-wrap gap-1.5">
+                                                                    {isCurrent && (
+                                                                        <span className="rounded-full border border-slate-300 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-slate-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                                                                            ATUAL
+                                                                        </span>
+                                                                    )}
+                                                                    {isInactive && (
+                                                                        <span className="rounded-full border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[9px] font-semibold text-rose-500 dark:border-rose-500/40 dark:bg-rose-900/20 dark:text-rose-200">
+                                                                            INATIVA
+                                                                        </span>
+                                                                    )}
+                                                                </span>
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <h4 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-gray-100">
+                                                Funcao
+                                            </h4>
+                                            <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+                                                {masterAvailableRoles.map((role) => {
+                                                    const isSelected = Number(masterSessionSelection.role) === role.value;
+                                                    const isCurrent = effectiveRole === role.value;
+
+                                                    return (
+                                                        <button
+                                                            key={`master-role-${role.value}`}
+                                                            type="button"
+                                                            onClick={() => handleMasterRoleSelect(role.value)}
+                                                            disabled={masterSessionUpdating}
+                                                            className="flex items-center gap-2.5 rounded-lg border border-transparent px-1.5 py-1 text-left transition hover:bg-white/70 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-gray-800/70"
+                                                        >
+                                                            <span
+                                                                className={`relative inline-flex h-6 w-10 shrink-0 rounded-full transition ${
+                                                                    isSelected ? 'bg-violet-600' : 'bg-slate-300 dark:bg-gray-600'
+                                                                }`}
+                                                            >
+                                                                <span
+                                                                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition ${
+                                                                        isSelected ? 'left-4.5' : 'left-0.5'
+                                                                    }`}
+                                                                ></span>
+                                                            </span>
+                                                            <span className="min-w-0">
+                                                                <span className="block text-sm font-semibold uppercase tracking-wide text-slate-900 dark:text-gray-100">
+                                                                    {role.label}
+                                                                </span>
+                                                                {isCurrent && (
+                                                                    <span className="mt-0.5 inline-flex rounded-full border border-slate-300 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-slate-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                                                                        ATUAL
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h3 className="text-lg font-semibold text-slate-900 dark:text-gray-100">
+                                        Acessos do perfil MASTER
+                                    </h3>
+                                    <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-300">
+                                        Utilize estes atalhos para as areas administrativas disponiveis no Dashboard.
+                                    </p>
+                                    <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+                                        {masterShortcutItems.map((shortcut) => (
+                                            <Link
+                                                key={shortcut.key}
+                                                href={shortcut.href}
+                                                className="flex items-center justify-between rounded-lg border border-indigo-200 bg-indigo-50/70 px-2.5 py-2.5 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50 dark:border-indigo-500/30 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/30"
+                                            >
+                                                <div className="flex items-center gap-2.5">
+                                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-white shadow-sm">
+                                                        <i className={`bi ${shortcut.icon} text-sm`} aria-hidden="true"></i>
+                                                    </span>
+                                                    <div>
+                                                        <p className="text-[13px] font-semibold text-slate-900 dark:text-gray-100">
+                                                            {shortcut.label}
+                                                        </p>
+                                                        <p className="text-[11px] text-indigo-600 dark:text-indigo-300">
+                                                            Abrir
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </Link>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </AuthenticatedLayout>
+        );
+    }
 
     const headerContent = (
         <div className="space-y-2">
