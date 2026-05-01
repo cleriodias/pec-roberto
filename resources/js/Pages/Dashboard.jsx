@@ -12,6 +12,8 @@ const numericRegex = /^\d+$/;
 const BARCODE_MIN_LENGTH = 5;
 const WEIGHTED_BARCODE_PREFIX = '2';
 const WEIGHTED_BARCODE_LENGTH = 13;
+const QUANTITY_HOLD_DELAY = 350;
+const QUANTITY_HOLD_INTERVAL = 120;
 const paymentLabels = {
     maquina: 'Maquina',
     pix: 'PiX',
@@ -424,6 +426,9 @@ export default function Dashboard({ quickLookupProducts = [] }) {
     });
     const [masterSessionUpdating, setMasterSessionUpdating] = useState(false);
     const lastAutoOpenComandasKey = useRef('');
+    const quantityHoldTimeoutRef = useRef(null);
+    const quantityHoldIntervalRef = useRef(null);
+    const quantityHoldReleaseHandlerRef = useRef(null);
 
     useEffect(() => {
         if (!Array.isArray(quickLookupProducts) || quickLookupProducts.length === 0) {
@@ -1096,7 +1101,7 @@ export default function Dashboard({ quickLookupProducts = [] }) {
         addItemFromProduct(product);
     };
 
-    const incrementItemQuantity = (itemId) => {
+    const incrementItemQuantity = useCallback((itemId) => {
         setItems((prevItems) =>
             prevItems.map((item) =>
                 item.id === itemId
@@ -1104,9 +1109,9 @@ export default function Dashboard({ quickLookupProducts = [] }) {
                     : item,
             ),
         );
-    };
+    }, []);
 
-    const decrementItemQuantity = (itemId) => {
+    const decrementItemQuantity = useCallback((itemId) => {
         setItems((prevItems) =>
             prevItems
                 .map((item) => {
@@ -1119,7 +1124,74 @@ export default function Dashboard({ quickLookupProducts = [] }) {
                 })
                 .filter((item) => item.quantity > 0),
         );
-    };
+    }, []);
+
+    const clearQuantityHold = useCallback(() => {
+        if (quantityHoldTimeoutRef.current) {
+            window.clearTimeout(quantityHoldTimeoutRef.current);
+            quantityHoldTimeoutRef.current = null;
+        }
+
+        if (quantityHoldIntervalRef.current) {
+            window.clearInterval(quantityHoldIntervalRef.current);
+            quantityHoldIntervalRef.current = null;
+        }
+
+        if (quantityHoldReleaseHandlerRef.current) {
+            window.removeEventListener('pointerup', quantityHoldReleaseHandlerRef.current);
+            window.removeEventListener('pointercancel', quantityHoldReleaseHandlerRef.current);
+            quantityHoldReleaseHandlerRef.current = null;
+        }
+    }, []);
+
+    useEffect(() => clearQuantityHold, [clearQuantityHold]);
+
+    const startQuantityHold = useCallback(
+        (event, action) => {
+            if (saleLoading || isSalesBlocked) {
+                return;
+            }
+
+            if (event.pointerType === 'mouse' && event.button !== 0) {
+                return;
+            }
+
+            clearQuantityHold();
+            action();
+
+            const releaseHandler = () => {
+                clearQuantityHold();
+            };
+
+            quantityHoldReleaseHandlerRef.current = releaseHandler;
+            window.addEventListener('pointerup', releaseHandler);
+            window.addEventListener('pointercancel', releaseHandler);
+
+            quantityHoldTimeoutRef.current = window.setTimeout(() => {
+                quantityHoldIntervalRef.current = window.setInterval(() => {
+                    action();
+                }, QUANTITY_HOLD_INTERVAL);
+            }, QUANTITY_HOLD_DELAY);
+        },
+        [clearQuantityHold, isSalesBlocked, saleLoading],
+    );
+
+    const handleQuantityButtonClick = useCallback((event, action) => {
+        if (event.detail !== 0 || saleLoading || isSalesBlocked) {
+            return;
+        }
+
+        action();
+    }, [isSalesBlocked, saleLoading]);
+
+    const handleQuantityButtonKeyDown = useCallback((event, action) => {
+        if ((event.key !== 'Enter' && event.key !== ' ') || saleLoading || isSalesBlocked) {
+            return;
+        }
+
+        event.preventDefault();
+        action();
+    }, [isSalesBlocked, saleLoading]);
 
     const removeItem = (itemId) => {
         setItems((prevItems) => prevItems.filter((item) => item.id !== itemId));
@@ -2429,7 +2501,18 @@ export default function Dashboard({ quickLookupProducts = [] }) {
                                                                 <div className="flex items-center justify-center gap-2">
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => incrementItemQuantity(item.id)}
+                                                                        onPointerDown={(event) =>
+                                                                            startQuantityHold(event, () => incrementItemQuantity(item.id))
+                                                                        }
+                                                                        onPointerUp={clearQuantityHold}
+                                                                        onPointerLeave={clearQuantityHold}
+                                                                        onPointerCancel={clearQuantityHold}
+                                                                        onClick={(event) =>
+                                                                            handleQuantityButtonClick(event, () => incrementItemQuantity(item.id))
+                                                                        }
+                                                                        onKeyDown={(event) =>
+                                                                            handleQuantityButtonKeyDown(event, () => incrementItemQuantity(item.id))
+                                                                        }
                                                                         className="text-indigo-600 transition hover:text-indigo-400 focus:outline-none disabled:opacity-50"
                                                                         disabled={saleLoading || isSalesBlocked}
                                                                         aria-label={`Adicionar uma unidade de ${item.name}`}
@@ -2439,7 +2522,18 @@ export default function Dashboard({ quickLookupProducts = [] }) {
                                                                     <span className="text-base font-semibold">{item.quantity}</span>
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => decrementItemQuantity(item.id)}
+                                                                        onPointerDown={(event) =>
+                                                                            startQuantityHold(event, () => decrementItemQuantity(item.id))
+                                                                        }
+                                                                        onPointerUp={clearQuantityHold}
+                                                                        onPointerLeave={clearQuantityHold}
+                                                                        onPointerCancel={clearQuantityHold}
+                                                                        onClick={(event) =>
+                                                                            handleQuantityButtonClick(event, () => decrementItemQuantity(item.id))
+                                                                        }
+                                                                        onKeyDown={(event) =>
+                                                                            handleQuantityButtonKeyDown(event, () => decrementItemQuantity(item.id))
+                                                                        }
                                                                         className="text-red-500 transition hover:text-red-400 focus:outline-none disabled:opacity-50"
                                                                         disabled={saleLoading || isSalesBlocked}
                                                                         aria-label={`Remover uma unidade de ${item.name}`}
