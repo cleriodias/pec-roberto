@@ -1,6 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 const CARD_TEXT_COLORS = {
     dinheiro: '#ffffff',
@@ -36,6 +36,8 @@ export default function SalesPeriod({
     filterUnits = [],
     selectedUnitId = null,
 }) {
+    const [showDailyTotals, setShowDailyTotals] = useState(false);
+
     const { data, setData, get, processing } = useForm({
         mode,
         date: dateValue ?? '',
@@ -265,83 +267,94 @@ export default function SalesPeriod({
                             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                                 Totais diarios
                             </h3>
-                            <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-indigo-700 shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200">
-                                <p className="text-[10px] font-semibold uppercase tracking-wide">
-                                    Total do periodo
-                                </p>
-                                <p className="text-sm font-bold">
-                                    {formatCurrency(totalSum)}
-                                </p>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowDailyTotals((current) => !current)}
+                                    className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200"
+                                >
+                                    {showDailyTotals ? 'Ocultar totais diarios' : 'Mostrar totais diarios'}
+                                </button>
+                                <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-indigo-700 shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wide">
+                                        Total do periodo
+                                    </p>
+                                    <p className="text-sm font-bold">
+                                        {formatCurrency(totalSum)}
+                                    </p>
+                                </div>
                             </div>
                         </div>
-                        <div className="mt-4 overflow-x-auto">
-                            {dailyTotals.length === 0 ? (
-                                <p className="rounded-xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-300">
-                                    Nenhuma venda registrada neste periodo.
-                                </p>
-                            ) : (
-                                <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
-                                    <thead className="bg-gray-100 dark:bg-gray-900/60">
-                                        <tr>
-                                            <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
-                                                Dia
-                                            </th>
-                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
-                                                Dinheiro
-                                            </th>
-                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
-                                                Maquina
-                                            </th>
-                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
-                                                Vale
-                                            </th>
-                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
-                                                Refeicao
-                                            </th>
-                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
-                                                Faturar
-                                            </th>
-                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
-                                                Gastos
-                                            </th>
-                                            <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
-                                                Total
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                                        {dailyTotals.map((day) => (
-                                            <tr key={day.date}>
-                                                <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
-                                                    {day.label}
-                                                </td>
-                                                <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
-                                                    {formatCurrency(day.dinheiro)}
-                                                </td>
-                                                <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
-                                                    {formatCurrency(day.maquina)}
-                                                </td>
-                                                <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
-                                                    {formatCurrency(day.vale)}
-                                                </td>
-                                                <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
-                                                    {formatCurrency(day.refeicao)}
-                                                </td>
-                                                <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
-                                                    {formatCurrency(day.faturar)}
-                                                </td>
-                                                <td className="px-3 py-2 text-right font-semibold text-red-600 dark:text-red-300">
-                                                    {formatCurrency(day.gastos)}
-                                                </td>
-                                                <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
-                                                    {formatCurrency(day.total)}
-                                                </td>
+                        {showDailyTotals ? (
+                            <div className="mt-4 overflow-x-auto">
+                                {dailyTotals.length === 0 ? (
+                                    <p className="rounded-xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-300">
+                                        Nenhuma venda registrada neste periodo.
+                                    </p>
+                                ) : (
+                                    <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+                                        <thead className="bg-gray-100 dark:bg-gray-900/60">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                                                    Dia
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                    Dinheiro
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                    Maquina
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                    Vale
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                    Refeicao
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                    Faturar
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                    Gastos
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                    Total
+                                                </th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                            {dailyTotals.map((day) => (
+                                                <tr key={day.date}>
+                                                    <td className="px-3 py-2 text-gray-700 dark:text-gray-200">
+                                                        {day.label}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
+                                                        {formatCurrency(day.dinheiro)}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
+                                                        {formatCurrency(day.maquina)}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
+                                                        {formatCurrency(day.vale)}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
+                                                        {formatCurrency(day.refeicao)}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
+                                                        {formatCurrency(day.faturar)}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-right font-semibold text-red-600 dark:text-red-300">
+                                                        {formatCurrency(day.gastos)}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">
+                                                        {formatCurrency(day.total)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             </div>
