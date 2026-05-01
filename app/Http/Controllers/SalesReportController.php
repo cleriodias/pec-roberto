@@ -1750,9 +1750,9 @@ class SalesReportController extends Controller
         $start = $baseDate->copy()->startOfDay();
         $end = $baseDate->copy()->endOfDay();
 
-        $payments = $this->fetchPayments($start, $end, $filterUnitId, $allowedUnitIds);
-        [$totals, $details, $chartData] = $this->summarizePayments($payments);
-        [$totals, $details] = $this->applyGlobalValeTotals($start, $end, $totals, $details, $filterUnitId, $allowedUnitIds);
+        $payments = $this->fetchPayments($start, $end, $filterUnitId, $allowedUnitIds, false);
+        [$totals, , $chartData] = $this->summarizePayments($payments, false);
+        [$totals] = $this->applyGlobalValeTotals($start, $end, $totals, [], $filterUnitId, $allowedUnitIds, false);
         $chartData = $this->buildChartData($totals);
         $expenseTotal = $this->sumExpenses($start, $end, $filterUnitId, $allowedUnitIds);
 
@@ -2424,7 +2424,7 @@ class SalesReportController extends Controller
             $dateValue = $month->format('Y-m');
         }
 
-        $payments = $this->fetchPayments($start, $end, $filterUnitId, $allowedUnitIds);
+        $payments = $this->fetchPayments($start, $end, $filterUnitId, $allowedUnitIds, false);
         [$totals, $details, $chartData] = $this->summarizePayments($payments);
         [$totals, $details] = $this->applyGlobalValeTotals($start, $end, $totals, $details, $filterUnitId, $allowedUnitIds);
         $chartData = $this->buildChartData($totals);
@@ -2435,7 +2435,6 @@ class SalesReportController extends Controller
             'meta' => self::TYPE_META,
             'chartData' => $chartData,
             'totals' => $totals,
-            'details' => $details,
             'expenseTotal' => $expenseTotal,
             'dailyTotals' => $dailyTotals,
             'mode' => $mode,
@@ -2758,7 +2757,8 @@ class SalesReportController extends Controller
         Carbon $start,
         Carbon $end,
         ?int $unitId = null,
-        ?Collection $allowedUnitIds = null
+        ?Collection $allowedUnitIds = null,
+        bool $includeRelations = true
     ): Collection
     {
         $applyUnitFilters = function ($query) use ($unitId, $allowedUnitIds) {
@@ -2772,7 +2772,10 @@ class SalesReportController extends Controller
         };
 
         $query = VendaPagamento::query()
-            ->with([
+            ->whereBetween('created_at', [$start, $end]);
+
+        if ($includeRelations) {
+            $query->with([
                 'vendas' => function ($subQuery) use ($applyUnitFilters) {
                     $subQuery->select([
                         'tb3_id',
@@ -2795,8 +2798,8 @@ class SalesReportController extends Controller
                 'vendas.caixa:id,name',
                 'vendas.valeUser:id,name',
                 'vendas.unidade:tb2_id,tb2_nome,tb2_endereco,tb2_cnpj',
-            ])
-            ->whereBetween('created_at', [$start, $end]);
+            ]);
+        }
 
         $query->whereHas('vendas', function ($subQuery) use ($applyUnitFilters) {
             $applyUnitFilters($subQuery);
@@ -2815,7 +2818,7 @@ class SalesReportController extends Controller
             ]);
     }
 
-    private function summarizePayments(Collection $payments): array
+    private function summarizePayments(Collection $payments, bool $includeDetails = true): array
     {
         $totals = [
             'dinheiro' => 0.0,
@@ -2835,18 +2838,22 @@ class SalesReportController extends Controller
         foreach ($payments as $payment) {
             $rawType = (string) $payment->tipo_pagamento;
             $type = $this->normalizePaymentTypeForBucket($rawType);
-            $displayPaymentType = $this->normalizePaymentTypeForDisplay($rawType);
-            $base = [
-                'tb4_id' => $payment->tb4_id,
-                'tipo_pagamento' => $displayPaymentType,
-                'valor_total' => (float) $payment->valor_total,
-                'valor_pago' => $payment->valor_pago,
-                'troco' => $payment->troco,
-                'dois_pgto' => $payment->dois_pgto,
-                'created_at' => $payment->created_at->toIso8601String(),
-                'origin' => $rawType,
-                'receipt' => $this->buildReceiptPayload($payment),
-            ];
+            $base = null;
+
+            if ($includeDetails) {
+                $displayPaymentType = $this->normalizePaymentTypeForDisplay($rawType);
+                $base = [
+                    'tb4_id' => $payment->tb4_id,
+                    'tipo_pagamento' => $displayPaymentType,
+                    'valor_total' => (float) $payment->valor_total,
+                    'valor_pago' => $payment->valor_pago,
+                    'troco' => $payment->troco,
+                    'dois_pgto' => $payment->dois_pgto,
+                    'created_at' => $payment->created_at->toIso8601String(),
+                    'origin' => $rawType,
+                    'receipt' => $this->buildReceiptPayload($payment),
+                ];
+            }
 
             if ($type === 'dinheiro') {
                 $cardPortion = max((float) $payment->dois_pgto, 0);
@@ -2854,16 +2861,20 @@ class SalesReportController extends Controller
 
                 if ($cashPortion > 0) {
                     $totals['dinheiro'] += $cashPortion;
-                    $details['dinheiro'][] = array_merge($base, [
-                        'applied_total' => $cashPortion,
-                    ]);
+                    if ($includeDetails) {
+                        $details['dinheiro'][] = array_merge($base, [
+                            'applied_total' => $cashPortion,
+                        ]);
+                    }
                 }
 
                 if ($cardPortion > 0) {
                     $totals['maquina'] += $cardPortion;
-                    $details['maquina'][] = array_merge($base, [
-                        'applied_total' => $cardPortion,
-                    ]);
+                    if ($includeDetails) {
+                        $details['maquina'][] = array_merge($base, [
+                            'applied_total' => $cardPortion,
+                        ]);
+                    }
                 }
 
                 continue;
@@ -2874,9 +2885,11 @@ class SalesReportController extends Controller
             }
 
             $totals[$type] += (float) $payment->valor_total;
-            $details[$type][] = array_merge($base, [
-                'applied_total' => (float) $payment->valor_total,
-            ]);
+            if ($includeDetails) {
+                $details[$type][] = array_merge($base, [
+                    'applied_total' => (float) $payment->valor_total,
+                ]);
+            }
         }
 
         $chartData = $this->buildChartData($totals);
@@ -3039,7 +3052,12 @@ class SalesReportController extends Controller
         return 0;
     }
 
-    private function valeBreakdown(Carbon $start, Carbon $end, ?int $unitId = null): array
+    private function valeBreakdown(
+        Carbon $start,
+        Carbon $end,
+        ?int $unitId = null,
+        ?Collection $allowedUnitIds = null
+    ): array
     {
         $query = Venda::query()
             ->whereIn('tipo_pago', ['vale', 'refeicao'])
@@ -3049,6 +3067,10 @@ class SalesReportController extends Controller
 
         if ($unitId) {
             $query->where('id_unidade', $unitId);
+        } elseif ($allowedUnitIds instanceof Collection && $allowedUnitIds->isNotEmpty()) {
+            $query->whereIn('id_unidade', $allowedUnitIds);
+        } else {
+            $query->whereRaw('1 = 0');
         }
 
         $rows = $query->get();
@@ -3072,13 +3094,22 @@ class SalesReportController extends Controller
         array $totals,
         array $details,
         ?int $unitId = null,
-        ?Collection $allowedUnitIds = null
+        ?Collection $allowedUnitIds = null,
+        bool $includeDetails = true
     ): array
     {
+        if (! $includeDetails) {
+            $valeTotals = $this->valeBreakdown($start, $end, $unitId, $allowedUnitIds);
+            $totals['vale'] = $valeTotals['vale'];
+            $totals['refeicao'] = $valeTotals['refeicao'];
+
+            return [$totals, $details];
+        }
+
         $valeIds = $this->valeSaleIds($start, $end, 'vale', $unitId, $allowedUnitIds);
         $refeicaoIds = $this->valeSaleIds($start, $end, 'refeicao', $unitId, $allowedUnitIds);
 
-        $globalPayments = $this->fetchPayments($start, $end, $unitId, $allowedUnitIds);
+        $globalPayments = $this->fetchPayments($start, $end, $unitId, $allowedUnitIds, $includeDetails);
 
         $valePayments = $valeIds->isEmpty()
             ? collect()
@@ -3096,12 +3127,16 @@ class SalesReportController extends Controller
                 return $cloned;
             });
 
-            [$valeTotals, $valeDetails] = $this->summarizePayments($valePayments);
+            [$valeTotals, $valeDetails] = $this->summarizePayments($valePayments, $includeDetails);
             $totals['vale'] = $valeTotals['vale'];
-            $details['vale'] = $valeDetails['vale'];
+            if ($includeDetails) {
+                $details['vale'] = $valeDetails['vale'];
+            }
         } else {
             $totals['vale'] = 0.0;
-            $details['vale'] = [];
+            if ($includeDetails) {
+                $details['vale'] = [];
+            }
         }
 
         if ($refeicaoPayments->isNotEmpty()) {
@@ -3112,12 +3147,16 @@ class SalesReportController extends Controller
                 return $cloned;
             });
 
-            [$refTotals, $refDetails] = $this->summarizePayments($refeicaoPayments);
+            [$refTotals, $refDetails] = $this->summarizePayments($refeicaoPayments, $includeDetails);
             $totals['refeicao'] = $refTotals['refeicao'];
-            $details['refeicao'] = $refDetails['refeicao'];
+            if ($includeDetails) {
+                $details['refeicao'] = $refDetails['refeicao'];
+            }
         } else {
             $totals['refeicao'] = 0.0;
-            $details['refeicao'] = [];
+            if ($includeDetails) {
+                $details['refeicao'] = [];
+            }
         }
 
         return [$totals, $details];

@@ -2928,3 +2928,37 @@ Stack trace:
 #17 {main}
 "} 
 [2026-04-23 22:36:30] local.INFO: Database tools executed {"user_id":1,"action":"migrate"} 
+[2026-04-30 17:37:56] local.ERROR: PHP Parse error: Syntax error, unexpected T_NAME_FULLY_QUALIFIED, expecting '{' on line 1 {"exception":"[object] (Psy\\Exception\\ParseErrorException(code: 0): PHP Parse error: Syntax error, unexpected T_NAME_FULLY_QUALIFIED, expecting '{' on line 1 at C:\\xampp\\htdocs\\pec1\\vendor\\psy\\psysh\\src\\Exception\\ParseErrorException.php:44)
+[stacktrace]
+#0 C:\\xampp\\htdocs\\pec1\\vendor\\psy\\psysh\\src\\CodeCleaner.php(311): Psy\\Exception\\ParseErrorException::fromParseError(Object(PhpParser\\Error))
+#1 C:\\xampp\\htdocs\\pec1\\vendor\\psy\\psysh\\src\\CodeCleaner.php(240): Psy\\CodeCleaner->parse('<?php use Illum...', false)
+#2 C:\\xampp\\htdocs\\pec1\\vendor\\psy\\psysh\\src\\Shell.php(848): Psy\\CodeCleaner->clean(Array, false)
+#3 C:\\xampp\\htdocs\\pec1\\vendor\\psy\\psysh\\src\\Shell.php(877): Psy\\Shell->addCode('use Illuminate\\\\...', true)
+#4 C:\\xampp\\htdocs\\pec1\\vendor\\psy\\psysh\\src\\Shell.php(1342): Psy\\Shell->setCode('use Illuminate\\\\...', true)
+#5 C:\\xampp\\htdocs\\pec1\\vendor\\laravel\\tinker\\src\\Console\\TinkerCommand.php(76): Psy\\Shell->execute('use Illuminate\\\\...')
+#6 C:\\xampp\\htdocs\\pec1\\vendor\\laravel\\framework\\src\\Illuminate\\Container\\BoundMethod.php(36): Laravel\\Tinker\\Console\\TinkerCommand->handle()
+#7 C:\\xampp\\htdocs\\pec1\\vendor\\laravel\\framework\\src\\Illuminate\\Container\\Util.php(43): Illuminate\\Container\\BoundMethod::Illuminate\\Container\\{closure}()
+#8 C:\\xampp\\htdocs\\pec1\\vendor\\laravel\\framework\\src\\Illuminate\\Container\\BoundMethod.php(95): Illuminate\\Container\\Util::unwrapIfClosure(Object(Closure))
+#9 C:\\xampp\\htdocs\\pec1\\vendor\\laravel\\framework\\src\\Illuminate\\Container\\BoundMethod.php(35): Illuminate\\Container\\BoundMethod::callBoundMethod(Object(Illuminate\\Foundation\\Application), Array, Object(Closure))
+#10 C:\\xampp\\htdocs\\pec1\\vendor\\laravel\\framework\\src\\Illuminate\\Container\\Container.php(690): Illuminate\\Container\\BoundMethod::call(Object(Illuminate\\Foundation\\Application), Array, Array, NULL)
+#11 C:\\xampp\\htdocs\\pec1\\vendor\\laravel\\framework\\src\\Illuminate\\Console\\Command.php(213): Illuminate\\Container\\Container->call(Array)
+#12 C:\\xampp\\htdocs\\pec1\\vendor\\symfony\\console\\Command\\Command.php(279): Illuminate\\Console\\Command->execute(Object(Symfony\\Component\\Console\\Input\\ArgvInput), Object(Illuminate\\Console\\OutputStyle))
+#13 C:\\xampp\\htdocs\\pec1\\vendor\\laravel\\framework\\src\\Illuminate\\Console\\Command.php(182): Symfony\\Component\\Console\\Command\\Command->run(Object(Symfony\\Component\\Console\\Input\\ArgvInput), Object(Illuminate\\Console\\OutputStyle))
+#14 C:\\xampp\\htdocs\\pec1\\vendor\\symfony\\console\\Application.php(1047): Illuminate\\Console\\Command->run(Object(Symfony\\Component\\Console\\Input\\ArgvInput), Object(Symfony\\Component\\Console\\Output\\ConsoleOutput))
+#15 C:\\xampp\\htdocs\\pec1\\vendor\\symfony\\console\\Application.php(316): Symfony\\Component\\Console\\Application->doRunCommand(Object(Laravel\\Tinker\\Console\\TinkerCommand), Object(Symfony\\Component\\Console\\Input\\ArgvInput), Object(Symfony\\Component\\Console\\Output\\ConsoleOutput))
+#16 C:\\xampp\\htdocs\\pec1\\vendor\\symfony\\console\\Application.php(167): Symfony\\Component\\Console\\Application->doRun(Object(Symfony\\Component\\Console\\Input\\ArgvInput), Object(Symfony\\Component\\Console\\Output\\ConsoleOutput))
+#17 C:\\xampp\\htdocs\\pec1\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Console\\Kernel.php(197): Symfony\\Component\\Console\\Application->run(Object(Symfony\\Component\\Console\\Input\\ArgvInput), Object(Symfony\\Component\\Console\\Output\\ConsoleOutput))
+#18 C:\\xampp\\htdocs\\pec1\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Application.php(1203): Illuminate\\Foundation\\Console\\Kernel->handle(Object(Symfony\\Component\\Console\\Input\\ArgvInput), Object(Symfony\\Component\\Console\\Output\\ConsoleOutput))
+#19 C:\\xampp\\htdocs\\pec1\\artisan(13): Illuminate\\Foundation\\Application->handleCommand(Object(Symfony\\Component\\Console\\Input\\ArgvInput))
+#20 {main}
+"} 
+[2026-05-01 00:16:46] local.ERROR: Uncaught Error: Cannot access private constant App\Http\Controllers\SalesReportController::TYPE_META in Command line code:1
+Stack trace:
+#0 {main}
+  thrown {"exception":"[object] (Symfony\\Component\\ErrorHandler\\Error\\FatalError(code: 0): Uncaught Error: Cannot access private constant App\\Http\\Controllers\\SalesReportController::TYPE_META in Command line code:1
+Stack trace:
+#0 {main}
+  thrown at Command line code:1)
+[stacktrace]
+#0 {main}
+"} 
