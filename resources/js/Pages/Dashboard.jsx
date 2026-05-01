@@ -195,6 +195,7 @@ const ROLE_LABELS = {
     5: 'FUNCIONARIO',
     6: 'CLIENTE',
 };
+const SWITCHABLE_ROLE_VALUES = [0, 1, 2, 3, 4];
 const routeExists = (name) => typeof route === 'function' && route().has && route().has(name);
 
 const formatCurrency = (value) => {
@@ -607,6 +608,7 @@ export default function Dashboard({ quickLookupProducts = [] }) {
 
         return normalized
             .filter((unit) => unit.id > 0 && unit.name !== '')
+            .filter((unit) => unit.status === 1 || unit.id === activeUnitId)
             .filter((unit, index, items) => items.findIndex((candidate) => candidate.id === unit.id) === index)
             .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
     }, [activeUnitName, auth?.unit?.id, auth?.user?.units]);
@@ -617,7 +619,7 @@ export default function Dashboard({ quickLookupProducts = [] }) {
                     value: Number(value),
                     label,
                 }))
-                .filter((role) => role.value >= originalRole),
+                .filter((role) => role.value >= originalRole && SWITCHABLE_ROLE_VALUES.includes(role.value)),
         [originalRole],
     );
     const masterShortcutItems = useMemo(

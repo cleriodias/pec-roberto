@@ -2,6 +2,8 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 
+const SWITCHABLE_ROLE_VALUES = [0, 1, 2, 3, 4];
+
 export default function SwitchUnit({
     units = [],
     roles = [],
@@ -20,9 +22,13 @@ export default function SwitchUnit({
         () => units.find((unit) => unit.id === Number(selection.unitId))?.name ?? '---',
         [selection.unitId, units],
     );
+    const visibleRoles = useMemo(
+        () => roles.filter((role) => SWITCHABLE_ROLE_VALUES.includes(Number(role.value))),
+        [roles],
+    );
     const selectedRoleLabel = useMemo(
-        () => roles.find((role) => role.value === Number(selection.role))?.label ?? currentRoleLabel ?? '---',
-        [currentRoleLabel, roles, selection.role],
+        () => visibleRoles.find((role) => role.value === Number(selection.role))?.label ?? currentRoleLabel ?? '---',
+        [currentRoleLabel, selection.role, visibleRoles],
     );
 
     const submitSelection = (unitId, role) => {
@@ -170,7 +176,7 @@ export default function SwitchUnit({
                                             Funcao
                                         </h4>
                                         <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
-                                            {roles.map((role) =>
+                                            {visibleRoles.map((role) =>
                                                 renderToggleOption(
                                                     role,
                                                     Number(selection.role) === role.value,
