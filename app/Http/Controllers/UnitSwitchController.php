@@ -82,7 +82,9 @@ class UnitSwitchController extends Controller
         ]);
         $request->session()->put('active_role', $role);
 
-        return redirect()->route('dashboard')->with('success', 'Sessao atualizada com sucesso!');
+        $targetRoute = $role === 4 ? 'lanchonete.terminal' : 'dashboard';
+
+        return redirect()->route($targetRoute)->with('success', 'Sessao atualizada com sucesso!');
     }
 
     private function allowedUnits($user)
