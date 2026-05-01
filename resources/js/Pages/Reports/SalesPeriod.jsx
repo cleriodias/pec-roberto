@@ -1,6 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const CARD_TEXT_COLORS = {
     dinheiro: '#ffffff',
@@ -27,7 +27,8 @@ export default function SalesPeriod({
     chartData,
     totals,
     expenseTotal = 0,
-    dailyTotals,
+    dailyTotals = [],
+    dailyTotalsLoaded = false,
     mode,
     dateValue,
     startDate,
@@ -36,7 +37,7 @@ export default function SalesPeriod({
     filterUnits = [],
     selectedUnitId = null,
 }) {
-    const [showDailyTotals, setShowDailyTotals] = useState(false);
+    const [showDailyTotals, setShowDailyTotals] = useState(Boolean(dailyTotalsLoaded));
 
     const { data, setData, get, processing } = useForm({
         mode,
@@ -45,7 +46,13 @@ export default function SalesPeriod({
             selectedUnitId !== null && selectedUnitId !== undefined
                 ? String(selectedUnitId)
                 : 'all',
+        show_daily: dailyTotalsLoaded ? '1' : '0',
     });
+
+    useEffect(() => {
+        setShowDailyTotals(Boolean(dailyTotalsLoaded));
+        setData('show_daily', dailyTotalsLoaded ? '1' : '0');
+    }, [dailyTotalsLoaded, setData]);
 
     const handleSubmit = (event) => {
         event.preventDefault();
@@ -54,6 +61,32 @@ export default function SalesPeriod({
             preserveScroll: true,
             replace: true,
             data,
+        });
+    };
+
+    const handleDailyTotalsToggle = () => {
+        if (showDailyTotals) {
+            setShowDailyTotals(false);
+            setData('show_daily', '0');
+
+            return;
+        }
+
+        if (dailyTotalsLoaded) {
+            setShowDailyTotals(true);
+            setData('show_daily', '1');
+
+            return;
+        }
+
+        get(route('reports.sales.period'), {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+            data: {
+                ...data,
+                show_daily: '1',
+            },
         });
     };
 
@@ -270,10 +303,15 @@ export default function SalesPeriod({
                             <div className="flex items-center gap-3">
                                 <button
                                     type="button"
-                                    onClick={() => setShowDailyTotals((current) => !current)}
+                                    onClick={handleDailyTotalsToggle}
+                                    disabled={processing}
                                     className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200"
                                 >
-                                    {showDailyTotals ? 'Ocultar totais diarios' : 'Mostrar totais diarios'}
+                                    {showDailyTotals
+                                        ? 'Ocultar totais diarios'
+                                        : dailyTotalsLoaded
+                                          ? 'Mostrar totais diarios'
+                                          : 'Carregar totais diarios'}
                                 </button>
                                 <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-indigo-700 shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200">
                                     <p className="text-[10px] font-semibold uppercase tracking-wide">

@@ -17,6 +17,7 @@ use App\Support\ManagementScope;
 use App\Support\ProductQuickLookupCache;
 use Carbon\Carbon;
 use Carbon\Exceptions\InvalidFormatException;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -2408,6 +2409,7 @@ class SalesReportController extends Controller
         $this->ensureManager($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
         $allowedUnitIds = $this->reportUnitIds($filterUnits);
+        $loadDailyTotals = $request->boolean('show_daily');
 
         $mode = $request->query('mode', 'month') === 'day' ? 'day' : 'month';
         $dateValue = $request->query('date');
@@ -2424,12 +2426,12 @@ class SalesReportController extends Controller
             $dateValue = $month->format('Y-m');
         }
 
-        $payments = $this->fetchPayments($start, $end, $filterUnitId, $allowedUnitIds, false);
-        [$totals, $details, $chartData] = $this->summarizePayments($payments);
-        [$totals, $details] = $this->applyGlobalValeTotals($start, $end, $totals, $details, $filterUnitId, $allowedUnitIds);
+        $totals = $this->buildSalesPeriodTotals($start, $end, $filterUnitId, $allowedUnitIds);
         $chartData = $this->buildChartData($totals);
         $expenseTotal = $this->sumExpenses($start, $end, $filterUnitId, $allowedUnitIds);
-        $dailyTotals = $this->buildDailyTotals($payments, $start, $end, $filterUnitId, $allowedUnitIds);
+        $dailyTotals = $loadDailyTotals
+            ? $this->buildSalesPeriodDailyTotals($start, $end, $filterUnitId, $allowedUnitIds)
+            : collect();
 
         return Inertia::render('Reports/SalesPeriod', [
             'meta' => self::TYPE_META,
@@ -2437,6 +2439,7 @@ class SalesReportController extends Controller
             'totals' => $totals,
             'expenseTotal' => $expenseTotal,
             'dailyTotals' => $dailyTotals,
+            'dailyTotalsLoaded' => $loadDailyTotals,
             'mode' => $mode,
             'dateValue' => $dateValue,
             'startDate' => $start->toDateString(),
@@ -3247,6 +3250,137 @@ class SalesReportController extends Controller
             'vale', 'refeicao', 'faturar' => (string) $paymentType,
             default => null,
         };
+    }
+
+    private function buildSalesPeriodTotals(
+        Carbon $start,
+        Carbon $end,
+        ?int $unitId = null,
+        ?Collection $allowedUnitIds = null
+    ): array {
+        $cashExpression = $this->paymentCashExpression();
+        $cardExpression = $this->paymentCardExpression();
+
+        $query = DB::table('tb4_vendas_pg as pagamentos')
+            ->whereBetween('pagamentos.created_at', [$start, $end]);
+
+        $this->applyPaymentUnitExistsFilter($query, $unitId, $allowedUnitIds);
+
+        $paymentTotals = $query
+            ->selectRaw('
+                ROUND(SUM(' . $cashExpression . '), 2) as dinheiro,
+                ROUND(SUM(' . $cardExpression . '), 2) as maquina,
+                ROUND(SUM(CASE WHEN pagamentos.tipo_pagamento = "faturar" THEN GREATEST(pagamentos.valor_total, 0) ELSE 0 END), 2) as faturar
+            ')
+            ->first();
+
+        $valeTotals = $this->valeBreakdown($start, $end, $unitId, $allowedUnitIds);
+
+        return [
+            'dinheiro' => round((float) ($paymentTotals->dinheiro ?? 0), 2),
+            'maquina' => round((float) ($paymentTotals->maquina ?? 0), 2),
+            'vale' => round((float) ($valeTotals['vale'] ?? 0), 2),
+            'refeicao' => round((float) ($valeTotals['refeicao'] ?? 0), 2),
+            'faturar' => round((float) ($paymentTotals->faturar ?? 0), 2),
+        ];
+    }
+
+    private function buildSalesPeriodDailyTotals(
+        Carbon $start,
+        Carbon $end,
+        ?int $unitId = null,
+        ?Collection $allowedUnitIds = null
+    ): Collection {
+        $cashExpression = $this->paymentCashExpression();
+        $cardExpression = $this->paymentCardExpression();
+
+        $query = DB::table('tb4_vendas_pg as pagamentos')
+            ->whereBetween('pagamentos.created_at', [$start, $end]);
+
+        $this->applyPaymentUnitExistsFilter($query, $unitId, $allowedUnitIds);
+
+        $paymentRows = $query
+            ->selectRaw('
+                DATE(pagamentos.created_at) as payment_date,
+                ROUND(SUM(' . $cashExpression . '), 2) as dinheiro,
+                ROUND(SUM(' . $cardExpression . '), 2) as maquina,
+                ROUND(SUM(CASE WHEN pagamentos.tipo_pagamento = "faturar" THEN GREATEST(pagamentos.valor_total, 0) ELSE 0 END), 2) as faturar
+            ')
+            ->groupBy(DB::raw('DATE(pagamentos.created_at)'))
+            ->get();
+
+        $valeAndMealTotals = $this->saleTypeTotalsByDay($start, $end, $unitId, $allowedUnitIds);
+        $expenseTotals = $this->expenseTotalsByDay($start, $end, $unitId, $allowedUnitIds);
+
+        return $paymentRows
+            ->map(function ($row) use ($valeAndMealTotals, $expenseTotals) {
+                $date = (string) $row->payment_date;
+                $dinheiro = round((float) ($row->dinheiro ?? 0), 2);
+                $maquina = round((float) ($row->maquina ?? 0), 2);
+                $vale = round((float) ($valeAndMealTotals[$date]['vale'] ?? 0), 2);
+                $refeicao = round((float) ($valeAndMealTotals[$date]['refeicao'] ?? 0), 2);
+                $faturar = round((float) ($row->faturar ?? 0), 2);
+                $gastos = round((float) ($expenseTotals[$date] ?? 0), 2);
+
+                return [
+                    'date' => $date,
+                    'label' => Carbon::createFromFormat('Y-m-d', $date)->translatedFormat('d/m/Y'),
+                    'dinheiro' => $dinheiro,
+                    'maquina' => $maquina,
+                    'vale' => $vale,
+                    'refeicao' => $refeicao,
+                    'faturar' => $faturar,
+                    'gastos' => $gastos,
+                    'total' => round($dinheiro + $maquina + $vale + $refeicao + $faturar, 2),
+                ];
+            })
+            ->sortByDesc('date')
+            ->values();
+    }
+
+    private function paymentCashExpression(string $alias = 'pagamentos'): string
+    {
+        return '
+            CASE
+                WHEN ' . $alias . '.tipo_pagamento IN ("dinheiro", "dinheiro_cartao_credito", "dinheiro_cartao_debito")
+                    THEN GREATEST(' . $alias . '.valor_total - COALESCE(' . $alias . '.dois_pgto, 0), 0)
+                ELSE 0
+            END
+        ';
+    }
+
+    private function paymentCardExpression(string $alias = 'pagamentos'): string
+    {
+        return '
+            CASE
+                WHEN ' . $alias . '.tipo_pagamento IN ("cartao_credito", "cartao_debito", "maquina", "pix")
+                    THEN GREATEST(' . $alias . '.valor_total, 0)
+                WHEN ' . $alias . '.tipo_pagamento IN ("dinheiro", "dinheiro_cartao_credito", "dinheiro_cartao_debito")
+                    THEN GREATEST(COALESCE(' . $alias . '.dois_pgto, 0), 0)
+                ELSE 0
+            END
+        ';
+    }
+
+    private function applyPaymentUnitExistsFilter(
+        QueryBuilder $query,
+        ?int $unitId = null,
+        ?Collection $allowedUnitIds = null,
+        string $paymentAlias = 'pagamentos'
+    ): void {
+        $query->whereExists(function (QueryBuilder $subQuery) use ($unitId, $allowedUnitIds, $paymentAlias) {
+            $subQuery->select(DB::raw(1))
+                ->from('tb3_vendas as vendas')
+                ->whereColumn('vendas.tb4_id', $paymentAlias . '.tb4_id');
+
+            if ($unitId) {
+                $subQuery->where('vendas.id_unidade', $unitId);
+            } elseif ($allowedUnitIds instanceof Collection && $allowedUnitIds->isNotEmpty()) {
+                $subQuery->whereIn('vendas.id_unidade', $allowedUnitIds->all());
+            } else {
+                $subQuery->whereRaw('1 = 0');
+            }
+        });
     }
 
     private function buildDailyTotals(
