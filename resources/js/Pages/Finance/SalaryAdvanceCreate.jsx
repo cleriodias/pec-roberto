@@ -7,9 +7,7 @@ import SecondaryButton from "@/Components/SecondaryButton";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import {
     formatBrazilShortDate,
-    getBrazilTodayShortInputValue,
-    normalizeBrazilShortDateInput,
-    shortBrazilDateInputToIso,
+    getBrazilTodayInputValue,
 } from "@/Utils/date";
 import { printSalaryAdvanceDetail } from "@/Utils/salaryAdvancePrint";
 import { Head, Link, router, usePage } from "@inertiajs/react";
@@ -47,8 +45,8 @@ export default function SalaryAdvanceCreate({
         user_name: selectedUser?.name ?? "",
         amount: editingAdvance?.amount ? String(editingAdvance.amount) : "",
         advance_date: editingAdvance?.advance_date
-            ? formatBrazilShortDate(editingAdvance.advance_date)
-            : getBrazilTodayShortInputValue(),
+            ? editingAdvance.advance_date
+            : getBrazilTodayInputValue(),
         reason: editingAdvance?.reason ?? "",
         return_to: returnContext.return_to ?? "",
         start_date: returnContext.start_date ?? "",
@@ -97,7 +95,7 @@ export default function SalaryAdvanceCreate({
     const selectedSalary = Number(selectedUser?.salary_limit ?? 0);
     const enteredAmount = Number(form.amount || 0);
     const referenceMonthKey = (currentMonthStart || "").slice(0, 7);
-    const targetMonthKey = (shortBrazilDateInputToIso(form.advance_date) || "").slice(0, 7);
+    const targetMonthKey = (form.advance_date || "").slice(0, 7);
     const changedReferenceMonth = Boolean(
         isEditing && targetMonthKey && referenceMonthKey && targetMonthKey !== referenceMonthKey,
     );
@@ -164,8 +162,8 @@ export default function SalaryAdvanceCreate({
             nextErrors.user_id = "Selecione um usuario para continuar.";
         }
 
-        if (!shortBrazilDateInputToIso(form.advance_date)) {
-            nextErrors.advance_date = "Informe a data no formato DD/MM/AA.";
+        if (!form.advance_date) {
+            nextErrors.advance_date = "Informe a data do adiantamento.";
         }
 
         if (!Number.isFinite(enteredAmount) || enteredAmount <= 0) {
@@ -428,17 +426,15 @@ export default function SalaryAdvanceCreate({
                                         Data
                                     </label>
                                     <input
-                                        type="text"
-                                        inputMode="numeric"
+                                        type="date"
                                         value={form.advance_date}
                                         onChange={(event) =>
                                             setForm((prev) => ({
                                                 ...prev,
-                                                advance_date: normalizeBrazilShortDateInput(event.target.value),
+                                                advance_date: event.target.value,
                                             }))
                                         }
                                         className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                                        placeholder="DD/MM/AA"
                                     />
                                     <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                                         Pode ser retroativa.
@@ -608,7 +604,7 @@ export default function SalaryAdvanceCreate({
                                 Data
                             </p>
                             <p className="mt-2 text-base font-semibold text-gray-900">
-                                {form.advance_date || "--"}
+                                {form.advance_date ? formatBrazilShortDate(form.advance_date) : "--"}
                             </p>
                         </div>
                         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">

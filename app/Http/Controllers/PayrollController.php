@@ -53,7 +53,7 @@ class PayrollController extends Controller
     {
         $this->ensureAdmin($request->user());
 
-        return Inertia::render('Settings/ContraCheque', $this->buildPayrollPayload($request, true));
+        return Inertia::render('Settings/ContraCheque', $this->buildPayrollPayload($request, true, true));
     }
 
     public function storeContraChequeCredit(Request $request, User $user): RedirectResponse
@@ -117,7 +117,7 @@ class PayrollController extends Controller
             ->with('success', 'Lancamento adicional do contra-cheque cadastrado com sucesso.');
     }
 
-    private function buildPayrollPayload(Request $request, bool $onlyWithSalary = false): array
+    private function buildPayrollPayload(Request $request, bool $onlyWithSalary = false, bool $onlyActiveUsers = false): array
     {
         [$windowStart, $windowEnd, $windowStartDate, $windowEndDate] = $this->resolveDateRange($request);
         $filterUnits = ManagementScope::managedUnits($request->user(), ['tb2_id', 'tb2_nome'])
@@ -150,6 +150,10 @@ class PayrollController extends Controller
             ->orderBy('name');
 
         ManagementScope::applyManagedUserScope($baseUsersQuery, $request->user());
+
+        if ($onlyActiveUsers) {
+            $baseUsersQuery->where('is_active', true);
+        }
 
         if ($selectedUnitId) {
             $baseUsersQuery->where(function ($query) use ($selectedUnitId) {
@@ -186,6 +190,10 @@ class PayrollController extends Controller
                 ->orderBy('name');
 
             ManagementScope::applyManagedUserScope($filterUsersQuery, $request->user());
+
+            if ($onlyActiveUsers) {
+                $filterUsersQuery->where('is_active', true);
+            }
 
             if ($selectedUnitId) {
                 $filterUsersQuery->where(function ($query) use ($selectedUnitId) {

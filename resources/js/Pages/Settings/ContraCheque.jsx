@@ -7,9 +7,6 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { printContraCheque, printContraChequePdf } from '@/Utils/contraChequePrint';
 import {
     formatBrazilShortDate,
-    isoToBrazilShortDateInput,
-    normalizeBrazilShortDateInput,
-    shortBrazilDateInputToIso,
 } from '@/Utils/date';
 import {
     formatRoleBadgeLabel,
@@ -92,8 +89,8 @@ export default function ContraCheque({
 }) {
     const { flash } = usePage().props;
     const { data, setData, get, processing } = useForm({
-        start_date: isoToBrazilShortDateInput(startDate ?? ''),
-        end_date: isoToBrazilShortDateInput(endDate ?? ''),
+        start_date: startDate ?? '',
+        end_date: endDate ?? '',
         unit_id:
             selectedUnitId !== null && selectedUnitId !== undefined
                 ? String(selectedUnitId)
@@ -206,8 +203,8 @@ export default function ContraCheque({
             preserveScroll: true,
             replace: true,
             data: {
-                start_date: shortBrazilDateInputToIso(data.start_date) || undefined,
-                end_date: shortBrazilDateInputToIso(data.end_date) || undefined,
+                start_date: data.start_date || undefined,
+                end_date: data.end_date || undefined,
                 unit_id: data.unit_id,
                 role: data.role,
                 user_id: data.user_id,
@@ -305,11 +302,9 @@ export default function ContraCheque({
                                     Pagamento de
                                 </label>
                                 <input
-                                    type="text"
-                                    inputMode="numeric"
+                                    type="date"
                                     value={data.start_date}
-                                    onChange={(event) => setData('start_date', normalizeBrazilShortDateInput(event.target.value))}
-                                    placeholder="DD/MM/AA"
+                                    onChange={(event) => setData('start_date', event.target.value)}
                                     className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                 />
                             </div>
@@ -318,11 +313,9 @@ export default function ContraCheque({
                                     Pagamento ate
                                 </label>
                                 <input
-                                    type="text"
-                                    inputMode="numeric"
+                                    type="date"
                                     value={data.end_date}
-                                    onChange={(event) => setData('end_date', normalizeBrazilShortDateInput(event.target.value))}
-                                    placeholder="DD/MM/AA"
+                                    onChange={(event) => setData('end_date', event.target.value)}
                                     className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                 />
                             </div>
