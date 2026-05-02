@@ -141,61 +141,65 @@ export default function UserEdit({ auth, user, units = [] }) {
                     <div className="bg-gray-50 text-sm dark:bg-gray-700 p-4 rounded-lg shadow-m">
                         <form onSubmit={handleSubmit}>
 
-                            <div className="mb-4">
-                                <label htmlFor="name" className="block text-sm font-medium text-gray-700">Nome</label>
-                                <input
-                                    id="name"
-                                    type="text"
-                                    placeholder={'Nome completo do usu\u00E1rio'}
-                                    value={data.name}
-                                    onChange={(e) => setData('name', e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                />
-                                {errors.name && <span className="text-red-600">{errors.name}</span>}
+                            <div className="mb-4 grid gap-4 lg:grid-cols-2">
+                                <div>
+                                    <label htmlFor="name" className="block text-sm font-medium text-gray-700">Nome</label>
+                                    <input
+                                        id="name"
+                                        type="text"
+                                        placeholder={'Nome completo do usu\u00E1rio'}
+                                        value={data.name}
+                                        onChange={(e) => setData('name', e.target.value)}
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                    />
+                                    {errors.name && <span className="text-red-600">{errors.name}</span>}
+                                </div>
+
+                                <div>
+                                    <label htmlFor="email" className="block text-sm font-medium text-gray-700">E-mail</label>
+                                    <input
+                                        id="email"
+                                        type="email"
+                                        placeholder={'Melhor e-mail do usu\u00E1rio'}
+                                        value={data.email}
+                                        onChange={(e) => setData('email', e.target.value)}
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                    />
+                                    {errors.email && <span className="text-red-600">{errors.email}</span>}
+                                </div>
                             </div>
 
-                            <div className="mb-4">
-                                <label htmlFor="email" className="block text-sm font-medium text-gray-700">E-mail</label>
-                                <input
-                                    id="email"
-                                    type="email"
-                                    placeholder={'Melhor e-mail do usu\u00E1rio'}
-                                    value={data.email}
-                                    onChange={(e) => setData('email', e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                />
-                                {errors.email && <span className="text-red-600">{errors.email}</span>}
-                            </div>
+                            <div className="mb-4 grid gap-4 lg:grid-cols-2">
+                                <div>
+                                    <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Telefone</label>
+                                    <input
+                                        id="phone"
+                                        type="text"
+                                        inputMode="numeric"
+                                        placeholder="(99) 99999-9999"
+                                        value={data.phone}
+                                        onChange={(e) => setData('phone', formatPhoneInput(e.target.value))}
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                    />
+                                    {errors.phone && <span className="text-red-600">{errors.phone}</span>}
+                                </div>
 
-                            <div className="mb-4">
-                                <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Telefone</label>
-                                <input
-                                    id="phone"
-                                    type="text"
-                                    inputMode="numeric"
-                                    placeholder="(99) 99999-9999"
-                                    value={data.phone}
-                                    onChange={(e) => setData('phone', formatPhoneInput(e.target.value))}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                />
-                                {errors.phone && <span className="text-red-600">{errors.phone}</span>}
-                            </div>
-
-                            <div className="mb-4">
-                                <label htmlFor="funcao" className="block text-sm font-medium text-gray-700">{'Fun\u00E7\u00E3o'}</label>
-                                <select
-                                    id="funcao"
-                                    value={data.funcao}
-                                    onChange={(e) => setData('funcao', e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                >
-                                    {roleOptions.map((option) => (
-                                        <option key={option.value} value={option.value}>
-                                            {option.label}
-                                        </option>
-                                    ))}
-                                </select>
-                                {errors.funcao && <span className="text-red-600">{errors.funcao}</span>}
+                                <div>
+                                    <label htmlFor="funcao" className="block text-sm font-medium text-gray-700">{'Fun\u00E7\u00E3o'}</label>
+                                    <select
+                                        id="funcao"
+                                        value={data.funcao}
+                                        onChange={(e) => setData('funcao', e.target.value)}
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                    >
+                                        {roleOptions.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {errors.funcao && <span className="text-red-600">{errors.funcao}</span>}
+                                </div>
                             </div>
 
                             <div className="mb-4">
@@ -226,7 +230,7 @@ export default function UserEdit({ auth, user, units = [] }) {
                                 {errors.tb2_id && <span className="text-red-600">{errors.tb2_id}</span>}
                             </div>
 
-                            <div className="mb-4 grid gap-4 sm:grid-cols-2">
+                            <div className="mb-4 grid gap-4 xl:grid-cols-5">
                                 <div>
                                     <label htmlFor="hr_ini" className="block text-sm font-medium text-gray-700">{'In\u00EDcio da jornada'}</label>
                                     <input
@@ -249,9 +253,6 @@ export default function UserEdit({ auth, user, units = [] }) {
                                     />
                                     {errors.hr_fim && <span className="text-red-600">{errors.hr_fim}</span>}
                                 </div>
-                            </div>
-
-                            <div className="mb-4 grid gap-4 sm:grid-cols-3">
                                 <div>
                                     <label htmlFor="salario" className="block text-sm font-medium text-gray-700">{'Sal\u00E1rio (R$)'}</label>
                                     <input
@@ -266,7 +267,7 @@ export default function UserEdit({ auth, user, units = [] }) {
                                     {errors.salario && <span className="text-red-600">{errors.salario}</span>}
                                 </div>
                                 <div>
-                                    <label htmlFor="vr_cred" className="block text-sm font-medium text-gray-700">{'Cr\u00E9dito refei\u00E7\u00E3o (R$)'}</label>
+                                    <label htmlFor="vr_cred" className="block text-sm font-medium text-gray-700">Credito Ref. (R$)</label>
                                     <input
                                         id="vr_cred"
                                         type="number"
@@ -293,7 +294,7 @@ export default function UserEdit({ auth, user, units = [] }) {
                                             </option>
                                         ))}
                                     </select>
-                                    <p className="mt-1 text-xs text-gray-500">Dia do m\u00EAs em que o sal\u00E1rio ser\u00E1 pago.</p>
+                                    <p className="mt-1 text-xs text-gray-500">Pay Day.</p>
                                     {errors.payment_day && <span className="text-red-600">{errors.payment_day}</span>}
                                 </div>
                             </div>

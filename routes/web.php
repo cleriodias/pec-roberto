@@ -28,8 +28,11 @@ use App\Http\Controllers\SupportTicketController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\UnitSwitchController;
 use App\Http\Controllers\UserController;
+use App\Models\User;
 use App\Models\Unidade;
+use App\Support\ManagementScope;
 use App\Support\ProductQuickLookupCache;
+use Carbon\Carbon;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -68,8 +71,53 @@ if (class_exists(\App\Http\Controllers\MobileRevenueController::class)) {
 
 
 Route::get('/dashboard', function (Request $request, ProductQuickLookupCache $quickLookupCache) {
+    $contraChequeShortcutSummary = null;
+    $authUser = $request->user();
+
+    if ($authUser) {
+        $salaryTotalsByPaymentDay = User::query()
+            ->where('funcao', '!=', 6)
+            ->where('is_active', true)
+            ->where('salario', '>', 0)
+            ->whereNotNull('payment_day')
+            ->selectRaw('payment_day, SUM(salario) as salary_total')
+            ->groupBy('payment_day')
+            ->orderBy('payment_day');
+
+        ManagementScope::applyManagedUserScope($salaryTotalsByPaymentDay, $authUser);
+
+        $paymentDaySummaries = $salaryTotalsByPaymentDay
+            ->get()
+            ->map(fn (User $user) => [
+                'payment_day' => (int) $user->payment_day,
+                'salary_total' => round((float) $user->salary_total, 2),
+            ])
+            ->filter(fn (array $summary) => $summary['payment_day'] >= 1 && $summary['payment_day'] <= 31 && $summary['salary_total'] > 0)
+            ->values();
+
+        if ($paymentDaySummaries->isNotEmpty()) {
+            $todayPaymentDay = (int) Carbon::today()->day;
+            $selectedSummary = $paymentDaySummaries->firstWhere('payment_day', $todayPaymentDay);
+
+            if (! $selectedSummary) {
+                $selectedSummary = $paymentDaySummaries->first(
+                    fn (array $summary) => $summary['payment_day'] > $todayPaymentDay
+                ) ?? $paymentDaySummaries->first();
+            }
+
+            if ($selectedSummary) {
+                $contraChequeShortcutSummary = [
+                    'paymentDay' => $selectedSummary['payment_day'],
+                    'salaryTotal' => $selectedSummary['salary_total'],
+                    'isToday' => $selectedSummary['payment_day'] === $todayPaymentDay,
+                ];
+            }
+        }
+    }
+
     return Inertia::render('Dashboard', [
         'quickLookupProducts' => fn () => $quickLookupCache->forRequest($request),
+        'contraChequeShortcutSummary' => $contraChequeShortcutSummary,
     ]);
 })->middleware(['auth', 'verified'])->name('dashboard');
 

@@ -69,6 +69,7 @@ class PayrollController extends Controller
             'unit_id' => ['nullable', 'string'],
             'role' => ['nullable', 'string'],
             'user_id' => ['nullable', 'string'],
+            'payment_day' => ['nullable', 'string'],
             'credit_type' => ['required', 'string', Rule::in(array_keys(self::EXTRA_ENTRY_TYPE_LABELS))],
             'other_description' => ['nullable', 'string', 'max:255'],
             'amount' => ['required', 'numeric', 'min:0.01'],
@@ -129,6 +130,7 @@ class PayrollController extends Controller
         $allowedUnitIds = $this->reportUnitIds($filterUnits);
         $selectedUnitId = $this->resolveSelectedUnitId($request->query('unit_id'), $allowedUnitIds);
         $selectedRole = $this->resolveSelectedRole($request->query('role'));
+        $selectedPaymentDay = $this->resolveSelectedPaymentDay($request->query('payment_day'));
         $selectedUserId = $this->resolveSelectedUserId($request->query('user_id'));
         $selectedUnit = $selectedUnitId
             ? $filterUnits->firstWhere('id', $selectedUnitId)
@@ -141,32 +143,45 @@ class PayrollController extends Controller
             ])
             ->values();
 
-        $baseUsersQuery = User::query()
-            ->with([
-                'units:tb2_id,tb2_nome',
-                'primaryUnit:tb2_id,tb2_nome',
+        $paymentDayOptions = $this->newPayrollUsersQuery($request, $onlyActiveUsers)
+            ->when($selectedUnitId, function ($query, int $unitId) {
+                $this->applyUnitFilterToUsersQuery($query, $unitId);
+            })
+            ->when($selectedRole !== null, fn ($query) => $query->where('funcao', $selectedRole))
+            ->when($onlyWithSalary, fn ($query) => $query->where('salario', '>', 0))
+            ->whereNotNull('payment_day')
+            ->reorder()
+            ->select('payment_day')
+            ->distinct()
+            ->orderBy('payment_day')
+            ->pluck('payment_day')
+            ->map(fn ($paymentDay) => [
+                'id' => (int) $paymentDay,
+                'label' => str_pad((string) $paymentDay, 2, '0', STR_PAD_LEFT),
             ])
-            ->where('funcao', '!=', 6)
-            ->orderBy('name');
+            ->values();
 
-        ManagementScope::applyManagedUserScope($baseUsersQuery, $request->user());
-
-        if ($onlyActiveUsers) {
-            $baseUsersQuery->where('is_active', true);
+        if (
+            $onlyWithSalary
+            && $onlyActiveUsers
+            && ! array_key_exists('payment_day', $request->query())
+            && $selectedPaymentDay === null
+        ) {
+            $selectedPaymentDay = $this->resolveDefaultPaymentDayOption($paymentDayOptions);
         }
 
+        $baseUsersQuery = $this->newPayrollUsersQuery($request, $onlyActiveUsers);
+
         if ($selectedUnitId) {
-            $baseUsersQuery->where(function ($query) use ($selectedUnitId) {
-                $query
-                    ->where('tb2_id', $selectedUnitId)
-                    ->orWhereHas('units', function ($unitQuery) use ($selectedUnitId) {
-                        $unitQuery->where('tb2_unidades.tb2_id', $selectedUnitId);
-                    });
-            });
+            $this->applyUnitFilterToUsersQuery($baseUsersQuery, $selectedUnitId);
         }
 
         if ($selectedRole !== null) {
             $baseUsersQuery->where('funcao', $selectedRole);
+        }
+
+        if ($selectedPaymentDay !== null) {
+            $baseUsersQuery->where('payment_day', $selectedPaymentDay);
         }
 
         if ($selectedUserId !== null) {
@@ -196,22 +211,24 @@ class PayrollController extends Controller
             }
 
             if ($selectedUnitId) {
-                $filterUsersQuery->where(function ($query) use ($selectedUnitId) {
-                    $query
-                        ->where('tb2_id', $selectedUnitId)
-                        ->orWhereHas('units', function ($unitQuery) use ($selectedUnitId) {
-                            $unitQuery->where('tb2_unidades.tb2_id', $selectedUnitId);
-                        });
-                });
+                $this->applyUnitFilterToUsersQuery($filterUsersQuery, $selectedUnitId);
             }
 
             if ($selectedRole !== null) {
                 $filterUsersQuery->where('funcao', $selectedRole);
             }
 
+            if ($selectedPaymentDay !== null) {
+                $filterUsersQuery->where('payment_day', $selectedPaymentDay);
+            }
+
             if ($onlyWithSalary) {
                 $filterUsersQuery->where('salario', '>', 0);
             }
+        }
+
+        if ($selectedUserId === null && $selectedPaymentDay !== null) {
+            $filterUsersQuery->where('payment_day', $selectedPaymentDay);
         }
 
         $filterUsers = $filterUsersQuery
@@ -444,12 +461,34 @@ class PayrollController extends Controller
             'endDate' => $windowEndDate,
             'filterUnits' => $filterUnits,
             'filterUsers' => $filterUsers,
+            'paymentDayOptions' => $paymentDayOptions,
             'roleOptions' => $roleOptions,
             'selectedUnitId' => $selectedUnitId,
+            'selectedPaymentDay' => $selectedPaymentDay,
             'selectedRole' => $selectedRole,
             'selectedUserId' => $selectedUserId,
             'unit' => $selectedUnit,
         ];
+    }
+
+    private function resolveDefaultPaymentDayOption(Collection $paymentDayOptions): ?int
+    {
+        if ($paymentDayOptions->isEmpty()) {
+            return null;
+        }
+
+        $todayPaymentDay = (int) Carbon::today()->day;
+        $currentOrNextPaymentDay = $paymentDayOptions->first(
+            fn (array $option) => (int) ($option['id'] ?? 0) >= $todayPaymentDay
+        );
+
+        if ($currentOrNextPaymentDay) {
+            return (int) $currentOrNextPaymentDay['id'];
+        }
+
+        $firstPaymentDay = $paymentDayOptions->first();
+
+        return $firstPaymentDay ? (int) $firstPaymentDay['id'] : null;
     }
 
     private function resolveUserPayrollPeriod(User $user, Carbon $windowStart, Carbon $windowEnd): array
@@ -632,6 +671,15 @@ class PayrollController extends Controller
         return $role;
     }
 
+    private function resolveSelectedPaymentDay(mixed $requestedPaymentDay): ?int
+    {
+        if ($requestedPaymentDay === null || $requestedPaymentDay === '' || $requestedPaymentDay === 'all') {
+            return null;
+        }
+
+        return $this->normalizePaymentDay($requestedPaymentDay);
+    }
+
     private function resolveSelectedUserId(mixed $requestedUserId): ?int
     {
         if ($requestedUserId === null || $requestedUserId === '' || $requestedUserId === 'all') {
@@ -743,6 +791,36 @@ class PayrollController extends Controller
         return $uniqueUnits;
     }
 
+    private function newPayrollUsersQuery(Request $request, bool $onlyActiveUsers)
+    {
+        $query = User::query()
+            ->with([
+                'units:tb2_id,tb2_nome',
+                'primaryUnit:tb2_id,tb2_nome',
+            ])
+            ->where('funcao', '!=', 6)
+            ->orderBy('name');
+
+        ManagementScope::applyManagedUserScope($query, $request->user());
+
+        if ($onlyActiveUsers) {
+            $query->where('is_active', true);
+        }
+
+        return $query;
+    }
+
+    private function applyUnitFilterToUsersQuery($query, int $selectedUnitId): void
+    {
+        $query->where(function ($unitScopeQuery) use ($selectedUnitId) {
+            $unitScopeQuery
+                ->where('tb2_id', $selectedUnitId)
+                ->orWhereHas('units', function ($unitQuery) use ($selectedUnitId) {
+                    $unitQuery->where('tb2_unidades.tb2_id', $selectedUnitId);
+                });
+        });
+    }
+
     private function ensureManagedPayrollUser($authUser, User $user): void
     {
         $query = User::query()
@@ -763,7 +841,7 @@ class PayrollController extends Controller
             'end_date' => $endDate->toDateString(),
         ];
 
-        foreach (['unit_id', 'role', 'user_id'] as $field) {
+        foreach (['unit_id', 'role', 'user_id', 'payment_day'] as $field) {
             $value = $data[$field] ?? null;
 
             if ($value !== null && $value !== '' && $value !== 'all') {

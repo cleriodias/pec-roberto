@@ -368,7 +368,10 @@ const cacheDirectProductLookup = (cache, product) => {
     }
 };
 
-export default function Dashboard({ quickLookupProducts = [] }) {
+export default function Dashboard({
+    quickLookupProducts = [],
+    contraChequeShortcutSummary = null,
+}) {
     const pageProps = usePage().props;
     const { auth } = pageProps;
     const effectiveRole = Number(auth?.user?.funcao ?? -1);
@@ -677,6 +680,9 @@ export default function Dashboard({ quickLookupProducts = [] }) {
                     label: 'Contra-cheque',
                     icon: 'bi-receipt-cutoff',
                     href: routeExists('settings.contra-cheque') ? route('settings.contra-cheque') : null,
+                    subtitle: contraChequeShortcutSummary
+                        ? `${contraChequeShortcutSummary.isToday ? 'Hoje' : `Dia ${String(contraChequeShortcutSummary.paymentDay).padStart(2, '0')}`}: ${formatCurrency(contraChequeShortcutSummary.salaryTotal)}`
+                        : 'Abrir',
                 },
                 {
                     key: 'anydesk',
@@ -685,7 +691,7 @@ export default function Dashboard({ quickLookupProducts = [] }) {
                     href: routeExists('settings.anydesck') ? route('settings.anydesck') : null,
                 },
             ].filter((item) => item.href),
-        [],
+        [contraChequeShortcutSummary],
     );
 
     const hasVrRestrictions = useMemo(
@@ -2233,7 +2239,7 @@ export default function Dashboard({ quickLookupProducts = [] }) {
                                                             {shortcut.label}
                                                         </p>
                                                         <p className="text-[11px] text-indigo-600 dark:text-indigo-300">
-                                                            Abrir
+                                                            {shortcut.subtitle ?? 'Abrir'}
                                                         </p>
                                                     </div>
                                                 </div>
