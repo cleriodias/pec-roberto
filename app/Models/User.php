@@ -31,6 +31,8 @@ class User extends Authenticatable
         'hr_fim',
         'salario',
         'vr_cred',
+        'payment_day',
+        'is_active',
         'tb2_id',
         'cod_acesso',
     ];
@@ -62,6 +64,8 @@ class User extends Authenticatable
             'hr_fim' => 'string',
             'salario' => 'float',
             'vr_cred' => 'float',
+            'payment_day' => 'integer',
+            'is_active' => 'boolean',
             'tb2_id' => 'integer',
             'cod_acesso' => 'string',
         ];

@@ -49,12 +49,16 @@ class UserController extends Controller
     public function index(Request $request): Response
     {
         $authUser = $request->user();
-        $filters = $request->only(['unit', 'funcao', 'search']);
+        $filters = $request->only(['unit', 'funcao', 'search', 'status']);
+        $statusFilter = $this->normalizeStatusFilter($request->input('status'));
 
         $users = User::with('units:tb2_id,tb2_nome');
         ManagementScope::applyManagedUserScope($users, $authUser);
 
         $users = $users
+            ->when($statusFilter !== 'all', function ($query) use ($statusFilter) {
+                $query->where('is_active', $statusFilter === 'active');
+            })
             ->when($request->filled('search'), function ($query) use ($request) {
                 $term = trim((string) $request->input('search'));
                 $safeTerm = str_replace(['%', '_'], ['\\%', '\\_'], $term);
@@ -86,12 +90,16 @@ class UserController extends Controller
         return Inertia::render('Users/UserIndex', [
             'users' => $users,
             'units' => $units,
-            'filters' => $filters,
+            'filters' => [
+                ...$filters,
+                'status' => $statusFilter,
+            ],
             'permissions' => [
                 'canCreate' => in_array((int) $authUser->funcao, [0, 1], true),
                 'canView' => in_array((int) $authUser->funcao, [0, 1], true),
                 'canEdit' => in_array((int) $authUser->funcao, [0, 1], true),
                 'canDelete' => in_array((int) $authUser->funcao, [0, 1], true),
+                'canToggleActive' => in_array((int) $authUser->funcao, [0, 1], true),
                 'canManageSalaryAdvances' => in_array((int) $authUser->funcao, [0, 1, 2], true),
             ],
         ]);
@@ -175,6 +183,7 @@ class UserController extends Controller
                 'hr_fim' => 'required|date_format:H:i|after:hr_ini',
                 'salario' => 'required|numeric|min:0',
                 'vr_cred' => 'required|numeric|min:0',
+                'payment_day' => 'required|integer|between:1,31',
                 'tb2_id' => 'required|array|min:1',
                 'tb2_id.*' => 'integer|exists:tb2_unidades,tb2_id',
             ],
@@ -207,6 +216,9 @@ class UserController extends Controller
                 'vr_cred.required' => 'Informe o crédito de refeição.',
                 'vr_cred.numeric' => 'O crédito deve ser numérico.',
                 'vr_cred.min' => 'O crédito deve ser maior ou igual a zero.',
+                'payment_day.required' => 'Informe a data de pagamento.',
+                'payment_day.integer' => 'A data de pagamento deve ser um dia do mês válido.',
+                'payment_day.between' => 'A data de pagamento deve estar entre os dias 1 e 31.',
                 'tb2_id.required' => 'Selecione pelo menos uma unidade.',
                 'tb2_id.array' => 'Selecao de unidades invalida.',
                 'tb2_id.min' => 'Selecione pelo menos uma unidade.',
@@ -244,6 +256,7 @@ class UserController extends Controller
             'hr_fim' => $request->hr_fim,
             'salario' => $request->salario,
             'vr_cred' => $request->vr_cred,
+            'payment_day' => $request->payment_day,
             'tb2_id' => $primaryUnit,
         ]);
 
@@ -281,6 +294,7 @@ class UserController extends Controller
                 'hr_fim' => 'required|date_format:H:i|after:hr_ini',
                 'salario' => 'required|numeric|min:0',
                 'vr_cred' => 'required|numeric|min:0',
+                'payment_day' => 'required|integer|between:1,31',
                 'tb2_id' => 'required|array|min:1',
                 'tb2_id.*' => 'integer|exists:tb2_unidades,tb2_id',
             ],
@@ -307,6 +321,9 @@ class UserController extends Controller
                 'vr_cred.required' => 'Informe o crédito de refeição.',
                 'vr_cred.numeric' => 'O crédito deve ser numérico.',
                 'vr_cred.min' => 'O crédito deve ser maior ou igual a zero.',
+                'payment_day.required' => 'Informe a data de pagamento.',
+                'payment_day.integer' => 'A data de pagamento deve ser um dia do mês válido.',
+                'payment_day.between' => 'A data de pagamento deve estar entre os dias 1 e 31.',
                 'tb2_id.required' => 'Selecione pelo menos uma unidade.',
                 'tb2_id.array' => 'Selecao de unidades invalida.',
                 'tb2_id.min' => 'Selecione pelo menos uma unidade.',
@@ -342,6 +359,7 @@ class UserController extends Controller
             'hr_fim' => $request->hr_fim,
             'salario' => $request->salario,
             'vr_cred' => $request->vr_cred,
+            'payment_day' => $request->payment_day,
             'tb2_id' => $primaryUnit,
         ];
 
@@ -393,6 +411,7 @@ class UserController extends Controller
         }
 
         $users = $users
+            ->where('is_active', true)
             ->where('name', 'like', '%' . $safeTerm . '%')
             ->orderBy('name')
             ->limit(10)
@@ -449,6 +468,15 @@ class UserController extends Controller
         return preg_replace('/\D/', '', $value) ?? '';
     }
 
+    private function normalizeStatusFilter(mixed $value): string
+    {
+        $status = strtolower(trim((string) ($value ?? '')));
+
+        return in_array($status, ['active', 'inactive', 'all'], true)
+            ? $status
+            : 'active';
+    }
+
     public function destroy(User $user)
     {
         $this->ensureCanManageUser(request()->user(), $user);
@@ -460,6 +488,24 @@ class UserController extends Controller
         $user->delete();
 
         return Redirect::route('users.index')->with('success', 'Usuário apagado com sucesso!');
+    }
+
+    public function toggleActive(Request $request, User $user)
+    {
+        $this->ensureCanManageUser($request->user(), $user);
+
+        $nextStatus = ! (bool) $user->is_active;
+
+        $user->update([
+            'is_active' => $nextStatus,
+        ]);
+
+        return Redirect::back()->with(
+            'success',
+            $nextStatus
+                ? 'UsuÃ¡rio reativado com sucesso!'
+                : 'UsuÃ¡rio inativado com sucesso!'
+        );
     }
 
     public function resetPassword(Request $request, User $user)

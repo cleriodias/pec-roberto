@@ -38,11 +38,13 @@ export default function UserIndex({ auth, users, units = [], filters = {}, permi
     const currentUnit = filters.unit ?? '';
     const currentRole = filters.funcao ?? '';
     const currentSearch = filters.search ?? '';
+    const currentStatus = filters.status ?? 'active';
     const [search, setSearch] = useState(currentSearch);
     const canCreate = Boolean(permissions.canCreate);
     const canView = Boolean(permissions.canView);
     const canEdit = Boolean(permissions.canEdit);
     const canDelete = Boolean(permissions.canDelete);
+    const canToggleActive = Boolean(permissions.canToggleActive);
     const canManageSalaryAdvances = Boolean(permissions.canManageSalaryAdvances);
 
     useEffect(() => {
@@ -79,6 +81,7 @@ export default function UserIndex({ auth, users, units = [], filters = {}, permi
             router.get(route('users.index'), {
                 unit: currentUnit || undefined,
                 funcao: currentRole || undefined,
+                status: currentStatus || undefined,
                 search: nextSearch || undefined,
             }, {
                 preserveState: true,
@@ -88,7 +91,24 @@ export default function UserIndex({ auth, users, units = [], filters = {}, permi
         }, 300);
 
         return () => clearTimeout(timeoutId);
-    }, [search, currentSearch, currentUnit, currentRole]);
+    }, [search, currentSearch, currentUnit, currentRole, currentStatus]);
+
+    const handleToggleActive = (user) => {
+        if (!user?.id || !canToggleActive) {
+            return;
+        }
+
+        const isActive = Boolean(user.is_active);
+        const actionLabel = isActive ? 'inativar' : 'reativar';
+
+        if (!window.confirm(`Tem certeza que deseja ${actionLabel} este usuário?`)) {
+            return;
+        }
+
+        router.patch(route('users.toggle-active', { user: user.id }), {}, {
+            preserveScroll: true,
+        });
+    };
 
     return (
         <AuthenticatedLayout
@@ -115,7 +135,7 @@ export default function UserIndex({ auth, users, units = [], filters = {}, permi
                     <AlertMessage message={flash} />
 
                     <div className="px-4 pb-3">
-                        <div className="grid gap-3 md:grid-cols-3 md:items-end">
+                        <div className="grid gap-3 md:grid-cols-4 md:items-end">
                             <div className="flex flex-col gap-1">
                                 <label className="text-sm font-medium text-gray-700">Pesquisar usuario</label>
                                 <TextInput
@@ -153,6 +173,17 @@ export default function UserIndex({ auth, users, units = [], filters = {}, permi
                                             {label}
                                         </option>
                                     ))}
+                                </select>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm font-medium text-gray-700">Status</label>
+                                <select
+                                    value={currentStatus}
+                                    onChange={(e) => handleFilterChange('status', e.target.value)}
+                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                >
+                                    <option value="active">Ativos</option>
+                                    <option value="inactive">Inativos</option>
                                 </select>
                             </div>
                         </div>
@@ -230,10 +261,24 @@ export default function UserIndex({ auth, users, units = [], filters = {}, permi
                                                     </WarningButton>
                                                 </Link>
                                             )}
+                                            {canToggleActive && (
+                                                <WarningButton
+                                                    type="button"
+                                                    className="ms-1"
+                                                    onClick={() => handleToggleActive(user)}
+                                                    aria-label={user.is_active ? 'Inativar' : 'Reativar'}
+                                                    title={user.is_active ? 'Inativar' : 'Reativar'}
+                                                >
+                                                    <i
+                                                        className={`text-lg ${user.is_active ? 'bi bi-person-dash' : 'bi bi-person-check'}`}
+                                                        aria-hidden="true"
+                                                    ></i>
+                                                </WarningButton>
+                                            )}
                                             {canDelete && (
                                                 <ConfirmDeleteButton id={user.id} routeName="users.destroy" />
                                             )}
-                                            {!canManageSalaryAdvances && !canView && !canEdit && !canDelete && (
+                                            {!canManageSalaryAdvances && !canView && !canEdit && !canDelete && !canToggleActive && (
                                                 <span className="text-xs text-gray-400">--</span>
                                             )}
                                         </div>

@@ -14,6 +14,15 @@ const roleOptions = [
     { value: 6, label: 'CLIENTE' },
 ];
 
+const paymentDayOptions = Array.from({ length: 31 }, (_, index) => {
+    const value = String(index + 1);
+
+    return {
+        value,
+        label: value.padStart(2, '0'),
+    };
+});
+
 const formatTime = (value) => {
     if (!value) {
         return '';
@@ -57,6 +66,7 @@ export default function UserEdit({ auth, user, units = [] }) {
         hr_fim: formatTime(user.hr_fim) || '17:00',
         salario: user.salario !== undefined && user.salario !== null ? String(user.salario) : '1518',
         vr_cred: user.vr_cred !== undefined && user.vr_cred !== null ? String(user.vr_cred) : '350',
+        payment_day: user.payment_day !== undefined && user.payment_day !== null ? String(user.payment_day) : '',
         tb2_id: initialUnits,
     });
 
@@ -241,7 +251,7 @@ export default function UserEdit({ auth, user, units = [] }) {
                                 </div>
                             </div>
 
-                            <div className="mb-4 grid gap-4 sm:grid-cols-2">
+                            <div className="mb-4 grid gap-4 sm:grid-cols-3">
                                 <div>
                                     <label htmlFor="salario" className="block text-sm font-medium text-gray-700">{'Sal\u00E1rio (R$)'}</label>
                                     <input
@@ -267,6 +277,24 @@ export default function UserEdit({ auth, user, units = [] }) {
                                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                     />
                                     {errors.vr_cred && <span className="text-red-600">{errors.vr_cred}</span>}
+                                </div>
+                                <div>
+                                    <label htmlFor="payment_day" className="block text-sm font-medium text-gray-700">Data de pagamento</label>
+                                    <select
+                                        id="payment_day"
+                                        value={data.payment_day}
+                                        onChange={(e) => setData('payment_day', e.target.value)}
+                                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
+                                    >
+                                        <option value="">Selecione</option>
+                                        {paymentDayOptions.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                Dia {option.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="mt-1 text-xs text-gray-500">Dia do m\u00EAs em que o sal\u00E1rio ser\u00E1 pago.</p>
+                                    {errors.payment_day && <span className="text-red-600">{errors.payment_day}</span>}
                                 </div>
                             </div>
 

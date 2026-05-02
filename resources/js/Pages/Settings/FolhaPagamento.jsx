@@ -103,7 +103,7 @@ export default function FolhaPagamento({
                             Folha de Pagamento
                         </h2>
                         <p className="text-sm text-gray-500 dark:text-gray-300">
-                            Consolidado de salarios, adiantamentos, vales e saldo. Unidade atual: {unit?.name ?? '---'}.
+                            Consolidado por ciclo de pagamento, com periodo calculado por colaborador. Unidade atual: {unit?.name ?? '---'}.
                         </p>
                     </div>
                     <Link
@@ -132,7 +132,7 @@ export default function FolhaPagamento({
                         <div className="flex flex-wrap items-end gap-3">
                             <div>
                                 <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                    Inicio
+                                    Pagamento de
                                 </label>
                                 <input
                                     type="text"
@@ -145,7 +145,7 @@ export default function FolhaPagamento({
                             </div>
                             <div>
                                 <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                    Fim
+                                    Pagamento ate
                                 </label>
                                 <input
                                     type="text"
@@ -236,7 +236,7 @@ export default function FolhaPagamento({
                                     Colaboradores
                                 </h3>
                                 <p className="text-sm text-gray-500 dark:text-gray-300">
-                                    Lista de usuarios sem o perfil Cliente.
+                                    Lista de usuarios sem o perfil Cliente. O periodo de cada linha e calculado pela data de pagamento do colaborador.
                                 </p>
                             </div>
                             <span className="text-xs font-semibold text-gray-500 dark:text-gray-300">
@@ -280,6 +280,9 @@ export default function FolhaPagamento({
                                                     <div className="space-y-2">
                                                         <p className="font-semibold text-gray-900 dark:text-gray-100">
                                                             {row.name}
+                                                        </p>
+                                                        <p className="text-xs text-gray-500 dark:text-gray-300">
+                                                            Periodo: {row.period_label}
                                                         </p>
                                                         <div className="flex flex-wrap gap-2">
                                                             <span

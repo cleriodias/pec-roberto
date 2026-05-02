@@ -112,6 +112,8 @@ export default function ContraCheque({
     const creditForm = useForm({
         start_date: startDate ?? '',
         end_date: endDate ?? '',
+        filter_start_date: startDate ?? '',
+        filter_end_date: endDate ?? '',
         unit_id:
             selectedUnitId !== null && selectedUnitId !== undefined
                 ? String(selectedUnitId)
@@ -219,6 +221,8 @@ export default function ContraCheque({
         creditForm.setData({
             start_date: row?.detail?.start_date ?? startDate ?? '',
             end_date: row?.detail?.end_date ?? endDate ?? '',
+            filter_start_date: startDate ?? '',
+            filter_end_date: endDate ?? '',
             unit_id:
                 selectedUnitId !== null && selectedUnitId !== undefined
                     ? String(selectedUnitId)
@@ -267,7 +271,7 @@ export default function ContraCheque({
                             Contra-Cheque
                         </h2>
                         <p className="text-sm text-gray-500 dark:text-gray-300">
-                            Resumo do mes atual para colaboradores com salario informado. Unidade atual: {unit?.name ?? '---'}.
+                            Resumo por ciclo de pagamento. A janela abaixo define onde cai a data de pagamento de cada colaborador. Unidade atual: {unit?.name ?? '---'}.
                         </p>
                     </div>
                     <Link
@@ -298,7 +302,7 @@ export default function ContraCheque({
                         <div className="flex flex-wrap items-end gap-3">
                             <div>
                                 <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                    Inicio
+                                    Pagamento de
                                 </label>
                                 <input
                                     type="text"
@@ -311,7 +315,7 @@ export default function ContraCheque({
                             </div>
                             <div>
                                 <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                    Fim
+                                    Pagamento ate
                                 </label>
                                 <input
                                     type="text"
@@ -387,10 +391,13 @@ export default function ContraCheque({
                         <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 md:flex-row md:items-end md:justify-between">
                             <div>
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                    Periodo considerado
+                                    Janela de pagamento
                                 </h3>
                                 <p className="text-sm text-gray-500 dark:text-gray-300">
                                     {formatBrazilShortDate(startDate)} a {formatBrazilShortDate(endDate)}
+                                </p>
+                                <p className="text-sm text-gray-500 dark:text-gray-300">
+                                    Os vales, adiantamentos e lancamentos sao calculados pelo periodo individual de cada colaborador.
                                 </p>
                             </div>
                             <span className="text-sm font-semibold text-gray-500 dark:text-gray-300">
@@ -431,6 +438,14 @@ export default function ContraCheque({
                                             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                                                 {row.name}
                                             </h3>
+                                            <p className="mt-1 text-sm text-gray-500 dark:text-gray-300">
+                                                Periodo calculado: {row.period_label}
+                                            </p>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                {row.payment_day_label
+                                                    ? `Pagamento previsto no dia ${row.payment_day_label} de cada mes.`
+                                                    : 'Sem data de pagamento cadastrada. Periodo definido pelos filtros.'}
+                                            </p>
                                         </div>
                                         <div className="flex flex-wrap gap-2">
                                             <span

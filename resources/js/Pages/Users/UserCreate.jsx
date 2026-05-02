@@ -13,6 +13,15 @@ const roleOptions = [
     { value: 6, label: 'Cliente' },
 ];
 
+const paymentDayOptions = Array.from({ length: 31 }, (_, index) => {
+    const value = String(index + 1);
+
+    return {
+        value,
+        label: value.padStart(2, '0'),
+    };
+});
+
 const formatNameInput = (value) => {
     const sanitizedValue = value
         .replace(/[^A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF\s]/g, '')
@@ -68,6 +77,7 @@ export default function UserCreate({ auth, units = [] }) {
         hr_fim: '23:00',
         salario: '1518',
         vr_cred: '350',
+        payment_day: '',
         tb2_id: initialUnits,
     });
 
@@ -227,7 +237,7 @@ export default function UserCreate({ auth, units = [] }) {
                                 </div>
                             </div>
 
-                            <div className="mb-4 grid gap-4 sm:grid-cols-2">
+                            <div className="mb-4 grid gap-4 sm:grid-cols-3">
                                 <div>
                                     <label htmlFor="salario" className="block text-sm font-medium text-gray-700">{'Sal\u00E1rio (R$)'}</label>
                                     <input
@@ -253,6 +263,24 @@ export default function UserCreate({ auth, units = [] }) {
                                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                     />
                                     {errors.vr_cred && <span className="text-red-600">{errors.vr_cred}</span>}
+                                </div>
+                                <div>
+                                    <label htmlFor="payment_day" className="block text-sm font-medium text-gray-700">Data de pagamento</label>
+                                    <select
+                                        id="payment_day"
+                                        value={data.payment_day}
+                                        onChange={(e) => setData('payment_day', e.target.value)}
+                                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
+                                    >
+                                        <option value="">Selecione</option>
+                                        {paymentDayOptions.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                Dia {option.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="mt-1 text-xs text-gray-500">Dia do m\u00EAs em que o sal\u00E1rio ser\u00E1 pago.</p>
+                                    {errors.payment_day && <span className="text-red-600">{errors.payment_day}</span>}
                                 </div>
                             </div>
 

@@ -64,6 +64,8 @@ class PayrollController extends Controller
         $data = $request->validate([
             'start_date' => ['required', 'string'],
             'end_date' => ['required', 'string'],
+            'filter_start_date' => ['nullable', 'string'],
+            'filter_end_date' => ['nullable', 'string'],
             'unit_id' => ['nullable', 'string'],
             'role' => ['nullable', 'string'],
             'user_id' => ['nullable', 'string'],
@@ -83,6 +85,8 @@ class PayrollController extends Controller
 
         $startDate = $this->parseRequiredDate((string) $data['start_date'], 'start_date');
         $endDate = $this->parseRequiredDate((string) $data['end_date'], 'end_date');
+        $redirectStartDate = $this->parseFlexibleDate($data['filter_start_date'] ?? null, $startDate)->startOfDay();
+        $redirectEndDate = $this->parseFlexibleDate($data['filter_end_date'] ?? null, $endDate)->endOfDay();
 
         if ($endDate->lt($startDate)) {
             throw ValidationException::withMessages([
@@ -109,13 +113,13 @@ class PayrollController extends Controller
         ]);
 
         return redirect()
-            ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $startDate, $endDate))
+            ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $redirectStartDate, $redirectEndDate))
             ->with('success', 'Lancamento adicional do contra-cheque cadastrado com sucesso.');
     }
 
     private function buildPayrollPayload(Request $request, bool $onlyWithSalary = false): array
     {
-        [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
+        [$windowStart, $windowEnd, $windowStartDate, $windowEndDate] = $this->resolveDateRange($request);
         $filterUnits = ManagementScope::managedUnits($request->user(), ['tb2_id', 'tb2_nome'])
             ->map(fn (Unidade $unit) => [
                 'id' => (int) $unit->tb2_id,
@@ -214,13 +218,30 @@ class PayrollController extends Controller
             $selectedUserId = null;
         }
 
-        $users = $usersQuery->get(['id', 'name', 'phone', 'funcao', 'salario', 'tb2_id']);
-
+        $users = $usersQuery->get(['id', 'name', 'phone', 'funcao', 'salario', 'payment_day', 'tb2_id']);
         $userIds = $users->pluck('id')->map(fn ($value) => (int) $value)->values();
+
+        $payrollPeriods = $users
+            ->mapWithKeys(fn (User $user) => [
+                (int) $user->id => $this->resolveUserPayrollPeriod($user, $windowStart, $windowEnd),
+            ]);
+
+        $overallStart = $payrollPeriods->reduce(
+            fn (?Carbon $carry, array $period) => $carry === null || $period['period_start_at']->lt($carry)
+                ? $period['period_start_at']->copy()
+                : $carry,
+            null,
+        ) ?? $windowStart->copy();
+        $overallEnd = $payrollPeriods->reduce(
+            fn (?Carbon $carry, array $period) => $carry === null || $period['period_end_at']->gt($carry)
+                ? $period['period_end_at']->copy()
+                : $carry,
+            null,
+        ) ?? $windowEnd->copy();
 
         $advances = $userIds->isEmpty()
             ? collect()
-            : $this->advanceQuery($userIds, $startDate, $endDate, $selectedUnitId, $allowedUnitIds)
+            : $this->advanceQuery($userIds, $overallStart->toDateString(), $overallEnd->toDateString(), $selectedUnitId, $allowedUnitIds)
                 ->with(['unit:tb2_id,tb2_nome'])
                 ->orderBy('advance_date')
                 ->orderBy('id')
@@ -228,7 +249,7 @@ class PayrollController extends Controller
 
         $valeSales = $userIds->isEmpty()
             ? collect()
-            : $this->valeQuery($userIds, $start, $end, $selectedUnitId, $allowedUnitIds)
+            : $this->valeQuery($userIds, $overallStart, $overallEnd, $selectedUnitId, $allowedUnitIds)
                 ->with(['unidade:tb2_id,tb2_nome'])
                 ->orderBy('data_hora')
                 ->orderBy('tb3_id')
@@ -247,13 +268,15 @@ class PayrollController extends Controller
             ? collect()
             : ContraChequeCredito::query()
                 ->whereIn('user_id', $userIds)
-                ->whereDate('tb28_periodo_inicio', $startDate)
-                ->whereDate('tb28_periodo_fim', $endDate)
+                ->whereDate('tb28_periodo_inicio', '<=', $overallEnd->toDateString())
+                ->whereDate('tb28_periodo_fim', '>=', $overallStart->toDateString())
                 ->orderBy('created_at')
                 ->orderBy('tb28_id')
                 ->get([
                     'tb28_id',
                     'user_id',
+                    'tb28_periodo_inicio',
+                    'tb28_periodo_fim',
                     'tb28_tipo',
                     'tb28_descricao',
                     'tb28_valor',
@@ -264,9 +287,21 @@ class PayrollController extends Controller
         $extraCreditsByUser = $extraCredits->groupBy('user_id');
 
         $rows = $users
-            ->map(function (User $user) use ($advancesByUser, $valeSalesByUser, $extraCreditsByUser, $startDate, $endDate) {
+            ->map(function (User $user) use ($advancesByUser, $valeSalesByUser, $extraCreditsByUser, $payrollPeriods, $windowStart, $windowEnd) {
+                $period = $payrollPeriods->get((int) $user->id);
+
+                if ($period === null) {
+                    $period = $this->resolveUserPayrollPeriod($user, $windowStart, $windowEnd);
+                }
+
+                $periodStart = $period['period_start_at'];
+                $periodEnd = $period['period_end_at'];
+                $periodStartDate = $period['period_start_date'];
+                $periodEndDate = $period['period_end_date'];
+
                 $advanceRecords = $advancesByUser
                     ->get($user->id, collect())
+                    ->filter(fn (SalaryAdvance $advance) => $this->dateFallsWithinPayrollPeriod($advance->advance_date, $periodStart, $periodEnd))
                     ->map(function (SalaryAdvance $advance) {
                         return [
                             'id' => (int) $advance->id,
@@ -280,6 +315,7 @@ class PayrollController extends Controller
 
                 $valeRecords = $valeSalesByUser
                     ->get($user->id, collect())
+                    ->filter(fn (Venda $sale) => $this->dateFallsWithinPayrollPeriod($sale->data_hora, $periodStart, $periodEnd))
                     ->groupBy('tb4_id')
                     ->map(function (Collection $group, $receiptId) {
                         /** @var Venda|null $first */
@@ -301,6 +337,10 @@ class PayrollController extends Controller
 
                 $extraEntryRecords = $extraCreditsByUser
                     ->get($user->id, collect())
+                    ->filter(function (ContraChequeCredito $credit) use ($periodStartDate, $periodEndDate) {
+                        return $credit->tb28_periodo_inicio?->toDateString() === $periodStartDate
+                            && $credit->tb28_periodo_fim?->toDateString() === $periodEndDate;
+                    })
                     ->map(function (ContraChequeCredito $credit) {
                         $typeLabel = self::EXTRA_ENTRY_TYPE_LABELS[$credit->tb28_tipo] ?? 'Outros';
                         $isDeduction = in_array($credit->tb28_tipo, self::EXTRA_DEDUCTION_TYPES, true);
@@ -340,6 +380,9 @@ class PayrollController extends Controller
                     'phone' => $user->phone,
                     'role_label' => self::ROLE_LABELS[(int) $user->funcao] ?? '---',
                     'salary' => $salary,
+                    'payment_day' => $period['payment_day'],
+                    'payment_day_label' => $period['payment_day_label'],
+                    'period_label' => sprintf('%s a %s', $periodStart->format('d/m/Y'), $periodEnd->format('d/m/Y')),
                     'advances_total' => $advanceTotal,
                     'vales_total' => $valeTotal,
                     'extra_credits_total' => $extraCreditTotal,
@@ -352,8 +395,11 @@ class PayrollController extends Controller
                         'phone' => $user->phone,
                         'role_label' => self::ROLE_LABELS[(int) $user->funcao] ?? '---',
                         'unit_names' => $unitNames->values()->all(),
-                        'start_date' => $startDate,
-                        'end_date' => $endDate,
+                        'start_date' => $periodStartDate,
+                        'end_date' => $periodEndDate,
+                        'payment_day' => $period['payment_day'],
+                        'payment_day_label' => $period['payment_day_label'],
+                        'uses_payment_day' => $period['uses_payment_day'],
                         'salary' => $salary,
                         'advances_total' => $advanceTotal,
                         'vales_total' => $valeTotal,
@@ -386,8 +432,8 @@ class PayrollController extends Controller
         return [
             'rows' => $rows,
             'summary' => $summary,
-            'startDate' => $startDate,
-            'endDate' => $endDate,
+            'startDate' => $windowStartDate,
+            'endDate' => $windowEndDate,
             'filterUnits' => $filterUnits,
             'filterUsers' => $filterUsers,
             'roleOptions' => $roleOptions,
@@ -396,6 +442,96 @@ class PayrollController extends Controller
             'selectedUserId' => $selectedUserId,
             'unit' => $selectedUnit,
         ];
+    }
+
+    private function resolveUserPayrollPeriod(User $user, Carbon $windowStart, Carbon $windowEnd): array
+    {
+        $paymentDay = $this->normalizePaymentDay($user->payment_day);
+
+        if ($paymentDay === null) {
+            return [
+                'payment_day' => null,
+                'payment_day_label' => null,
+                'uses_payment_day' => false,
+                'period_start_at' => $windowStart->copy()->startOfDay(),
+                'period_end_at' => $windowEnd->copy()->endOfDay(),
+                'period_start_date' => $windowStart->toDateString(),
+                'period_end_date' => $windowEnd->toDateString(),
+            ];
+        }
+
+        $paymentDate = $this->resolvePaymentDateForWindow($paymentDay, $windowStart, $windowEnd);
+        $previousPaymentDate = $this->scheduledPaymentDateForMonth(
+            $paymentDate->copy()->subMonthNoOverflow(),
+            $paymentDay,
+        );
+
+        return [
+            'payment_day' => $paymentDay,
+            'payment_day_label' => str_pad((string) $paymentDay, 2, '0', STR_PAD_LEFT),
+            'uses_payment_day' => true,
+            'period_start_at' => $previousPaymentDate->copy()->startOfDay(),
+            'period_end_at' => $paymentDate->copy()->endOfDay(),
+            'period_start_date' => $previousPaymentDate->toDateString(),
+            'period_end_date' => $paymentDate->toDateString(),
+        ];
+    }
+
+    private function normalizePaymentDay(mixed $value): ?int
+    {
+        $paymentDay = (int) $value;
+
+        if ($paymentDay < 1 || $paymentDay > 31) {
+            return null;
+        }
+
+        return $paymentDay;
+    }
+
+    private function resolvePaymentDateForWindow(int $paymentDay, Carbon $windowStart, Carbon $windowEnd): Carbon
+    {
+        $currentMonth = $windowStart->copy()->startOfMonth();
+        $lastMonth = $windowEnd->copy()->startOfMonth();
+        $candidates = collect();
+
+        while ($currentMonth->lte($lastMonth)) {
+            $candidate = $this->scheduledPaymentDateForMonth($currentMonth, $paymentDay);
+
+            if ($candidate->between($windowStart, $windowEnd, true)) {
+                $candidates->push($candidate->copy());
+            }
+
+            $currentMonth->addMonthNoOverflow()->startOfMonth();
+        }
+
+        if ($candidates->isNotEmpty()) {
+            return $candidates->last()->copy()->startOfDay();
+        }
+
+        $fallback = $this->scheduledPaymentDateForMonth($windowEnd, $paymentDay);
+
+        if ($fallback->gt($windowEnd)) {
+            $fallback = $this->scheduledPaymentDateForMonth($windowEnd->copy()->subMonthNoOverflow(), $paymentDay);
+        }
+
+        return $fallback->startOfDay();
+    }
+
+    private function scheduledPaymentDateForMonth(Carbon $monthReference, int $paymentDay): Carbon
+    {
+        $month = $monthReference->copy()->startOfMonth();
+        $day = min($paymentDay, $month->daysInMonth);
+
+        return $month->copy()->day($day)->startOfDay();
+    }
+
+    private function dateFallsWithinPayrollPeriod(?Carbon $date, Carbon $periodStart, Carbon $periodEnd): bool
+    {
+        if (! $date) {
+            return false;
+        }
+
+        return $date->between($periodStart, $periodEnd, true);
     }
 
     private function ensureAdmin($user): void

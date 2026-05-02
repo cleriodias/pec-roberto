@@ -19,6 +19,7 @@ export const buildContraChequeHtml = (detail, options = {}) => {
     const printedAt = formatBrazilDateTime(new Date());
     const unitLabel = (detail?.unit_names ?? []).join(' / ') || '---';
     const periodLabel = `${formatBrazilShortDate(detail?.start_date)} a ${formatBrazilShortDate(detail?.end_date)}`;
+    const paymentDayLabel = detail?.payment_day_label ? `Dia ${detail.payment_day_label}` : '';
     const extraCredits = detail?.extra_credits ?? [];
     const extraDiscounts = detail?.extra_discounts ?? [];
     const advances = detail?.advances ?? [];
@@ -243,6 +244,7 @@ export const buildContraChequeHtml = (detail, options = {}) => {
                         <div class="title">
                             <h1>Contra-Cheque</h1>
                             <p>Demonstrativo de pagamento</p>
+                            ${paymentDayLabel ? `<p>Pagamento previsto: ${escapeHtml(paymentDayLabel)}</p>` : ''}
                         </div>
 
                         <div class="company-box">
@@ -362,6 +364,7 @@ export const buildContraChequeHtml = (detail, options = {}) => {
                 <h2>${escapeHtml(detail?.user_name || '---')}</h2>
                 <p class="meta">Funcao: ${escapeHtml(detail?.role_label || '---')}</p>
                 <p class="meta">Periodo: ${escapeHtml(periodLabel)}</p>
+                ${paymentDayLabel ? `<p class="meta">Data de pagamento: ${escapeHtml(paymentDayLabel)}</p>` : ''}
                 ${unitHtml}
                 <p class="meta">Impresso em: ${escapeHtml(printedAt)}</p>
                 <div class="divider"></div>
