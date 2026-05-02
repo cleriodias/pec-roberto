@@ -1751,9 +1751,9 @@ class SalesReportController extends Controller
         $start = $baseDate->copy()->startOfDay();
         $end = $baseDate->copy()->endOfDay();
 
-        $payments = $this->fetchPayments($start, $end, $filterUnitId, $allowedUnitIds, false);
-        [$totals, , $chartData] = $this->summarizePayments($payments, false);
-        [$totals] = $this->applyGlobalValeTotals($start, $end, $totals, [], $filterUnitId, $allowedUnitIds, false);
+        $payments = $this->fetchPayments($start, $end, $filterUnitId, $allowedUnitIds);
+        [$totals, $details] = $this->summarizePayments($payments);
+        [$totals, $details] = $this->applyGlobalValeTotals($start, $end, $totals, $details, $filterUnitId, $allowedUnitIds);
         $chartData = $this->buildChartData($totals);
         $expenseTotal = $this->sumExpenses($start, $end, $filterUnitId, $allowedUnitIds);
 
