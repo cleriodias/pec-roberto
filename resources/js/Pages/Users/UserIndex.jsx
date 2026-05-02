@@ -261,10 +261,13 @@ export default function UserIndex({ auth, users, units = [], filters = {}, permi
                                                     </WarningButton>
                                                 </Link>
                                             )}
+                                            {canDelete && (
+                                                <ConfirmDeleteButton id={user.id} routeName="users.destroy" />
+                                            )}
                                             {canToggleActive && (
                                                 <WarningButton
                                                     type="button"
-                                                    className="ms-1"
+                                                    className="ms-1 bg-slate-700 hover:bg-slate-800 focus:bg-slate-800 focus:ring-slate-600 active:bg-slate-700 dark:bg-slate-700 dark:text-white dark:hover:bg-slate-600 dark:focus:bg-slate-600 dark:focus:ring-offset-slate-900 dark:active:bg-slate-700"
                                                     onClick={() => handleToggleActive(user)}
                                                     aria-label={user.is_active ? 'Inativar' : 'Reativar'}
                                                     title={user.is_active ? 'Inativar' : 'Reativar'}
@@ -274,9 +277,6 @@ export default function UserIndex({ auth, users, units = [], filters = {}, permi
                                                         aria-hidden="true"
                                                     ></i>
                                                 </WarningButton>
-                                            )}
-                                            {canDelete && (
-                                                <ConfirmDeleteButton id={user.id} routeName="users.destroy" />
                                             )}
                                             {!canManageSalaryAdvances && !canView && !canEdit && !canDelete && !canToggleActive && (
                                                 <span className="text-xs text-gray-400">--</span>

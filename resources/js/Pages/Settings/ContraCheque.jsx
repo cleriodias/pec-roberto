@@ -132,7 +132,7 @@ export default function ContraCheque({
         () => [
             {
                 key: 'employees',
-                label: 'Colaboradores',
+                label: 'Pessoas',
                 value: Number(summary.employees_count ?? 0).toLocaleString('pt-BR'),
             },
             {
