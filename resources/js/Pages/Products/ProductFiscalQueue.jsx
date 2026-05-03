@@ -1,10 +1,9 @@
 import AlertMessage from "@/Components/Alert/AlertMessage";
+import SuccessButton from "@/Components/Button/SuccessButton";
 import InfoButton from "@/Components/Button/InfoButton";
 import PrimaryButton from "@/Components/Button/PrimaryButton";
-import SuccessButton from "@/Components/Button/SuccessButton";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, Link, router, usePage } from "@inertiajs/react";
-import axios from "axios";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const TYPE_LABELS = {
@@ -14,36 +13,60 @@ const TYPE_LABELS = {
     3: "Producao",
 };
 
-const buildRows = (items = []) =>
-    items.map((item) => ({
-        ...item,
-        tb1_ncm: item.tb1_ncm ?? "",
-        tb1_cfop: item.tb1_cfop ?? "",
-        tb1_csosn: item.tb1_csosn ?? "",
-        tb1_cst: item.tb1_cst ?? "",
-        tb1_cst_ibscbs: item.tb1_cst_ibscbs ?? "",
-        tb1_cclasstrib: item.tb1_cclasstrib ?? "",
-        tb1_aliquota_ibs_uf: item.tb1_aliquota_ibs_uf ?? "",
-        tb1_aliquota_ibs_mun: item.tb1_aliquota_ibs_mun ?? "",
-        tb1_aliquota_cbs: item.tb1_aliquota_cbs ?? "",
-    }));
+const FISCAL_FIELDS = [
+    { key: "tb1_ncm", label: "NCM" },
+    { key: "tb1_cfop", label: "CFOP" },
+    { key: "tb1_csosn", label: "CSOSN" },
+    { key: "tb1_cst", label: "CST" },
+    { key: "tb1_cst_ibscbs", label: "CST IBS/CBS" },
+    { key: "tb1_cclasstrib", label: "cClassTrib" },
+    { key: "tb1_aliquota_ibs_uf", label: "Aliquota IBS UF" },
+    { key: "tb1_aliquota_ibs_mun", label: "Aliquota IBS Municipio" },
+    { key: "tb1_aliquota_cbs", label: "Aliquota CBS" },
+    { key: "tb1_aliquota_is", label: "Aliquota IS" },
+];
+
+const isBlankFiscalValue = (value) =>
+    value === null ||
+    value === undefined ||
+    (typeof value === "string" && value.trim() === "");
+
+const formatRate = (value) => {
+    if (isBlankFiscalValue(value)) {
+        return "--";
+    }
+
+    return Number(value).toLocaleString("pt-BR", {
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 4,
+    });
+};
+
+const firstErrorMessage = (errors = {}) => {
+    const entries = Object.values(errors);
+    const firstEntry = entries.find((entry) => Array.isArray(entry) ? entry.length > 0 : Boolean(entry));
+
+    if (Array.isArray(firstEntry)) {
+        return firstEntry[0] ?? "";
+    }
+
+    return firstEntry ?? "";
+};
 
 export default function ProductFiscalQueue({
     auth,
-    items = [],
+    products = [],
+    references = [],
     pendingCount = 0,
     selectedType = null,
     search = "",
     typeOptions = [],
 }) {
     const { flash } = usePage().props;
-    const [rows, setRows] = useState(buildRows(items));
-    const [remainingCount, setRemainingCount] = useState(Number(pendingCount ?? 0));
-    const [loadingNextBatch, setLoadingNextBatch] = useState(false);
-    const [savingId, setSavingId] = useState(null);
-    const [feedback, setFeedback] = useState("");
-    const [errorMessage, setErrorMessage] = useState("");
-    const [rowErrors, setRowErrors] = useState({});
+    const [selectedProducts, setSelectedProducts] = useState([]);
+    const [selectedReferenceId, setSelectedReferenceId] = useState(null);
+    const [applyingReferenceId, setApplyingReferenceId] = useState(null);
+    const [localError, setLocalError] = useState("");
     const [searchTerm, setSearchTerm] = useState(search ?? "");
     const [activeType, setActiveType] = useState(
         selectedType === null || selectedType === undefined ? "" : String(selectedType)
@@ -51,14 +74,12 @@ export default function ProductFiscalQueue({
     const initialSearchHandled = useRef(false);
 
     useEffect(() => {
-        setRows(buildRows(items));
-        setRemainingCount(Number(pendingCount ?? 0));
-        setActiveType(selectedType === null || selectedType === undefined ? "" : String(selectedType));
+        setSelectedProducts([]);
+        setSelectedReferenceId(null);
+        setLocalError("");
         setSearchTerm(search ?? "");
-    }, [items, pendingCount, search, selectedType]);
-
-    const visibleCount = rows.length;
-    const completedBatch = useMemo(() => visibleCount === 0 && !loadingNextBatch, [visibleCount, loadingNextBatch]);
+        setActiveType(selectedType === null || selectedType === undefined ? "" : String(selectedType));
+    }, [products, references, search, selectedType]);
 
     const buildQueueQuery = (typeValue, termValue) => {
         const query = {};
@@ -74,30 +95,6 @@ export default function ProductFiscalQueue({
         return query;
     };
 
-    const handleFieldChange = (productId, field, value) => {
-        setRows((current) =>
-            current.map((row) =>
-                row.tb1_id === productId
-                    ? { ...row, [field]: value }
-                    : row
-            )
-        );
-
-        setRowErrors((current) => {
-            if (!current[productId]?.[field]) {
-                return current;
-            }
-
-            return {
-                ...current,
-                [productId]: {
-                    ...current[productId],
-                    [field]: null,
-                },
-            };
-        });
-    };
-
     useEffect(() => {
         const handler = setTimeout(() => {
             const trimmedTerm = searchTerm.trim();
@@ -109,14 +106,6 @@ export default function ProductFiscalQueue({
                 }
             }
 
-            if (trimmedTerm !== "" && trimmedTerm.length < 4) {
-                return;
-            }
-
-            setFeedback("");
-            setErrorMessage("");
-            setRowErrors({});
-
             router.get(
                 route("products.fiscal-queue"),
                 buildQueueQuery(activeType, trimmedTerm),
@@ -127,84 +116,110 @@ export default function ProductFiscalQueue({
         return () => clearTimeout(handler);
     }, [activeType, search, searchTerm]);
 
-    const loadNextBatch = async (typeValue = activeType, termValue = searchTerm.trim()) => {
-        setLoadingNextBatch(true);
-        setErrorMessage("");
+    const productsWithMissingFields = useMemo(
+        () =>
+            products.map((product) => ({
+                ...product,
+                missingFields: FISCAL_FIELDS.filter(({ key }) => isBlankFiscalValue(product[key])),
+            })),
+        [products]
+    );
 
-        try {
-            const response = await axios.get(route("products.fiscal-queue.items"), {
-                params: buildQueueQuery(typeValue, termValue),
-            });
+    const visibleProductIds = useMemo(
+        () => productsWithMissingFields.map((product) => Number(product.tb1_id)),
+        [productsWithMissingFields]
+    );
 
-            setRows(buildRows(response.data.items ?? []));
-            setRemainingCount(Number(response.data.pendingCount ?? 0));
-        } catch (error) {
-            setErrorMessage("Nao foi possivel carregar a proxima lista de produtos pendentes.");
-        } finally {
-            setLoadingNextBatch(false);
+    const referenceMap = useMemo(() => {
+        const mapped = {};
+
+        references.forEach((reference) => {
+            mapped[Number(reference.tb29_id)] = reference;
+        });
+
+        return mapped;
+    }, [references]);
+
+    const selectedCount = selectedProducts.length;
+    const allVisibleSelected =
+        visibleProductIds.length > 0 &&
+        visibleProductIds.every((productId) => selectedProducts.includes(productId));
+
+    const toggleProduct = (productId) => {
+        const normalizedId = Number(productId);
+        setLocalError("");
+        setSelectedProducts((current) =>
+            current.includes(normalizedId)
+                ? current.filter((item) => item !== normalizedId)
+                : current.concat(normalizedId)
+        );
+    };
+
+    const toggleSelectAll = () => {
+        setLocalError("");
+
+        if (allVisibleSelected) {
+            setSelectedProducts((current) => current.filter((productId) => !visibleProductIds.includes(productId)));
+            return;
         }
+
+        setSelectedProducts((current) => {
+            const merged = new Set(current);
+            visibleProductIds.forEach((productId) => merged.add(productId));
+            return Array.from(merged);
+        });
     };
 
     const handleTypeFilter = (typeValue) => {
-        setFeedback("");
-        setErrorMessage("");
-        setRowErrors({});
+        setLocalError("");
         setActiveType(typeValue);
     };
 
-    const handleSave = async (row) => {
-        setSavingId(row.tb1_id);
-        setFeedback("");
-        setErrorMessage("");
-        setRowErrors((current) => ({ ...current, [row.tb1_id]: {} }));
-
-        try {
-            await axios.patch(route("products.fiscal-queue.update", { product: row.tb1_id }), {
-                tb1_ncm: row.tb1_ncm,
-                tb1_cfop: row.tb1_cfop,
-                tb1_csosn: row.tb1_csosn,
-                tb1_cst: row.tb1_cst,
-                tb1_cst_ibscbs: row.tb1_cst_ibscbs,
-                tb1_cclasstrib: row.tb1_cclasstrib,
-                tb1_aliquota_ibs_uf: row.tb1_aliquota_ibs_uf,
-                tb1_aliquota_ibs_mun: row.tb1_aliquota_ibs_mun,
-                tb1_aliquota_cbs: row.tb1_aliquota_cbs,
-            });
-
-            const nextRemaining = Math.max(remainingCount - 1, 0);
-            const nextRows = rows.filter((item) => item.tb1_id !== row.tb1_id);
-
-            setRows(nextRows);
-            setRemainingCount(nextRemaining);
-            setFeedback(`Produto ${row.tb1_id} atualizado com sucesso.`);
-
-            if (nextRows.length === 0 && nextRemaining > 0) {
-                await loadNextBatch(activeType, searchTerm.trim());
-            }
-        } catch (error) {
-            if (error.response?.data?.errors) {
-                const errors = error.response.data.errors;
-                setRowErrors((current) => ({
-                    ...current,
-                    [row.tb1_id]: {
-                        tb1_ncm: errors.tb1_ncm?.[0] ?? null,
-                        tb1_cfop: errors.tb1_cfop?.[0] ?? null,
-                        tb1_csosn: errors.tb1_csosn?.[0] ?? null,
-                        tb1_cst: errors.tb1_cst?.[0] ?? null,
-                        tb1_cst_ibscbs: errors.tb1_cst_ibscbs?.[0] ?? null,
-                        tb1_cclasstrib: errors.tb1_cclasstrib?.[0] ?? null,
-                        tb1_aliquota_ibs_uf: errors.tb1_aliquota_ibs_uf?.[0] ?? null,
-                        tb1_aliquota_ibs_mun: errors.tb1_aliquota_ibs_mun?.[0] ?? null,
-                        tb1_aliquota_cbs: errors.tb1_aliquota_cbs?.[0] ?? null,
-                    },
-                }));
-            } else {
-                setErrorMessage("Nao foi possivel gravar os dados fiscais deste produto.");
-            }
-        } finally {
-            setSavingId(null);
+    const submitReferenceApplication = (referenceId) => {
+        if (!referenceId) {
+            setLocalError("Selecione uma referencia fiscal.");
+            return;
         }
+
+        if (selectedProducts.length === 0) {
+            setLocalError("Marque pelo menos um produto antes de aplicar a referencia fiscal.");
+            return;
+        }
+
+        setApplyingReferenceId(referenceId);
+        setLocalError("");
+
+        router.post(
+            route("products.fiscal-queue.apply-reference"),
+            {
+                reference_id: referenceId,
+                product_ids: selectedProducts,
+                ...buildQueueQuery(activeType, searchTerm.trim()),
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setSelectedProducts([]);
+                    setSelectedReferenceId(null);
+                    setLocalError("");
+                },
+                onError: (errors) => {
+                    setLocalError(firstErrorMessage(errors) || "Nao foi possivel aplicar a referencia fiscal.");
+                },
+                onFinish: () => {
+                    setApplyingReferenceId(null);
+                },
+            }
+        );
     };
+
+    const handleReferenceSelection = (referenceId) => {
+        const normalizedId = Number(referenceId);
+        setSelectedReferenceId(normalizedId);
+        submitReferenceApplication(normalizedId);
+    };
+
+    const selectedReference = selectedReferenceId ? referenceMap[selectedReferenceId] ?? null : null;
 
     return (
         <AuthenticatedLayout
@@ -213,268 +228,257 @@ export default function ProductFiscalQueue({
                 <div className="flex items-center justify-between gap-3">
                     <div>
                         <h2 className="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
-                            Fila Fiscal
+                            Vinculo Fiscal
                         </h2>
                         <p className="text-sm text-gray-500 dark:text-gray-300">
-                            Atualize os dados fiscais em lote sem recarregar a tela.
+                            Marque os produtos pendentes e escolha uma referencia fiscal para aplicar em lote.
                         </p>
                     </div>
-                    <Link href={route("products.index")}>
-                        <PrimaryButton aria-label="Voltar para produtos" title="Voltar para produtos">
-                            <i className="bi bi-arrow-left text-lg" aria-hidden="true"></i>
-                        </PrimaryButton>
-                    </Link>
+                    <div className="flex items-center gap-2">
+                        <Link href={route("products.fiscal-references.index")}>
+                            <SuccessButton aria-label="Cadastrar referencias fiscais" title="Cadastrar referencias fiscais">
+                                <i className="bi bi-journal-plus text-lg" aria-hidden="true"></i>
+                            </SuccessButton>
+                        </Link>
+                        <Link href={route("products.index")}>
+                            <PrimaryButton aria-label="Voltar para produtos" title="Voltar para produtos">
+                                <i className="bi bi-arrow-left text-lg" aria-hidden="true"></i>
+                            </PrimaryButton>
+                        </Link>
+                    </div>
                 </div>
             }
         >
-            <Head title="Fila Fiscal" />
+            <Head title="Vinculo Fiscal" />
 
             <div className="py-4 max-w-7xl mx-auto sm:px-6 lg:px-8">
                 <div className="overflow-hidden bg-white shadow-lg sm:rounded-lg dark:bg-gray-800">
                     <AlertMessage message={flash} />
 
                     <div className="px-4 py-4 space-y-4">
-                        <div className="flex flex-col gap-3">
-                            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                                <div className="flex flex-wrap gap-2">
-                                    <InfoButton
-                                        type="button"
-                                        onClick={() => handleTypeFilter("")}
-                                        aria-label="Mostrar todos os tipos"
-                                        title="Mostrar todos os tipos"
-                                        className={activeType === "" ? "ring-2 ring-offset-2 ring-indigo-300" : ""}
-                                    >
-                                        Todos
-                                    </InfoButton>
-                                    {typeOptions.map((option) => {
-                                        const value = String(option.value);
+                        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/30">
+                            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                                <div className="flex flex-col gap-3">
+                                    <div className="flex flex-wrap gap-2">
+                                        <InfoButton
+                                            type="button"
+                                            onClick={() => handleTypeFilter("")}
+                                            aria-label="Mostrar todos os tipos"
+                                            title="Mostrar todos os tipos"
+                                            className={activeType === "" ? "ring-2 ring-offset-2 ring-indigo-300" : ""}
+                                        >
+                                            Todos
+                                        </InfoButton>
+                                        {typeOptions.map((option) => {
+                                            const value = String(option.value);
 
-                                        return (
-                                            <InfoButton
-                                                key={option.value}
-                                                type="button"
-                                                onClick={() => handleTypeFilter(value)}
-                                                aria-label={`Filtrar fila fiscal por ${option.label}`}
-                                                title={`Filtrar fila fiscal por ${option.label}`}
-                                                className={activeType === value ? "ring-2 ring-offset-2 ring-indigo-300" : ""}
-                                            >
-                                                {option.label}
-                                            </InfoButton>
-                                        );
-                                    })}
+                                            return (
+                                                <InfoButton
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => handleTypeFilter(value)}
+                                                    aria-label={`Filtrar por ${option.label}`}
+                                                    title={`Filtrar por ${option.label}`}
+                                                    className={activeType === value ? "ring-2 ring-offset-2 ring-indigo-300" : ""}
+                                                >
+                                                    {option.label}
+                                                </InfoButton>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <input
+                                        type="text"
+                                        value={searchTerm}
+                                        onChange={(event) => setSearchTerm(event.target.value)}
+                                        placeholder="Buscar por nome, ID ou codigo de barras"
+                                        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 xl:min-w-[340px] dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                    />
                                 </div>
 
-                                <input
-                                    type="text"
-                                    value={searchTerm}
-                                    onChange={(event) => setSearchTerm(event.target.value)}
-                                    placeholder="Buscar por nome, ID ou codigo de barras"
-                                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 xl:max-w-md dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                />
-                            </div>
-
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                <div>
-                                    <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                        Lista atual: {visibleCount} item(ns)
-                                    </p>
-                                    <p className="text-sm text-gray-500 dark:text-gray-300">
-                                        Pendentes na fila: {remainingCount}
-                                    </p>
-                                    <p className="text-sm text-gray-500 dark:text-gray-300">
-                                        Tipo selecionado: {activeType === "" ? "Todos" : TYPE_LABELS[activeType] ?? "Todos"}
-                                    </p>
-                                    <p className="text-sm text-gray-500 dark:text-gray-300">
-                                        Busca: {searchTerm.trim() === "" ? "Sem filtro" : searchTerm.trim()}
-                                    </p>
+                                <div className="grid gap-2 text-sm text-gray-600 dark:text-gray-300 xl:text-right">
+                                    <p>Produtos pendentes: <span className="font-semibold">{pendingCount}</span></p>
+                                    <p>Produtos visiveis: <span className="font-semibold">{productsWithMissingFields.length}</span></p>
+                                    <p>Produtos marcados: <span className="font-semibold">{selectedCount}</span></p>
+                                    <p>Referencias disponiveis: <span className="font-semibold">{references.length}</span></p>
                                 </div>
-                                {completedBatch && remainingCount > 0 && (
-                                    <SuccessButton
-                                        type="button"
-                                        onClick={() => loadNextBatch(activeType, searchTerm.trim())}
-                                        disabled={loadingNextBatch}
-                                        aria-label="Carregar proxima lista"
-                                        title="Carregar proxima lista"
-                                    >
-                                        <i className="bi bi-arrow-repeat text-lg" aria-hidden="true"></i>
-                                    </SuccessButton>
-                                )}
                             </div>
                         </div>
 
-                        {feedback && (
-                            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                                {feedback}
-                            </div>
-                        )}
-
-                        {errorMessage && (
+                        {localError && (
                             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                                {errorMessage}
+                                {localError}
                             </div>
                         )}
 
-                        {rows.length === 0 ? (
-                            <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-300">
-                                {remainingCount > 0
-                                    ? "Os 20 itens atuais foram concluidos. Carregue a proxima lista."
-                                    : "Nao existem mais produtos pendentes de cadastro fiscal nesta fila."}
-                            </div>
-                        ) : (
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                    <thead className="bg-gray-50 dark:bg-gray-700">
-                                        <tr>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Produto</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">NCM</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">CFOP</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">CSOSN</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">CST</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">CST IBS/CBS</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">cClassTrib</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">IBS UF</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">IBS Mun</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">CBS</th>
-                                            <th className="px-4 py-3 text-center text-sm font-medium text-gray-500">Gravar</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
-                                        {rows.map((row) => {
-                                            const errors = rowErrors[row.tb1_id] ?? {};
+                        <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
+                            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/20">
+                                <div className="mb-4 flex items-center justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                                            Top 30 produtos pendentes
+                                        </h3>
+                                        <p className="text-sm text-gray-500 dark:text-gray-300">
+                                            Cada item abaixo ainda nao possui todas as referencias fiscais preenchidas.
+                                        </p>
+                                    </div>
+                                    <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                        <input
+                                            type="checkbox"
+                                            checked={allVisibleSelected}
+                                            onChange={toggleSelectAll}
+                                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        Marcar todos
+                                    </label>
+                                </div>
+
+                                {productsWithMissingFields.length === 0 ? (
+                                    <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-300">
+                                        Nao existem produtos pendentes para os filtros atuais.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {productsWithMissingFields.map((product) => {
+                                            const isChecked = selectedProducts.includes(Number(product.tb1_id));
 
                                             return (
-                                                <tr key={row.tb1_id}>
-                                                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
-                                                        <div className="flex flex-col">
-                                                            <span className="font-medium">{row.tb1_nome}</span>
-                                                            <span className="text-xs text-gray-400">
-                                                                ID {row.tb1_id} | {TYPE_LABELS[row.tb1_tipo] ?? "---"} | {row.tb1_codbar || "--"}
-                                                            </span>
+                                                <label
+                                                    key={product.tb1_id}
+                                                    className={`block cursor-pointer rounded-2xl border p-4 transition ${
+                                                        isChecked
+                                                            ? "border-indigo-500 bg-indigo-50 shadow-sm"
+                                                            : "border-gray-200 bg-white hover:border-indigo-300"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start gap-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isChecked}
+                                                            onChange={() => toggleProduct(product.tb1_id)}
+                                                            className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                        />
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                                                <div className="min-w-0">
+                                                                    <p className="truncate text-sm font-semibold text-gray-900">
+                                                                        {product.tb1_nome}
+                                                                    </p>
+                                                                    <p className="text-xs text-gray-500">
+                                                                        ID {product.tb1_id} | {TYPE_LABELS[product.tb1_tipo] ?? "---"} | {product.tb1_codbar || "--"}
+                                                                    </p>
+                                                                </div>
+                                                                <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                                                                    {product.missingFields.length} campo(s) pendente(s)
+                                                                </span>
+                                                            </div>
+
+                                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                                {product.missingFields.map((field) => (
+                                                                    <span
+                                                                        key={`${product.tb1_id}-${field.key}`}
+                                                                        className="rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-700"
+                                                                    >
+                                                                        {field.label}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
                                                         </div>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input
-                                                            type="text"
-                                                            maxLength="8"
-                                                            placeholder="19059090"
-                                                            value={row.tb1_ncm}
-                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_ncm", event.target.value)}
-                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                                        />
-                                                        {errors.tb1_ncm && <p className="mt-1 text-xs text-rose-600">{errors.tb1_ncm}</p>}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input
-                                                            type="text"
-                                                            maxLength="4"
-                                                            placeholder="5102"
-                                                            value={row.tb1_cfop}
-                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_cfop", event.target.value)}
-                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                                        />
-                                                        {errors.tb1_cfop && <p className="mt-1 text-xs text-rose-600">{errors.tb1_cfop}</p>}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input
-                                                            type="text"
-                                                            maxLength="4"
-                                                            placeholder="102"
-                                                            value={row.tb1_csosn}
-                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_csosn", event.target.value)}
-                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                                        />
-                                                        {errors.tb1_csosn && <p className="mt-1 text-xs text-rose-600">{errors.tb1_csosn}</p>}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input
-                                                            type="text"
-                                                            maxLength="3"
-                                                            placeholder="040"
-                                                            value={row.tb1_cst}
-                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_cst", event.target.value)}
-                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                                        />
-                                                        {errors.tb1_cst && <p className="mt-1 text-xs text-rose-600">{errors.tb1_cst}</p>}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input
-                                                            type="text"
-                                                            maxLength="3"
-                                                            placeholder="000"
-                                                            value={row.tb1_cst_ibscbs}
-                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_cst_ibscbs", event.target.value)}
-                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                                        />
-                                                        {errors.tb1_cst_ibscbs && <p className="mt-1 text-xs text-rose-600">{errors.tb1_cst_ibscbs}</p>}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input
-                                                            type="text"
-                                                            maxLength="6"
-                                                            placeholder="000000"
-                                                            value={row.tb1_cclasstrib}
-                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_cclasstrib", event.target.value)}
-                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                                        />
-                                                        {errors.tb1_cclasstrib && <p className="mt-1 text-xs text-rose-600">{errors.tb1_cclasstrib}</p>}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input
-                                                            type="number"
-                                                            step="0.0001"
-                                                            min="0"
-                                                            max="100"
-                                                            placeholder="0.0000"
-                                                            value={row.tb1_aliquota_ibs_uf}
-                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_aliquota_ibs_uf", event.target.value)}
-                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                                        />
-                                                        {errors.tb1_aliquota_ibs_uf && <p className="mt-1 text-xs text-rose-600">{errors.tb1_aliquota_ibs_uf}</p>}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input
-                                                            type="number"
-                                                            step="0.0001"
-                                                            min="0"
-                                                            max="100"
-                                                            placeholder="0.0000"
-                                                            value={row.tb1_aliquota_ibs_mun}
-                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_aliquota_ibs_mun", event.target.value)}
-                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                                        />
-                                                        {errors.tb1_aliquota_ibs_mun && <p className="mt-1 text-xs text-rose-600">{errors.tb1_aliquota_ibs_mun}</p>}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input
-                                                            type="number"
-                                                            step="0.0001"
-                                                            min="0"
-                                                            max="100"
-                                                            placeholder="0.0000"
-                                                            value={row.tb1_aliquota_cbs}
-                                                            onChange={(event) => handleFieldChange(row.tb1_id, "tb1_aliquota_cbs", event.target.value)}
-                                                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                                        />
-                                                        {errors.tb1_aliquota_cbs && <p className="mt-1 text-xs text-rose-600">{errors.tb1_aliquota_cbs}</p>}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <SuccessButton
-                                                            type="button"
-                                                            onClick={() => handleSave(row)}
-                                                            disabled={savingId === row.tb1_id}
-                                                            aria-label={`Gravar dados fiscais do produto ${row.tb1_nome}`}
-                                                            title={`Gravar dados fiscais do produto ${row.tb1_nome}`}
-                                                        >
-                                                            <i className="bi bi-floppy text-lg" aria-hidden="true"></i>
-                                                        </SuccessButton>
-                                                    </td>
-                                                </tr>
+                                                    </div>
+                                                </label>
                                             );
                                         })}
-                                    </tbody>
-                                </table>
+                                    </div>
+                                )}
                             </div>
-                        )}
+
+                            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/20">
+                                <div className="mb-4">
+                                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                                        Referencias fiscais disponiveis
+                                    </h3>
+                                    <p className="text-sm text-gray-500 dark:text-gray-300">
+                                        Clique no radio da referencia desejada para preencher os produtos marcados.
+                                    </p>
+                                    {selectedReference && selectedProducts.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => submitReferenceApplication(selectedReference.tb29_id)}
+                                            disabled={applyingReferenceId !== null}
+                                            className="mt-3 rounded-xl border border-indigo-300 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            Aplicar referencia selecionada novamente
+                                        </button>
+                                    )}
+                                </div>
+
+                                {references.length === 0 ? (
+                                    <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-300">
+                                        Nenhuma referencia fiscal cadastrada em tb29_referencias_fiscais.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {references.map((reference) => {
+                                            const referenceId = Number(reference.tb29_id);
+                                            const isSelected = selectedReferenceId === referenceId;
+                                            const isApplying = applyingReferenceId === referenceId;
+
+                                            return (
+                                                <label
+                                                    key={reference.tb29_id}
+                                                    className={`block cursor-pointer rounded-2xl border p-4 transition ${
+                                                        isSelected
+                                                            ? "border-emerald-500 bg-emerald-50 shadow-sm"
+                                                            : "border-gray-200 bg-white hover:border-emerald-300"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start gap-3">
+                                                        <input
+                                                            type="radio"
+                                                            name="fiscal-reference"
+                                                            checked={isSelected}
+                                                            onChange={() => handleReferenceSelection(referenceId)}
+                                                            disabled={applyingReferenceId !== null}
+                                                            className="mt-1 h-4 w-4 border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                                        />
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                                                <div>
+                                                                    <p className="text-sm font-semibold text-gray-900">
+                                                                        {reference.tb29_descricao}
+                                                                    </p>
+                                                                    <p className="text-xs text-gray-500">
+                                                                        Ref. #{reference.tb29_id}
+                                                                    </p>
+                                                                </div>
+                                                                {isApplying && (
+                                                                    <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">
+                                                                        Aplicando...
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="mt-3 grid gap-2 text-xs text-gray-700 sm:grid-cols-2">
+                                                                <p><span className="font-semibold">NCM:</span> {reference.tb29_ncm}</p>
+                                                                <p><span className="font-semibold">CFOP:</span> {reference.tb29_cfop}</p>
+                                                                <p><span className="font-semibold">CSOSN:</span> {reference.tb29_csosn}</p>
+                                                                <p><span className="font-semibold">CST:</span> {reference.tb29_cst}</p>
+                                                                <p><span className="font-semibold">CST IBS/CBS:</span> {reference.tb29_cst_ibscbs}</p>
+                                                                <p><span className="font-semibold">cClassTrib:</span> {reference.tb29_cclasstrib}</p>
+                                                                <p><span className="font-semibold">IBS UF:</span> {formatRate(reference.tb29_aliquota_ibs_uf)}</p>
+                                                                <p><span className="font-semibold">IBS Municipio:</span> {formatRate(reference.tb29_aliquota_ibs_mun)}</p>
+                                                                <p><span className="font-semibold">CBS:</span> {formatRate(reference.tb29_aliquota_cbs)}</p>
+                                                                <p><span className="font-semibold">IS:</span> {formatRate(reference.tb29_aliquota_is)}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

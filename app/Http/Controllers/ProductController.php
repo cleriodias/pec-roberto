@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Produto;
+use App\Models\ReferenciaFiscal;
 use App\Models\User;
 use App\Support\ProductQuickLookupCache;
 use Illuminate\Http\JsonResponse;
@@ -173,85 +174,77 @@ class ProductController extends Controller
         $pendingQuery = $this->pendingFiscalProductsQuery($typeFilter, $search);
 
         return Inertia::render('Products/ProductFiscalQueue', [
-            'items' => $pendingQuery->limit(20)->get(),
+            'products' => $pendingQuery->limit(30)->get(),
             'pendingCount' => $this->pendingFiscalProductsQuery($typeFilter, $search)->count(),
+            'references' => ReferenciaFiscal::query()
+                ->orderBy('tb29_descricao')
+                ->orderBy('tb29_id')
+                ->get([
+                    'tb29_id',
+                    'tb29_descricao',
+                    'tb29_ncm',
+                    'tb29_cfop',
+                    'tb29_csosn',
+                    'tb29_cst',
+                    'tb29_cst_ibscbs',
+                    'tb29_cclasstrib',
+                    'tb29_aliquota_ibs_uf',
+                    'tb29_aliquota_ibs_mun',
+                    'tb29_aliquota_cbs',
+                    'tb29_aliquota_is',
+                ]),
             'selectedType' => $typeFilter,
             'search' => $search,
             'typeOptions' => $this->formOptions()['typeOptions'],
         ]);
     }
 
-    public function fiscalQueueItems(Request $request): JsonResponse
-    {
-        $typeFilter = $this->resolveFiscalQueueTypeFilter($request);
-        $search = $this->resolveFiscalQueueSearch($request);
-
-        return response()->json([
-            'items' => $this->pendingFiscalProductsQuery($typeFilter, $search)->limit(20)->get(),
-            'pendingCount' => $this->pendingFiscalProductsQuery($typeFilter, $search)->count(),
-            'selectedType' => $typeFilter,
-            'search' => $search,
-        ]);
-    }
-
-    public function updateFiscalQueueItem(Request $request, Produto $product): JsonResponse
+    public function applyFiscalReference(Request $request)
     {
         $data = $request->validate(
             [
-                'tb1_ncm' => ['required', 'string', 'size:8'],
-                'tb1_cfop' => ['required', 'string', 'size:4'],
-                'tb1_csosn' => ['required', 'string', 'max:4'],
-                'tb1_cst' => ['required', 'string', 'max:3'],
-                'tb1_cst_ibscbs' => ['required', 'string', 'size:3'],
-                'tb1_cclasstrib' => ['required', 'string', 'size:6'],
-                'tb1_aliquota_ibs_uf' => ['required', 'numeric', 'min:0', 'max:100'],
-                'tb1_aliquota_ibs_mun' => ['required', 'numeric', 'min:0', 'max:100'],
-                'tb1_aliquota_cbs' => ['required', 'numeric', 'min:0', 'max:100'],
+                'reference_id' => ['required', 'integer', Rule::exists('tb29_referencias_fiscais', 'tb29_id')],
+                'product_ids' => ['required', 'array', 'min:1'],
+                'product_ids.*' => ['required', 'integer', Rule::exists('tb1_produto', 'tb1_id')],
             ],
             [
-                'tb1_ncm.required' => 'Informe o NCM.',
-                'tb1_ncm.size' => 'O NCM deve ter exatamente 8 digitos.',
-                'tb1_cfop.required' => 'Informe o CFOP.',
-                'tb1_cfop.size' => 'O CFOP deve ter exatamente 4 digitos.',
-                'tb1_csosn.required' => 'Informe o CSOSN.',
-                'tb1_csosn.max' => 'O CSOSN deve ter no maximo :max caracteres.',
-                'tb1_cst.required' => 'Informe o CST.',
-                'tb1_cst.max' => 'O CST deve ter no maximo :max caracteres.',
-                'tb1_cst_ibscbs.required' => 'Informe o CST do IBS/CBS.',
-                'tb1_cst_ibscbs.size' => 'O CST do IBS/CBS deve ter exatamente 3 digitos.',
-                'tb1_cclasstrib.required' => 'Informe o cClassTrib.',
-                'tb1_cclasstrib.size' => 'O cClassTrib deve ter exatamente 6 digitos.',
-                'tb1_aliquota_ibs_uf.required' => 'Informe a aliquota IBS UF.',
-                'tb1_aliquota_ibs_uf.numeric' => 'A aliquota IBS UF deve ser numerica.',
-                'tb1_aliquota_ibs_uf.min' => 'A aliquota IBS UF nao pode ser negativa.',
-                'tb1_aliquota_ibs_uf.max' => 'A aliquota IBS UF nao pode ultrapassar 100%.',
-                'tb1_aliquota_ibs_mun.required' => 'Informe a aliquota IBS Municipio.',
-                'tb1_aliquota_ibs_mun.numeric' => 'A aliquota IBS Municipio deve ser numerica.',
-                'tb1_aliquota_ibs_mun.min' => 'A aliquota IBS Municipio nao pode ser negativa.',
-                'tb1_aliquota_ibs_mun.max' => 'A aliquota IBS Municipio nao pode ultrapassar 100%.',
-                'tb1_aliquota_cbs.required' => 'Informe a aliquota CBS.',
-                'tb1_aliquota_cbs.numeric' => 'A aliquota CBS deve ser numerica.',
-                'tb1_aliquota_cbs.min' => 'A aliquota CBS nao pode ser negativa.',
-                'tb1_aliquota_cbs.max' => 'A aliquota CBS nao pode ultrapassar 100%.',
+                'reference_id.required' => 'Selecione uma referencia fiscal.',
+                'reference_id.exists' => 'A referencia fiscal selecionada nao foi encontrada.',
+                'product_ids.required' => 'Selecione pelo menos um produto.',
+                'product_ids.array' => 'A lista de produtos selecionados e invalida.',
+                'product_ids.min' => 'Selecione pelo menos um produto.',
+                'product_ids.*.exists' => 'Um dos produtos selecionados nao foi encontrado.',
             ]
         );
 
-        $product->update([
-            'tb1_ncm' => $this->normalizeDigitsField($data['tb1_ncm'], 8),
-            'tb1_cfop' => $this->normalizeDigitsField($data['tb1_cfop'], 4),
-            'tb1_csosn' => $this->normalizeDigitsField($data['tb1_csosn'], 4),
-            'tb1_cst' => $this->normalizeDigitsField($data['tb1_cst'], 3),
-            'tb1_cst_ibscbs' => $this->normalizeDigitsField($data['tb1_cst_ibscbs'], 3),
-            'tb1_cclasstrib' => $this->normalizeDigitsField($data['tb1_cclasstrib'], 6),
-            'tb1_aliquota_ibs_uf' => $this->normalizeNullableDecimal($data['tb1_aliquota_ibs_uf'], 4),
-            'tb1_aliquota_ibs_mun' => $this->normalizeNullableDecimal($data['tb1_aliquota_ibs_mun'], 4),
-            'tb1_aliquota_cbs' => $this->normalizeNullableDecimal($data['tb1_aliquota_cbs'], 4),
-        ]);
+        $reference = ReferenciaFiscal::query()->findOrFail((int) $data['reference_id']);
+        $productIds = collect($data['product_ids'])
+            ->map(fn ($productId) => (int) $productId)
+            ->unique()
+            ->values()
+            ->all();
 
-        return response()->json([
-            'message' => 'Dados fiscais gravados com sucesso.',
-            'product_id' => (int) $product->tb1_id,
-        ]);
+        $affected = Produto::query()
+            ->whereIn('tb1_id', $productIds)
+            ->update([
+                'tb1_ncm' => $this->normalizeDigitsField($reference->tb29_ncm, 8),
+                'tb1_cfop' => $this->normalizeDigitsField($reference->tb29_cfop, 4),
+                'tb1_csosn' => $this->normalizeDigitsField($reference->tb29_csosn, 4),
+                'tb1_cst' => $this->normalizeDigitsField($reference->tb29_cst, 3),
+                'tb1_cst_ibscbs' => $this->normalizeDigitsField($reference->tb29_cst_ibscbs, 3),
+                'tb1_cclasstrib' => $this->normalizeDigitsField($reference->tb29_cclasstrib, 6),
+                'tb1_aliquota_ibs_uf' => $this->normalizeNullableDecimal($reference->tb29_aliquota_ibs_uf, 4),
+                'tb1_aliquota_ibs_mun' => $this->normalizeNullableDecimal($reference->tb29_aliquota_ibs_mun, 4),
+                'tb1_aliquota_cbs' => $this->normalizeNullableDecimal($reference->tb29_aliquota_cbs, 4),
+                'tb1_aliquota_is' => $this->normalizeNullableDecimal($reference->tb29_aliquota_is, 4),
+            ]);
+
+        return Redirect::route('products.fiscal-queue', $this->buildFiscalQueueQueryFromRequest($request))
+            ->with('success', sprintf(
+                'Referencia fiscal "%s" aplicada em %d produto(s).',
+                $reference->tb29_descricao,
+                $affected
+            ));
     }
 
     public function store(Request $request)
@@ -672,6 +665,7 @@ class ProductController extends Controller
                 'tb1_aliquota_ibs_uf',
                 'tb1_aliquota_ibs_mun',
                 'tb1_aliquota_cbs',
+                'tb1_aliquota_is',
             ])
             ->when($typeFilter !== null, function ($query) use ($typeFilter) {
                 $query->where('tb1_tipo', $typeFilter);
@@ -713,7 +707,8 @@ class ProductController extends Controller
                     ->orWhere('tb1_cclasstrib', '=', '')
                     ->orWhereNull('tb1_aliquota_ibs_uf')
                     ->orWhereNull('tb1_aliquota_ibs_mun')
-                    ->orWhereNull('tb1_aliquota_cbs');
+                    ->orWhereNull('tb1_aliquota_cbs')
+                    ->orWhereNull('tb1_aliquota_is');
             })
             ->orderBy('tb1_id');
     }
@@ -734,6 +729,23 @@ class ProductController extends Controller
     private function resolveFiscalQueueSearch(Request $request): string
     {
         return trim((string) $request->input('search', ''));
+    }
+
+    private function buildFiscalQueueQueryFromRequest(Request $request): array
+    {
+        $query = [];
+        $typeFilter = $this->resolveFiscalQueueTypeFilter($request);
+        $search = $this->resolveFiscalQueueSearch($request);
+
+        if ($typeFilter !== null) {
+            $query['type'] = $typeFilter;
+        }
+
+        if ($search !== '') {
+            $query['search'] = $search;
+        }
+
+        return $query;
     }
 
     private function prepareProductData(array $data, ?Produto $product = null): array
