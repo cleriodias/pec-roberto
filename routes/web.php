@@ -270,6 +270,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/products/discard', [ProductDiscardController::class, 'index'])->name('products.discard');
     Route::post('/products/discard', [ProductDiscardController::class, 'store'])->name('products.discard.store');
+    Route::patch('/products/discard/{discard}', [ProductDiscardController::class, 'update'])->name('products.discard.update');
     Route::get('/products/fiscal-queue', [ProductController::class, 'fiscalQueue'])->name('products.fiscal-queue');
     Route::post('/products/fiscal-queue/apply-reference', [ProductController::class, 'applyFiscalReference'])->name('products.fiscal-queue.apply-reference');
     Route::get('/products/fiscal-references', [FiscalReferenceController::class, 'index'])->name('products.fiscal-references.index');

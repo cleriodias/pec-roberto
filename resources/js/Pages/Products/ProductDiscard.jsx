@@ -2,7 +2,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import InputError from '@/Components/InputError';
 import Modal from '@/Components/Modal';
 import { formatBrazilDateTime } from '@/Utils/date';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
 
 const MIN_CHARACTERS = 3;
@@ -28,16 +28,42 @@ const formatQuantity = (value, decimals = 3) =>
         maximumFractionDigits: decimals,
     });
 
-export default function ProductDiscard({ recentDiscards = [] }) {
+export default function ProductDiscard({
+    recentDiscards = [],
+    filterUnits = [],
+    selectedDate = '',
+    selectedUnitId = null,
+}) {
+    const { auth } = usePage().props;
+    const isMaster = Number(auth?.user?.funcao ?? -1) === 0;
     const [searchTerm, setSearchTerm] = useState('');
     const [suggestions, setSuggestions] = useState([]);
     const [loading, setLoading] = useState(false);
     const [searchError, setSearchError] = useState('');
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+    const [editingDiscard, setEditingDiscard] = useState(null);
+    const [filterDate, setFilterDate] = useState(selectedDate ?? '');
+    const [filterUnit, setFilterUnit] = useState(
+        selectedUnitId !== null && selectedUnitId !== undefined
+            ? String(selectedUnitId)
+            : 'all',
+    );
 
     const { data, setData, post, processing, errors, reset, clearErrors, transform } = useForm({
         product_id: '',
+        quantity: '',
+        unit_price: '',
+    });
+    const {
+        data: editData,
+        setData: setEditData,
+        patch,
+        processing: editProcessing,
+        errors: editErrors,
+        reset: resetEdit,
+        clearErrors: clearEditErrors,
+    } = useForm({
         quantity: '',
         unit_price: '',
     });
@@ -89,7 +115,7 @@ export default function ProductDiscard({ recentDiscards = [] }) {
                 }
 
                 setSuggestions([]);
-                setSearchError('Não foi possível buscar produtos.');
+                setSearchError('Nao foi possivel buscar produtos.');
             })
             .finally(() => {
                 if (!isCurrent) {
@@ -127,6 +153,18 @@ export default function ProductDiscard({ recentDiscards = [] }) {
         clearErrors('product_id');
     }, [clearErrors, data.product_id]);
 
+    useEffect(() => {
+        setFilterDate(selectedDate ?? '');
+    }, [selectedDate]);
+
+    useEffect(() => {
+        setFilterUnit(
+            selectedUnitId !== null && selectedUnitId !== undefined
+                ? String(selectedUnitId)
+                : 'all',
+        );
+    }, [selectedUnitId]);
+
     const handleSelectProduct = (product) => {
         setSelectedProduct(product);
         setSearchTerm(product.tb1_nome);
@@ -149,8 +187,19 @@ export default function ProductDiscard({ recentDiscards = [] }) {
         () => unitPrice * quantityValue,
         [quantityValue, unitPrice],
     );
+    const editUnitPrice = useMemo(() => Number(editData.unit_price || 0), [editData.unit_price]);
+    const editQuantityValue = useMemo(() => Number(editData.quantity || 0), [editData.quantity]);
+    const editTotalValue = useMemo(
+        () => editUnitPrice * editQuantityValue,
+        [editQuantityValue, editUnitPrice],
+    );
 
     const closeConfirmModal = () => setConfirmModalOpen(false);
+    const closeEditModal = () => {
+        setEditingDiscard(null);
+        resetEdit('quantity', 'unit_price');
+        clearEditErrors();
+    };
 
     const submitDiscard = (callbacks = {}) => {
         transform((formData) => ({
@@ -199,6 +248,57 @@ export default function ProductDiscard({ recentDiscards = [] }) {
         });
     };
 
+    const handleFilterSubmit = (event) => {
+        event.preventDefault();
+
+        const params = {};
+
+        if (filterDate) {
+            params.date = filterDate;
+        }
+
+        if (filterUnit !== 'all') {
+            params.unit_id = filterUnit;
+        }
+
+        router.get(route('products.discard'), params, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    };
+
+    const handleOpenEditModal = (discard) => {
+        if (!discard) {
+            return;
+        }
+
+        setEditingDiscard(discard);
+        setEditData({
+            quantity: String(discard.quantity ?? ''),
+            unit_price:
+                discard.unit_price !== null && discard.unit_price !== undefined
+                    ? Number(discard.unit_price).toFixed(2)
+                    : '',
+        });
+        clearEditErrors();
+    };
+
+    const handleEditSubmit = (event) => {
+        event.preventDefault();
+
+        if (!editingDiscard?.id) {
+            return;
+        }
+
+        patch(route('products.discard.update', editingDiscard.id), {
+            preserveScroll: true,
+            onSuccess: () => {
+                closeEditModal();
+            },
+        });
+    };
+
     const suggestionList = useMemo(() => {
         if (suggestions.length === 0) {
             return null;
@@ -215,7 +315,7 @@ export default function ProductDiscard({ recentDiscards = [] }) {
                         >
                             <p className="font-semibold text-gray-800 dark:text-gray-100">{product.tb1_nome}</p>
                             <p className="text-xs text-gray-500 dark:text-gray-300">
-                                ID #{product.tb1_id} • {product.tb1_codbar || 'Sem código'}
+                                ID #{product.tb1_id} - {product.tb1_codbar || 'Sem codigo'}
                             </p>
                         </li>
                     ))}
@@ -230,7 +330,7 @@ export default function ProductDiscard({ recentDiscards = [] }) {
                 Registro de descarte
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-300">
-                Busque produtos do tipo balança, informe a quantidade descartada e registre para manter o controle.
+                Busque produtos do tipo balanca, informe a quantidade descartada e registre para manter o controle.
             </p>
         </div>
     );
@@ -253,7 +353,7 @@ export default function ProductDiscard({ recentDiscards = [] }) {
                                         autoComplete="off"
                                         value={searchTerm}
                                         onChange={(event) => setSearchTerm(event.target.value)}
-                                        placeholder="Digite nome, código ou ID"
+                                        placeholder="Digite nome, codigo ou ID"
                                         className="w-full rounded-xl border border-gray-300 px-4 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                     />
                                     {loading && (
@@ -277,7 +377,7 @@ export default function ProductDiscard({ recentDiscards = [] }) {
                                         {selectedProduct.tb1_nome}
                                     </p>
                                     <p className="text-xs text-indigo-700 dark:text-indigo-200">
-                                        ID #{selectedProduct.tb1_id} • {selectedProduct.tb1_codbar || 'Sem código de barras'}
+                                        ID #{selectedProduct.tb1_id} - {selectedProduct.tb1_codbar || 'Sem codigo de barras'}
                                     </p>
                                 </div>
                             )}
@@ -338,10 +438,69 @@ export default function ProductDiscard({ recentDiscards = [] }) {
                     </div>
 
                     <div className="rounded-2xl bg-white p-6 shadow dark:bg-gray-800">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Últimos descartes</h3>
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                                    {isMaster ? 'Descartes filtrados' : 'Ultimos descartes'}
+                                </h3>
+                                {isMaster && (
+                                    <p className="text-sm text-gray-500 dark:text-gray-300">
+                                        Selecione a data e, se quiser, uma unidade para consultar os descartes.
+                                    </p>
+                                )}
+                            </div>
+
+                            {isMaster && (
+                                <form
+                                    onSubmit={handleFilterSubmit}
+                                    className="grid gap-3 sm:grid-cols-[180px_220px_auto]"
+                                >
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                            Data
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={filterDate}
+                                            onChange={(event) => setFilterDate(event.target.value)}
+                                            className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                            Unidade
+                                        </label>
+                                        <select
+                                            value={filterUnit}
+                                            onChange={(event) => setFilterUnit(event.target.value)}
+                                            className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                        >
+                                            <option value="all">Todas</option>
+                                            {filterUnits.map((unit) => (
+                                                <option key={unit.id} value={unit.id}>
+                                                    {unit.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="flex items-end">
+                                        <button
+                                            type="submit"
+                                            className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-indigo-700"
+                                        >
+                                            Filtrar
+                                        </button>
+                                    </div>
+                                </form>
+                            )}
+                        </div>
                         {recentDiscards.length === 0 ? (
                             <p className="mt-4 text-sm text-gray-500 dark:text-gray-300">
-                                Você ainda não registrou descartes.
+                                {isMaster
+                                    ? 'Nenhum descarte encontrado para os filtros selecionados.'
+                                    : 'Voce ainda nao registrou descartes.'}
                             </p>
                         ) : (
                             <div className="mt-4 overflow-x-auto">
@@ -354,9 +513,19 @@ export default function ProductDiscard({ recentDiscards = [] }) {
                                             <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
                                                 Quantidade
                                             </th>
+                                            {isMaster && (
+                                                <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
+                                                    Unidade
+                                                </th>
+                                            )}
                                             <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300">
                                                 Data/Hora
                                             </th>
+                                            {isMaster && (
+                                                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                    Acoes
+                                                </th>
+                                            )}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -365,16 +534,32 @@ export default function ProductDiscard({ recentDiscards = [] }) {
                                                 <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
                                                     {discard.product?.name ?? 'Produto removido'}
                                                     <span className="block text-xs text-gray-500 dark:text-gray-300">
-                                                        ID #{discard.product?.id ?? '-'} •{' '}
-                                                        {discard.product?.barcode ?? 'Sem código'}
+                                                        ID #{discard.product?.id ?? '-'} -{' '}
+                                                        {discard.product?.barcode ?? 'Sem codigo'}
                                                     </span>
                                                 </td>
                                                 <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
                                                     {Number(discard.quantity).toLocaleString('pt-BR')}
                                                 </td>
+                                                {isMaster && (
+                                                    <td className="px-3 py-2 text-gray-600 dark:text-gray-300">
+                                                        {discard.unit?.name ?? 'Unidade nao informada'}
+                                                    </td>
+                                                )}
                                                 <td className="px-3 py-2 text-gray-600 dark:text-gray-300">
                                                     {formatDate(discard.created_at)}
                                                 </td>
+                                                {isMaster && (
+                                                    <td className="px-3 py-2 text-right">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOpenEditModal(discard)}
+                                                            className="rounded-lg border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-50 dark:border-indigo-500/60 dark:text-indigo-200 dark:hover:bg-indigo-500/10"
+                                                        >
+                                                            Editar
+                                                        </button>
+                                                    </td>
+                                                )}
                                             </tr>
                                         ))}
                                     </tbody>
@@ -449,6 +634,95 @@ export default function ProductDiscard({ recentDiscards = [] }) {
                             Descartar
                         </button>
                     </div>
+                </div>
+            </Modal>
+
+            <Modal show={Boolean(editingDiscard)} onClose={closeEditModal} maxWidth="lg" tone="light">
+                <div className="bg-white p-6 text-gray-800">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                        Editar descarte
+                    </h3>
+                    <p className="mt-2 text-sm text-gray-500">
+                        Ajuste os dados do registro selecionado.
+                    </p>
+
+                    <form onSubmit={handleEditSubmit} className="mt-6 space-y-5">
+                        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                Produto
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-gray-900">
+                                {editingDiscard?.product?.name ?? 'Produto removido'}
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500">
+                                ID #{editingDiscard?.product?.id ?? '-'} -{' '}
+                                {editingDiscard?.product?.barcode ?? 'Sem codigo'}
+                            </p>
+                            {isMaster && (
+                                <p className="mt-2 text-xs text-gray-500">
+                                    Unidade: {editingDiscard?.unit?.name ?? 'Unidade nao informada'}
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-3">
+                            <div>
+                                <label className="text-sm font-medium text-gray-700">
+                                    Valor unitario
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={editData.unit_price}
+                                    onChange={(event) => setEditData('unit_price', event.target.value)}
+                                    className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                />
+                                <InputError message={editErrors.unit_price} className="mt-2" />
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-gray-700">
+                                    Quantidade
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.001"
+                                    min="0"
+                                    value={editData.quantity}
+                                    onChange={(event) => setEditData('quantity', event.target.value)}
+                                    className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                />
+                                <InputError message={editErrors.quantity} className="mt-2" />
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-gray-700">
+                                    Valor total
+                                </label>
+                                <div className="mt-1 flex min-h-[42px] items-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700">
+                                    {formatCurrency(editTotalValue)}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={closeEditModal}
+                                className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={editProcessing}
+                                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                                Salvar
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </Modal>
         </AuthenticatedLayout>
