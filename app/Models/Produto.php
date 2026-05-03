@@ -31,6 +31,7 @@ class Produto extends Model
         'tb1_aliquota_icms',
         'tb1_cst_ibscbs',
         'tb1_cclasstrib',
+        'tb1_cff_nt',
         'tb1_ind_doacao',
         'tb1_aliquota_ibs_uf',
         'tb1_aliquota_ibs_mun',

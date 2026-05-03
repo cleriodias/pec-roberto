@@ -29,6 +29,7 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
         tb1_aliquota_icms: "0.00",
         tb1_cst_ibscbs: "",
         tb1_cclasstrib: "",
+        tb1_cff_nt: "",
         tb1_ind_doacao: false,
         tb1_aliquota_ibs_uf: "",
         tb1_aliquota_ibs_mun: "",
@@ -355,6 +356,11 @@ export default function ProductCreate({ auth, typeOptions = [], statusOptions = 
                                         <label htmlFor="tb1_cclasstrib" className="block text-sm font-medium text-gray-700">cClassTrib</label>
                                         <input id="tb1_cclasstrib" type="text" maxLength="6" value={data.tb1_cclasstrib} onChange={(e) => setData("tb1_cclasstrib", e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
                                         {errors.tb1_cclasstrib && <span className="text-red-600">{errors.tb1_cclasstrib}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb1_cff_nt" className="block text-sm font-medium text-gray-700">CFF / NT</label>
+                                        <input id="tb1_cff_nt" type="text" maxLength="20" value={data.tb1_cff_nt} onChange={(e) => setData("tb1_cff_nt", e.target.value.toUpperCase())} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                                        {errors.tb1_cff_nt && <span className="text-red-600">{errors.tb1_cff_nt}</span>}
                                     </div>
                                     <div>
                                         <label htmlFor="tb1_aliquota_ibs_uf" className="block text-sm font-medium text-gray-700">Aliquota IBS UF</label>

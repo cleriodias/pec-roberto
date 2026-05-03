@@ -105,62 +105,6 @@ const formatDateTime = (value) => {
     return date ? shortDateTimeFormatter.format(date) : '--';
 };
 
-const isoDateToShortInput = (value) => {
-    if (!value || typeof value !== 'string') {
-        return '';
-    }
-
-    const match = value.match(ISO_DATE_REGEX);
-    if (!match) {
-        return '';
-    }
-
-    return `${match[3]}/${match[2]}/${match[1].slice(-2)}`;
-};
-
-const normalizeShortDateInput = (value) => {
-    const digits = String(value ?? '')
-        .replace(/\D/g, '')
-        .slice(0, 6);
-
-    if (digits.length <= 2) {
-        return digits;
-    }
-
-    if (digits.length <= 4) {
-        return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    }
-
-    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-};
-
-const shortInputToIsoDate = (value) => {
-    const match = String(value ?? '').match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
-    if (!match) {
-        return null;
-    }
-
-    const day = Number(match[1]);
-    const month = Number(match[2]);
-    const year = 2000 + Number(match[3]);
-
-    if (month < 1 || month > 12 || day < 1 || day > 31) {
-        return null;
-    }
-
-    const date = new Date(year, month - 1, day);
-    if (
-        Number.isNaN(date.getTime()) ||
-        date.getFullYear() !== year ||
-        date.getMonth() !== month - 1 ||
-        date.getDate() !== day
-    ) {
-        return null;
-    }
-
-    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-};
-
 const differenceTone = (value) => {
     if (Math.abs(value ?? 0) < 0.005) {
         return 'text-gray-900 dark:text-gray-100';
@@ -226,7 +170,7 @@ export default function CashClosure({
     const { auth } = usePage().props;
     const isMaster = Number(auth?.user?.funcao ?? -1) === 0;
     const normalizedSelectedUnit = selectedUnitId ?? null;
-    const [dateInput, setDateInput] = useState(isoDateToShortInput(dateInputValue ?? ''));
+    const [dateInput, setDateInput] = useState(dateInputValue ?? '');
     const [unitFilter, setUnitFilter] = useState(normalizedSelectedUnit);
     const [masterReviewModal, setMasterReviewModal] = useState({
         open: false,
@@ -260,7 +204,7 @@ export default function CashClosure({
     const [printError, setPrintError] = useState('');
 
     useEffect(() => {
-        setDateInput(isoDateToShortInput(dateInputValue ?? ''));
+        setDateInput(dateInputValue ?? '');
     }, [dateInputValue]);
 
     useEffect(() => {
@@ -334,24 +278,22 @@ export default function CashClosure({
     };
 
     const handleDateChange = (value) => {
-        const normalized = normalizeShortDateInput(value);
-        setDateInput(normalized);
+        setDateInput(value);
 
-        if (normalized === '') {
+        if (value === '') {
             applyFilters('', unitFilter);
             return;
         }
 
-        const isoDate = shortInputToIsoDate(normalized);
-        if (isoDate) {
-            applyFilters(isoDate, unitFilter);
+        if (ISO_DATE_REGEX.test(value)) {
+            applyFilters(value, unitFilter);
         }
     };
 
     const handleUnitFilter = (optionId) => {
         const normalized = optionId ?? null;
         setUnitFilter(normalized);
-        applyFilters(shortInputToIsoDate(dateInput) ?? '', normalized);
+        applyFilters(ISO_DATE_REGEX.test(dateInput) ? dateInput : '', normalized);
     };
 
     const openDiscardModal = (record) => {
@@ -661,10 +603,7 @@ export default function CashClosure({
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
                         <input
                             id="closure-date"
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="DD/MM/AA"
-                            maxLength={8}
+                            type="date"
                             value={dateInput}
                             onChange={(event) => handleDateChange(event.target.value)}
                             className="mt-2 w-50 rounded-xl border border-gray-300 px-3 py-3 text-gray-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
@@ -879,9 +818,8 @@ export default function CashClosure({
     );
 
     const discrepancyParams = {};
-    const normalizedDateFilter = shortInputToIsoDate(dateInput);
-    if (normalizedDateFilter) {
-        discrepancyParams.date = normalizedDateFilter;
+    if (ISO_DATE_REGEX.test(dateInput)) {
+        discrepancyParams.date = dateInput;
     }
     if (unitFilter !== null && unitFilter !== undefined) {
         discrepancyParams.unit_id = unitFilter;

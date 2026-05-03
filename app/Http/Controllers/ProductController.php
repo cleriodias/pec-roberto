@@ -500,6 +500,7 @@ class ProductController extends Controller
                 'tb1_aliquota_icms' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'tb1_cst_ibscbs' => ['nullable', 'string', 'size:3'],
                 'tb1_cclasstrib' => ['nullable', 'string', 'size:6'],
+                'tb1_cff_nt' => ['nullable', 'string', 'max:20'],
                 'tb1_ind_doacao' => ['nullable', 'boolean'],
                 'tb1_aliquota_ibs_uf' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'tb1_aliquota_ibs_mun' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -558,6 +559,7 @@ class ProductController extends Controller
                 'tb1_aliquota_icms.max' => 'A aliquota de ICMS nao pode ultrapassar 100%.',
                 'tb1_cst_ibscbs.size' => 'O CST IBS/CBS deve ter exatamente 3 digitos.',
                 'tb1_cclasstrib.size' => 'O cClassTrib deve ter exatamente 6 digitos.',
+                'tb1_cff_nt.max' => 'O campo CFF / NT deve ter no maximo :max caracteres.',
                 'tb1_ind_doacao.boolean' => 'Valor invalido para indicador de doacao.',
                 'tb1_aliquota_ibs_uf.numeric' => 'A aliquota IBS UF deve ser numerica.',
                 'tb1_aliquota_ibs_uf.min' => 'A aliquota IBS UF nao pode ser negativa.',
@@ -753,6 +755,7 @@ class ProductController extends Controller
         $data['tb1_aliquota_icms'] = round((float) ($data['tb1_aliquota_icms'] ?? $product?->tb1_aliquota_icms ?? 0), 2);
         $data['tb1_cst_ibscbs'] = $this->normalizeDigitsField($data['tb1_cst_ibscbs'] ?? $product?->tb1_cst_ibscbs ?? null, 3);
         $data['tb1_cclasstrib'] = $this->normalizeDigitsField($data['tb1_cclasstrib'] ?? $product?->tb1_cclasstrib ?? null, 6);
+        $data['tb1_cff_nt'] = $this->normalizeNullableText($data['tb1_cff_nt'] ?? $product?->tb1_cff_nt ?? null, 20);
         $data['tb1_ind_doacao'] = (bool) ($data['tb1_ind_doacao'] ?? $product?->tb1_ind_doacao ?? false);
         $data['tb1_aliquota_ibs_uf'] = $this->normalizeNullableDecimal($data['tb1_aliquota_ibs_uf'] ?? $product?->tb1_aliquota_ibs_uf ?? null, 4);
         $data['tb1_aliquota_ibs_mun'] = $this->normalizeNullableDecimal($data['tb1_aliquota_ibs_mun'] ?? $product?->tb1_aliquota_ibs_mun ?? null, 4);
@@ -938,5 +941,16 @@ class ProductController extends Controller
         }
 
         return round((float) $value, $scale);
+    }
+
+    private function normalizeNullableText(mixed $value, int $maxLength): ?string
+    {
+        $normalized = trim((string) $value);
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        return mb_substr(mb_strtoupper($normalized, self::PRODUCT_NAME_ENCODING), 0, $maxLength);
     }
 }
