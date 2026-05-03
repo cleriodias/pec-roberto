@@ -28,11 +28,27 @@ const formatQuantity = (value, decimals = 3) =>
         maximumFractionDigits: decimals,
     });
 
+const formatCalculationQuantity = (value) =>
+    Number(value ?? 0)
+        .toFixed(3)
+        .replace(/\.?0+$/, '');
+
+const formatCalculationMoney = (value) => Number(value ?? 0).toFixed(2);
+
+const formatQuantityCalculation = (quantity, unitPrice) => {
+    const normalizedQuantity = Number(quantity ?? 0);
+    const normalizedUnitPrice = Number(unitPrice ?? 0);
+    const total = normalizedQuantity * normalizedUnitPrice;
+
+    return `${formatCalculationQuantity(normalizedQuantity)} x ${formatCalculationMoney(normalizedUnitPrice)} = ${formatCalculationMoney(total)}`;
+};
+
 export default function ProductDiscard({
     recentDiscards = [],
     filterUnits = [],
     selectedDate = '',
     selectedUnitId = null,
+    selectedFilterProductId = null,
 }) {
     const { auth } = usePage().props;
     const isMaster = Number(auth?.user?.funcao ?? -1) === 0;
@@ -48,6 +64,11 @@ export default function ProductDiscard({
         selectedUnitId !== null && selectedUnitId !== undefined
             ? String(selectedUnitId)
             : 'all',
+    );
+    const [filterProductId, setFilterProductId] = useState(
+        selectedFilterProductId !== null && selectedFilterProductId !== undefined
+            ? String(selectedFilterProductId)
+            : '',
     );
 
     const { data, setData, post, processing, errors, reset, clearErrors, transform } = useForm({
@@ -165,6 +186,14 @@ export default function ProductDiscard({
         );
     }, [selectedUnitId]);
 
+    useEffect(() => {
+        setFilterProductId(
+            selectedFilterProductId !== null && selectedFilterProductId !== undefined
+                ? String(selectedFilterProductId)
+                : '',
+        );
+    }, [selectedFilterProductId]);
+
     const handleSelectProduct = (product) => {
         setSelectedProduct(product);
         setSearchTerm(product.tb1_nome);
@@ -253,7 +282,9 @@ export default function ProductDiscard({
 
         const params = {};
 
-        if (filterDate) {
+        if (filterProductId.trim() !== '') {
+            params.product_id = filterProductId.trim();
+        } else if (filterDate) {
             params.date = filterDate;
         }
 
@@ -445,7 +476,7 @@ export default function ProductDiscard({
                                 </h3>
                                 {isMaster && (
                                     <p className="text-sm text-gray-500 dark:text-gray-300">
-                                        Selecione a data e, se quiser, uma unidade para consultar os descartes.
+                                        Se informar o ID do produto, a busca ignora a data e prioriza a unidade selecionada.
                                     </p>
                                 )}
                             </div>
@@ -453,8 +484,23 @@ export default function ProductDiscard({
                             {isMaster && (
                                 <form
                                     onSubmit={handleFilterSubmit}
-                                    className="grid gap-3 sm:grid-cols-[180px_220px_auto]"
+                                    className="grid gap-3 sm:grid-cols-[160px_170px_220px_auto]"
                                 >
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                            ID do produto
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            step="1"
+                                            value={filterProductId}
+                                            onChange={(event) => setFilterProductId(event.target.value)}
+                                            className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                            placeholder="Ex.: 123"
+                                        />
+                                    </div>
+
                                     <div>
                                         <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
                                             Data
@@ -539,7 +585,9 @@ export default function ProductDiscard({
                                                     </span>
                                                 </td>
                                                 <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
-                                                    {Number(discard.quantity).toLocaleString('pt-BR')}
+                                                    <span className="font-medium">
+                                                        {formatQuantityCalculation(discard.quantity, discard.unit_price)}
+                                                    </span>
                                                 </td>
                                                 {isMaster && (
                                                     <td className="px-3 py-2 text-gray-600 dark:text-gray-300">

@@ -26,6 +26,7 @@ class ProductDiscardController extends Controller
         $filterUnits = collect();
         $selectedDate = null;
         $selectedUnitId = null;
+        $selectedFilterProductId = null;
 
         $recentQuery = ProductDiscard::query()
             ->with([
@@ -74,10 +75,26 @@ class ProductDiscardController extends Controller
                 }
             }
 
-            $recentQuery
-                ->whereBetween('created_at', [$selectedDateRangeStart, $selectedDateRangeEnd])
-                ->when($selectedUnitId, fn ($query) => $query->where('unit_id', $selectedUnitId))
-                ->orderByDesc('created_at');
+            $requestedProductId = $request->query('product_id');
+            if ($requestedProductId !== null && $requestedProductId !== '') {
+                $candidateProductId = (int) $requestedProductId;
+
+                if ($candidateProductId > 0) {
+                    $selectedFilterProductId = $candidateProductId;
+                }
+            }
+
+            $recentQuery->when($selectedUnitId, fn ($query) => $query->where('unit_id', $selectedUnitId));
+
+            if ($selectedFilterProductId !== null) {
+                $recentQuery
+                    ->where('product_id', $selectedFilterProductId)
+                    ->orderByDesc('created_at');
+            } else {
+                $recentQuery
+                    ->whereBetween('created_at', [$selectedDateRangeStart, $selectedDateRangeEnd])
+                    ->orderByDesc('created_at');
+            }
         } else {
             $recentQuery
                 ->where('user_id', $user->id)
@@ -120,6 +137,7 @@ class ProductDiscardController extends Controller
             'filterUnits' => $filterUnits,
             'selectedDate' => $selectedDate,
             'selectedUnitId' => $selectedUnitId,
+            'selectedFilterProductId' => $selectedFilterProductId,
         ]);
     }
 
