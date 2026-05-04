@@ -355,6 +355,7 @@ class UserController extends Controller
             'email' => $request->email,
             'phone' => $request->phone ?: null,
             'funcao' => $request->funcao,
+            'funcao_original' => $request->funcao,
             'hr_ini' => $request->hr_ini,
             'hr_fim' => $request->hr_fim,
             'salario' => $request->salario,
@@ -362,10 +363,6 @@ class UserController extends Controller
             'payment_day' => $request->payment_day,
             'tb2_id' => $primaryUnit,
         ];
-
-        if ($user->funcao_original === null) {
-            $updateData['funcao_original'] = $user->funcao ?? $request->funcao;
-        }
 
         $user->update($updateData);
 

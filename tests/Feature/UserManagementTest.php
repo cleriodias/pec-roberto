@@ -11,7 +11,7 @@ class UserManagementTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_edit_user_preserves_existing_funcao_original_and_updates_phone(): void
+    public function test_edit_user_updates_funcao_and_funcao_original_and_phone(): void
     {
         $unit = $this->makeUnit('Loja Gestao');
 
@@ -48,6 +48,7 @@ class UserManagementTest extends TestCase
                 'hr_fim' => '18:00',
                 'salario' => 2100.50,
                 'vr_cred' => 420.75,
+                'payment_day' => 10,
                 'tb2_id' => [$unit->tb2_id],
             ]);
 
@@ -59,7 +60,7 @@ class UserManagementTest extends TestCase
             'email' => 'usuario.ajustado@example.com',
             'phone' => '62999998888',
             'funcao' => 3,
-            'funcao_original' => 5,
+            'funcao_original' => 3,
             'tb2_id' => $unit->tb2_id,
         ]);
     }
