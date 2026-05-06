@@ -215,8 +215,18 @@ Route::middleware('auth')->group(function () {
         ->name('settings.fiscal.invoices.transmit');
     Route::get('/settings/contra-cheque', [PayrollController::class, 'contraCheque'])
         ->name('settings.contra-cheque');
+    Route::patch('/settings/contra-cheque/{user}/salario', [PayrollController::class, 'updateContraChequeSalary'])
+        ->name('settings.contra-cheque.salary.update');
     Route::post('/settings/contra-cheque/{user}/creditos', [PayrollController::class, 'storeContraChequeCredit'])
         ->name('settings.contra-cheque.creditos.store');
+    Route::delete('/settings/contra-cheque/{user}/creditos/{contraChequeCredito}', [PayrollController::class, 'destroyContraChequeCredit'])
+        ->name('settings.contra-cheque.creditos.destroy');
+    Route::post('/settings/contra-cheque/{user}/pagamentos', [PayrollController::class, 'storeContraChequePayment'])
+        ->name('settings.contra-cheque.payments.store');
+    Route::delete('/settings/contra-cheque/{user}/adiantamentos/{salaryAdvance}', [PayrollController::class, 'destroyContraChequeAdvance'])
+        ->name('settings.contra-cheque.advances.destroy');
+    Route::delete('/settings/contra-cheque/{user}/vales', [PayrollController::class, 'destroyContraChequeVale'])
+        ->name('settings.contra-cheque.vales.destroy');
     Route::get('/settings/avisos', [NoticeController::class, 'index'])
         ->name('settings.notices');
     Route::post('/settings/avisos', [NoticeController::class, 'store'])

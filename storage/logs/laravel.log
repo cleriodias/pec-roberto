@@ -2962,3 +2962,4 @@ Stack trace:
 [stacktrace]
 #0 {main}
 "} 
+[2026-05-06 09:35:38] local.INFO: Database tools executed {"user_id":1,"action":"migrate"} 

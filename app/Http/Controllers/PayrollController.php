@@ -3,16 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\Models\ContraChequeCredito;
+use App\Models\ContraChequePagamento;
 use App\Models\SalaryAdvance;
 use App\Models\Unidade;
 use App\Models\User;
 use App\Models\Venda;
+use App\Models\VendaPagamento;
 use App\Support\ManagementScope;
 use Carbon\Carbon;
 use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -30,7 +33,7 @@ class PayrollController extends Controller
         6 => 'Cliente',
     ];
 
-    private const EXTRA_ENTRY_TYPE_LABELS = [
+    private const EXTRA_CREDIT_TYPE_LABELS = [
         'primeiro_domingo' => 'Primeiro Domingo',
         'feriado' => 'Feriado',
         'bonificacao' => 'Bonificacao',
@@ -53,7 +56,7 @@ class PayrollController extends Controller
     {
         $this->ensureAdmin($request->user());
 
-        return Inertia::render('Settings/ContraCheque', $this->buildPayrollPayload($request, true, true));
+        return Inertia::render('Settings/ContraCheque', $this->buildContraChequePayload($request));
     }
 
     public function storeContraChequeCredit(Request $request, User $user): RedirectResponse
@@ -64,30 +67,26 @@ class PayrollController extends Controller
         $data = $request->validate([
             'start_date' => ['required', 'string'],
             'end_date' => ['required', 'string'],
-            'filter_start_date' => ['nullable', 'string'],
-            'filter_end_date' => ['nullable', 'string'],
             'unit_id' => ['nullable', 'string'],
             'role' => ['nullable', 'string'],
             'user_id' => ['nullable', 'string'],
-            'payment_day' => ['nullable', 'string'],
-            'credit_type' => ['required', 'string', Rule::in(array_keys(self::EXTRA_ENTRY_TYPE_LABELS))],
+            'payment_status' => ['nullable', 'string'],
+            'credit_type' => ['required', 'string', Rule::in(array_keys(self::EXTRA_CREDIT_TYPE_LABELS))],
             'other_description' => ['nullable', 'string', 'max:255'],
             'amount' => ['required', 'numeric', 'min:0.01'],
         ], [
             'start_date.required' => 'Informe o inicio do periodo.',
             'end_date.required' => 'Informe o fim do periodo.',
-            'credit_type.required' => 'Selecione o tipo do lancamento.',
-            'credit_type.in' => 'O tipo do lancamento selecionado e invalido.',
-            'amount.required' => 'Informe o valor do lancamento.',
-            'amount.numeric' => 'O valor do lancamento deve ser numerico.',
-            'amount.min' => 'O valor do lancamento deve ser maior que zero.',
+            'credit_type.required' => 'Selecione o tipo do credito.',
+            'credit_type.in' => 'O tipo do credito selecionado e invalido.',
+            'amount.required' => 'Informe o valor do credito.',
+            'amount.numeric' => 'O valor do credito deve ser numerico.',
+            'amount.min' => 'O valor do credito deve ser maior que zero.',
             'other_description.max' => 'A descricao de Outros deve ter no maximo 255 caracteres.',
         ]);
 
         $startDate = $this->parseRequiredDate((string) $data['start_date'], 'start_date');
         $endDate = $this->parseRequiredDate((string) $data['end_date'], 'end_date');
-        $redirectStartDate = $this->parseFlexibleDate($data['filter_start_date'] ?? null, $startDate)->startOfDay();
-        $redirectEndDate = $this->parseFlexibleDate($data['filter_end_date'] ?? null, $endDate)->endOfDay();
 
         if ($endDate->lt($startDate)) {
             throw ValidationException::withMessages([
@@ -110,12 +109,515 @@ class PayrollController extends Controller
             'tb28_periodo_fim' => $endDate->toDateString(),
             'tb28_tipo' => $creditType,
             'tb28_descricao' => $creditType === 'outros' ? $otherDescription : null,
-            'tb28_valor' => round((float) $data['amount'], 2),
+            'tb28_valor' => round(($creditType === 'inss' ? -1 : 1) * (float) $data['amount'], 2),
         ]);
 
         return redirect()
-            ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $redirectStartDate, $redirectEndDate))
-            ->with('success', 'Lancamento adicional do contra-cheque cadastrado com sucesso.');
+            ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $startDate, $endDate))
+            ->with('success', 'Credito adicional do contra-cheque cadastrado com sucesso.');
+    }
+
+    public function updateContraChequeSalary(Request $request, User $user): RedirectResponse
+    {
+        $this->ensureAdmin($request->user());
+        $this->ensureManagedPayrollUser($request->user(), $user);
+
+        $data = $request->validate([
+            'start_date' => ['required', 'string'],
+            'end_date' => ['required', 'string'],
+            'unit_id' => ['nullable', 'string'],
+            'role' => ['nullable', 'string'],
+            'user_id' => ['nullable', 'string'],
+            'payment_status' => ['nullable', 'string'],
+            'salary' => ['required', 'numeric', 'min:0'],
+        ], [
+            'start_date.required' => 'Informe o inicio do periodo.',
+            'end_date.required' => 'Informe o fim do periodo.',
+            'salary.required' => 'Informe o salario.',
+            'salary.numeric' => 'O salario deve ser numerico.',
+            'salary.min' => 'O salario deve ser maior ou igual a zero.',
+        ]);
+
+        $startDate = $this->parseRequiredDate((string) $data['start_date'], 'start_date');
+        $endDate = $this->parseRequiredDate((string) $data['end_date'], 'end_date');
+
+        if ($endDate->lt($startDate)) {
+            throw ValidationException::withMessages([
+                'end_date' => 'A data final nao pode ser menor que a data inicial.',
+            ]);
+        }
+
+        $user->update([
+            'salario' => round((float) $data['salary'], 2),
+        ]);
+
+        return redirect()
+            ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $startDate, $endDate))
+            ->with('success', sprintf('Salario de %s atualizado com sucesso.', $user->name));
+    }
+
+    public function storeContraChequePayment(Request $request, User $user): RedirectResponse
+    {
+        $this->ensureAdmin($request->user());
+        $this->ensureManagedPayrollUser($request->user(), $user);
+
+        $data = $request->validate([
+            'start_date' => ['required', 'string'],
+            'end_date' => ['required', 'string'],
+            'payment_date' => ['required', 'string'],
+            'unit_id' => ['nullable', 'string'],
+            'role' => ['nullable', 'string'],
+            'user_id' => ['nullable', 'string'],
+            'payment_status' => ['nullable', 'string'],
+        ], [
+            'start_date.required' => 'Informe o inicio do periodo.',
+            'end_date.required' => 'Informe o fim do periodo.',
+            'payment_date.required' => 'Informe a data do pagamento.',
+        ]);
+
+        $startDate = $this->parseRequiredDate((string) $data['start_date'], 'start_date');
+        $endDate = $this->parseRequiredDate((string) $data['end_date'], 'end_date');
+        $paymentDate = $this->parseRequiredDate((string) $data['payment_date'], 'payment_date');
+
+        if ($endDate->lt($startDate)) {
+            throw ValidationException::withMessages([
+                'end_date' => 'A data final nao pode ser menor que a data inicial.',
+            ]);
+        }
+
+        $existingPayment = ContraChequePagamento::query()
+            ->where('user_id', $user->id)
+            ->whereDate('tb29_periodo_inicio', $startDate)
+            ->whereDate('tb29_periodo_fim', $endDate)
+            ->first();
+
+        if ($existingPayment) {
+            return redirect()
+                ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $startDate, $endDate))
+                ->with('error', sprintf(
+                    'O contra-cheque de %s ja foi marcado como pago em %s.',
+                    $user->name,
+                    $existingPayment->tb29_data_pagamento?->format('d/m/y') ?? $paymentDate->format('d/m/y')
+                ));
+        }
+
+        ContraChequePagamento::create([
+            'user_id' => (int) $user->id,
+            'tb29_registrado_por' => (int) $request->user()->id,
+            'tb29_periodo_inicio' => $startDate->toDateString(),
+            'tb29_periodo_fim' => $endDate->toDateString(),
+            'tb29_data_pagamento' => $paymentDate->toDateString(),
+        ]);
+
+        return redirect()
+            ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $startDate, $endDate))
+            ->with('success', sprintf(
+                'Pagamento do contra-cheque de %s registrado em %s.',
+                $user->name,
+                $paymentDate->format('d/m/y')
+            ));
+    }
+
+    public function destroyContraChequeAdvance(
+        Request $request,
+        User $user,
+        SalaryAdvance $salaryAdvance
+    ): RedirectResponse {
+        $this->ensureAdmin($request->user());
+        $this->ensureManagedPayrollUser($request->user(), $user);
+
+        if ((int) $salaryAdvance->user_id !== (int) $user->id) {
+            abort(403);
+        }
+
+        $data = $request->validate([
+            'start_date' => ['required', 'string'],
+            'end_date' => ['required', 'string'],
+            'unit_id' => ['nullable', 'string'],
+            'role' => ['nullable', 'string'],
+            'user_id' => ['nullable', 'string'],
+            'payment_status' => ['nullable', 'string'],
+        ], [
+            'start_date.required' => 'Informe o inicio do periodo.',
+            'end_date.required' => 'Informe o fim do periodo.',
+        ]);
+
+        $startDate = $this->parseRequiredDate((string) $data['start_date'], 'start_date');
+        $endDate = $this->parseRequiredDate((string) $data['end_date'], 'end_date');
+
+        $salaryAdvance->delete();
+
+        return redirect()
+            ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $startDate, $endDate))
+            ->with('success', sprintf('Adiantamento de %s excluido com sucesso.', $user->name));
+    }
+
+    public function destroyContraChequeCredit(
+        Request $request,
+        User $user,
+        ContraChequeCredito $contraChequeCredito
+    ): RedirectResponse {
+        $this->ensureAdmin($request->user());
+        $this->ensureManagedPayrollUser($request->user(), $user);
+
+        if ((int) $contraChequeCredito->user_id !== (int) $user->id) {
+            abort(403);
+        }
+
+        $data = $request->validate([
+            'start_date' => ['required', 'string'],
+            'end_date' => ['required', 'string'],
+            'unit_id' => ['nullable', 'string'],
+            'role' => ['nullable', 'string'],
+            'user_id' => ['nullable', 'string'],
+            'payment_status' => ['nullable', 'string'],
+        ], [
+            'start_date.required' => 'Informe o inicio do periodo.',
+            'end_date.required' => 'Informe o fim do periodo.',
+        ]);
+
+        $startDate = $this->parseRequiredDate((string) $data['start_date'], 'start_date');
+        $endDate = $this->parseRequiredDate((string) $data['end_date'], 'end_date');
+
+        $contraChequeCredito->delete();
+
+        return redirect()
+            ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $startDate, $endDate))
+            ->with('success', sprintf('Lancamento extra de %s excluido com sucesso.', $user->name));
+    }
+
+    public function destroyContraChequeVale(Request $request, User $user): RedirectResponse
+    {
+        $this->ensureAdmin($request->user());
+        $this->ensureManagedPayrollUser($request->user(), $user);
+
+        $data = $request->validate([
+            'start_date' => ['required', 'string'],
+            'end_date' => ['required', 'string'],
+            'unit_id' => ['nullable', 'string'],
+            'role' => ['nullable', 'string'],
+            'user_id' => ['nullable', 'string'],
+            'payment_status' => ['nullable', 'string'],
+            'receipt_id' => ['nullable', 'integer'],
+            'sale_ids' => ['required', 'array', 'min:1'],
+            'sale_ids.*' => ['required', 'integer'],
+        ], [
+            'start_date.required' => 'Informe o inicio do periodo.',
+            'end_date.required' => 'Informe o fim do periodo.',
+            'sale_ids.required' => 'Nenhum vale foi informado para exclusao.',
+            'sale_ids.array' => 'Os vales informados sao invalidos.',
+            'sale_ids.min' => 'Nenhum vale foi informado para exclusao.',
+        ]);
+
+        $startDate = $this->parseRequiredDate((string) $data['start_date'], 'start_date');
+        $endDate = $this->parseRequiredDate((string) $data['end_date'], 'end_date');
+        $saleIds = collect($data['sale_ids'])
+            ->map(fn ($value) => (int) $value)
+            ->filter(fn (int $value) => $value > 0)
+            ->unique()
+            ->values();
+
+        $sales = Venda::query()
+            ->whereIn('tb3_id', $saleIds)
+            ->where('id_user_vale', $user->id)
+            ->where('tipo_pago', 'vale')
+            ->get(['tb3_id', 'tb4_id']);
+
+        if ($sales->count() !== $saleIds->count()) {
+            abort(403);
+        }
+
+        $receiptId = isset($data['receipt_id']) ? (int) $data['receipt_id'] : null;
+
+        DB::transaction(function () use ($saleIds, $receiptId) {
+            Venda::query()->whereIn('tb3_id', $saleIds)->delete();
+
+            if ($receiptId && ! Venda::query()->where('tb4_id', $receiptId)->exists()) {
+                VendaPagamento::query()->where('tb4_id', $receiptId)->delete();
+            }
+        });
+
+        return redirect()
+            ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $startDate, $endDate))
+            ->with('success', sprintf('Vale(s) de %s excluido(s) com sucesso.', $user->name));
+    }
+
+    private function buildContraChequePayload(Request $request): array
+    {
+        [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
+        $filterUnits = ManagementScope::managedUnits($request->user(), ['tb2_id', 'tb2_nome'])
+            ->map(fn (Unidade $unit) => [
+                'id' => (int) $unit->tb2_id,
+                'name' => $unit->tb2_nome,
+            ])
+            ->values();
+        $allowedUnitIds = $this->reportUnitIds($filterUnits);
+        $selectedUnitId = $this->resolveSelectedUnitId($request->query('unit_id'), $allowedUnitIds);
+        $selectedRole = $this->resolveSelectedRole($request->query('role'));
+        $selectedUserId = $this->resolveSelectedUserId($request->query('user_id'));
+        $selectedPaymentStatus = $this->resolveSelectedPaymentStatus($request->query('payment_status'));
+        $selectedUnit = $selectedUnitId
+            ? $filterUnits->firstWhere('id', $selectedUnitId)
+            : ['id' => null, 'name' => 'Todas as unidades'];
+        $roleOptions = collect(self::ROLE_LABELS)
+            ->reject(fn (string $label, int $role) => $role === 6)
+            ->map(fn (string $label, int $role) => [
+                'id' => (int) $role,
+                'label' => $label,
+            ])
+            ->values();
+
+        $baseUsersQuery = $this->newPayrollUsersQuery($request, false);
+
+        if ($selectedUnitId) {
+            $this->applyUnitFilterToUsersQuery($baseUsersQuery, $selectedUnitId);
+        }
+
+        if ($selectedRole !== null) {
+            $baseUsersQuery->where('funcao', $selectedRole);
+        }
+
+        if ($selectedUserId !== null) {
+            $baseUsersQuery->where('id', $selectedUserId);
+        }
+
+        $baseUsersQuery->where('salario', '>', 0);
+
+        $usersQuery = clone $baseUsersQuery;
+        $filterUsersQuery = clone $baseUsersQuery;
+
+        if ($selectedUserId !== null) {
+            $filterUsersQuery = User::query()
+                ->with([
+                    'units:tb2_id,tb2_nome',
+                    'primaryUnit:tb2_id,tb2_nome',
+                ])
+                ->where('funcao', '!=', 6)
+                ->orderBy('name');
+
+            ManagementScope::applyManagedUserScope($filterUsersQuery, $request->user());
+
+            if ($selectedUnitId) {
+                $this->applyUnitFilterToUsersQuery($filterUsersQuery, $selectedUnitId);
+            }
+
+            if ($selectedRole !== null) {
+                $filterUsersQuery->where('funcao', $selectedRole);
+            }
+
+            $filterUsersQuery->where('salario', '>', 0);
+        }
+
+        $filterUsers = $filterUsersQuery
+            ->get(['id', 'name'])
+            ->map(fn (User $user) => [
+                'id' => (int) $user->id,
+                'name' => $user->name,
+            ])
+            ->values();
+
+        if ($selectedUserId !== null && ! $filterUsers->contains(fn (array $user) => $user['id'] === $selectedUserId)) {
+            $selectedUserId = null;
+        }
+
+        $users = $usersQuery->get(['id', 'name', 'phone', 'funcao', 'salario', 'tb2_id']);
+        $userIds = $users->pluck('id')->map(fn ($value) => (int) $value)->values();
+
+        $advances = $userIds->isEmpty()
+            ? collect()
+            : $this->advanceQuery($userIds, $startDate, $endDate, $selectedUnitId, $allowedUnitIds)
+                ->with(['unit:tb2_id,tb2_nome'])
+                ->orderBy('advance_date')
+                ->orderBy('id')
+                ->get(['id', 'user_id', 'unit_id', 'advance_date', 'amount', 'reason']);
+
+        $valeSales = $userIds->isEmpty()
+            ? collect()
+            : $this->valeQuery($userIds, $start, $end, $selectedUnitId, $allowedUnitIds)
+                ->with(['unidade:tb2_id,tb2_nome'])
+                ->orderBy('data_hora')
+                ->orderBy('tb3_id')
+                ->get([
+                    'tb3_id',
+                    'tb4_id',
+                    'id_user_vale',
+                    'id_unidade',
+                    'produto_nome',
+                    'quantidade',
+                    'valor_total',
+                    'data_hora',
+                ]);
+
+        $extraCredits = $userIds->isEmpty()
+            ? collect()
+            : ContraChequeCredito::query()
+                ->whereIn('user_id', $userIds)
+                ->whereDate('tb28_periodo_inicio', $startDate)
+                ->whereDate('tb28_periodo_fim', $endDate)
+                ->orderBy('created_at')
+                ->orderBy('tb28_id')
+                ->get([
+                    'tb28_id',
+                    'user_id',
+                    'tb28_tipo',
+                    'tb28_descricao',
+                    'tb28_valor',
+                ]);
+
+        $payments = $userIds->isEmpty()
+            ? collect()
+            : ContraChequePagamento::query()
+                ->whereIn('user_id', $userIds)
+                ->whereDate('tb29_periodo_inicio', $startDate)
+                ->whereDate('tb29_periodo_fim', $endDate)
+                ->orderBy('tb29_data_pagamento')
+                ->orderBy('tb29_id')
+                ->get([
+                    'tb29_id',
+                    'user_id',
+                    'tb29_data_pagamento',
+                ]);
+
+        $advancesByUser = $advances->groupBy('user_id');
+        $valeSalesByUser = $valeSales->groupBy('id_user_vale');
+        $extraCreditsByUser = $extraCredits->groupBy('user_id');
+        $paymentsByUser = $payments->keyBy('user_id');
+
+        $rows = $users
+            ->map(function (User $user) use ($advancesByUser, $valeSalesByUser, $extraCreditsByUser, $paymentsByUser, $startDate, $endDate) {
+                $advanceRecords = $advancesByUser
+                    ->get($user->id, collect())
+                    ->map(function (SalaryAdvance $advance) {
+                        return [
+                            'id' => (int) $advance->id,
+                            'advance_date' => $advance->advance_date?->toDateString(),
+                            'amount' => round((float) $advance->amount, 2),
+                            'reason' => $advance->reason,
+                            'unit_name' => $advance->unit?->tb2_nome ?? '---',
+                        ];
+                    })
+                    ->values();
+
+                $valeRecords = $valeSalesByUser
+                    ->get($user->id, collect())
+                    ->groupBy('tb4_id')
+                    ->map(function (Collection $group, $receiptId) {
+                        /** @var Venda|null $first */
+                        $first = $group->first();
+
+                        return [
+                            'id' => (int) $receiptId,
+                            'receipt_id' => $first?->tb4_id ? (int) $first->tb4_id : null,
+                            'date_time' => $first?->data_hora?->toIso8601String(),
+                            'unit_name' => $first?->unidade?->tb2_nome ?? '---',
+                            'items_count' => (int) $group->sum('quantidade'),
+                            'items_label' => $group
+                                ->map(fn (Venda $sale) => trim(sprintf('%sx %s', (int) $sale->quantidade, $sale->produto_nome)))
+                                ->implode(', '),
+                            'sale_ids' => $group
+                                ->pluck('tb3_id')
+                                ->map(fn ($value) => (int) $value)
+                                ->values()
+                                ->all(),
+                            'total' => round((float) $group->sum('valor_total'), 2),
+                        ];
+                    })
+                    ->sortBy('date_time')
+                    ->values();
+
+                $extraCreditRecords = $extraCreditsByUser
+                    ->get($user->id, collect())
+                    ->map(function (ContraChequeCredito $credit) {
+                        $typeLabel = self::EXTRA_CREDIT_TYPE_LABELS[$credit->tb28_tipo] ?? 'Outros';
+                        $description = $credit->tb28_tipo === 'outros' && filled($credit->tb28_descricao)
+                            ? sprintf('%s: %s', $typeLabel, trim((string) $credit->tb28_descricao))
+                            : $typeLabel;
+
+                        return [
+                            'id' => (int) $credit->tb28_id,
+                            'type' => $credit->tb28_tipo,
+                            'type_label' => $typeLabel,
+                            'description' => $description,
+                            'amount' => round((float) $credit->tb28_valor, 2),
+                        ];
+                    })
+                    ->values();
+
+                $advanceTotal = round((float) $advanceRecords->sum('amount'), 2);
+                $valeTotal = round((float) $valeRecords->sum('total'), 2);
+                $extraCreditTotal = round((float) $extraCreditRecords->sum('amount'), 2);
+                $salary = round((float) ($user->salario ?? 0), 2);
+                $balance = round($salary + $extraCreditTotal - $advanceTotal - $valeTotal, 2);
+                $unitNames = $this->resolveUserUnitNames($user);
+                /** @var ContraChequePagamento|null $paymentRecord */
+                $paymentRecord = $paymentsByUser->get($user->id);
+                $paymentDate = $paymentRecord?->tb29_data_pagamento?->toDateString();
+                $isPaid = $paymentDate !== null;
+
+                return [
+                    'id' => (int) $user->id,
+                    'name' => $user->name,
+                    'phone' => $user->phone,
+                    'role_label' => self::ROLE_LABELS[(int) $user->funcao] ?? '---',
+                    'salary' => $salary,
+                    'advances_total' => $advanceTotal,
+                    'vales_total' => $valeTotal,
+                    'extra_credits_total' => $extraCreditTotal,
+                    'balance' => $balance,
+                    'unit_names' => $unitNames->values()->all(),
+                    'payment_status' => $isPaid ? 'paid' : 'pending',
+                    'payment_date' => $paymentDate,
+                    'detail' => [
+                        'user_id' => (int) $user->id,
+                        'user_name' => $user->name,
+                        'phone' => $user->phone,
+                        'role_label' => self::ROLE_LABELS[(int) $user->funcao] ?? '---',
+                        'unit_names' => $unitNames->values()->all(),
+                        'start_date' => $startDate,
+                        'end_date' => $endDate,
+                        'salary' => $salary,
+                        'advances_total' => $advanceTotal,
+                        'vales_total' => $valeTotal,
+                        'extra_credits_total' => $extraCreditTotal,
+                        'balance' => $balance,
+                        'payment_status' => $isPaid ? 'paid' : 'pending',
+                        'payment_date' => $paymentDate,
+                        'advances_count' => $advanceRecords->count(),
+                        'vales_count' => $valeRecords->count(),
+                        'extra_credits_count' => $extraCreditRecords->count(),
+                        'advances' => $advanceRecords->all(),
+                        'vales' => $valeRecords->all(),
+                        'extra_credits' => $extraCreditRecords->all(),
+                    ],
+                ];
+            })
+            ->when($selectedPaymentStatus === 'paid', fn (Collection $collection) => $collection->where('payment_status', 'paid'))
+            ->when($selectedPaymentStatus === 'pending', fn (Collection $collection) => $collection->where('payment_status', 'pending'))
+            ->values();
+
+        $summary = [
+            'employees_count' => $rows->count(),
+            'salary_total' => round((float) $rows->sum('salary'), 2),
+            'advances_total' => round((float) $rows->sum('advances_total'), 2),
+            'vales_total' => round((float) $rows->sum('vales_total'), 2),
+            'extra_credits_total' => round((float) $rows->sum('extra_credits_total'), 2),
+            'balance_total' => round((float) $rows->sum('balance'), 2),
+        ];
+
+        return [
+            'rows' => $rows,
+            'summary' => $summary,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+            'filterUnits' => $filterUnits,
+            'filterUsers' => $filterUsers,
+            'roleOptions' => $roleOptions,
+            'selectedUnitId' => $selectedUnitId,
+            'selectedRole' => $selectedRole,
+            'selectedUserId' => $selectedUserId,
+            'selectedPaymentStatus' => $selectedPaymentStatus,
+            'unit' => $selectedUnit,
+        ];
     }
 
     private function buildPayrollPayload(Request $request, bool $onlyWithSalary = false, bool $onlyActiveUsers = false): array
@@ -367,7 +869,7 @@ class PayrollController extends Controller
                             && $credit->tb28_periodo_fim?->toDateString() === $periodEndDate;
                     })
                     ->map(function (ContraChequeCredito $credit) {
-                        $typeLabel = self::EXTRA_ENTRY_TYPE_LABELS[$credit->tb28_tipo] ?? 'Outros';
+                        $typeLabel = self::EXTRA_CREDIT_TYPE_LABELS[$credit->tb28_tipo] ?? 'Outros';
                         $isDeduction = in_array($credit->tb28_tipo, self::EXTRA_DEDUCTION_TYPES, true);
                         $description = $credit->tb28_tipo === 'outros' && filled($credit->tb28_descricao)
                             ? sprintf('%s: %s', $typeLabel, trim((string) $credit->tb28_descricao))
@@ -691,6 +1193,17 @@ class PayrollController extends Controller
         return $userId > 0 ? $userId : null;
     }
 
+    private function resolveSelectedPaymentStatus(mixed $requestedStatus): string
+    {
+        if (! is_string($requestedStatus) || $requestedStatus === '') {
+            return 'pending';
+        }
+
+        return in_array($requestedStatus, ['all', 'paid', 'pending'], true)
+            ? $requestedStatus
+            : 'pending';
+    }
+
     private function reportUnitIds(iterable $units): Collection
     {
         return collect($units)
@@ -847,6 +1360,12 @@ class PayrollController extends Controller
             if ($value !== null && $value !== '' && $value !== 'all') {
                 $filters[$field] = $value;
             }
+        }
+
+        $paymentStatus = $data['payment_status'] ?? null;
+
+        if ($paymentStatus !== null && $paymentStatus !== '' && $paymentStatus !== 'all') {
+            $filters['payment_status'] = $paymentStatus;
         }
 
         return $filters;
