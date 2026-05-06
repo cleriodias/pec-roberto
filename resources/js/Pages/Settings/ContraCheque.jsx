@@ -128,8 +128,10 @@ export default function ContraCheque({
     endDate,
     filterUnits = [],
     filterUsers = [],
+    paymentDayOptions = [],
     roleOptions = [],
     selectedUnitId = null,
+    selectedPaymentDay = null,
     selectedRole = null,
     selectedUserId = null,
     selectedPaymentStatus = 'pending',
@@ -142,6 +144,10 @@ export default function ContraCheque({
         unit_id:
             selectedUnitId !== null && selectedUnitId !== undefined
                 ? String(selectedUnitId)
+                : 'all',
+        payment_day:
+            selectedPaymentDay !== null && selectedPaymentDay !== undefined
+                ? String(selectedPaymentDay)
                 : 'all',
         role:
             selectedRole !== null && selectedRole !== undefined
@@ -170,6 +176,10 @@ export default function ContraCheque({
             selectedUnitId !== null && selectedUnitId !== undefined
                 ? String(selectedUnitId)
                 : 'all',
+        payment_day:
+            selectedPaymentDay !== null && selectedPaymentDay !== undefined
+                ? String(selectedPaymentDay)
+                : 'all',
         role:
             selectedRole !== null && selectedRole !== undefined
                 ? String(selectedRole)
@@ -190,6 +200,10 @@ export default function ContraCheque({
             selectedUnitId !== null && selectedUnitId !== undefined
                 ? String(selectedUnitId)
                 : 'all',
+        payment_day:
+            selectedPaymentDay !== null && selectedPaymentDay !== undefined
+                ? String(selectedPaymentDay)
+                : 'all',
         role:
             selectedRole !== null && selectedRole !== undefined
                 ? String(selectedRole)
@@ -207,6 +221,10 @@ export default function ContraCheque({
         unit_id:
             selectedUnitId !== null && selectedUnitId !== undefined
                 ? String(selectedUnitId)
+                : 'all',
+        payment_day:
+            selectedPaymentDay !== null && selectedPaymentDay !== undefined
+                ? String(selectedPaymentDay)
                 : 'all',
         role:
             selectedRole !== null && selectedRole !== undefined
@@ -276,6 +294,7 @@ export default function ContraCheque({
         start_date: data.start_date || '',
         end_date: data.end_date || '',
         unit_id: data.unit_id,
+        payment_day: data.payment_day,
         role: data.role,
         user_id: data.user_id,
         payment_status: data.payment_status,
@@ -592,6 +611,23 @@ export default function ContraCheque({
                                     {roleOptions.map((roleOption) => (
                                         <option key={roleOption.id} value={roleOption.id}>
                                             {roleOption.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                    Dia
+                                </label>
+                                <select
+                                    value={data.payment_day}
+                                    onChange={(event) => setData('payment_day', event.target.value)}
+                                    className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                >
+                                    <option value="all">Todos</option>
+                                    {paymentDayOptions.map((paymentDayOption) => (
+                                        <option key={paymentDayOption.id} value={paymentDayOption.id}>
+                                            Dia {paymentDayOption.label}
                                         </option>
                                     ))}
                                 </select>

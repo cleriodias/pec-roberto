@@ -354,6 +354,7 @@ class PayrollController extends Controller
         $allowedUnitIds = $this->reportUnitIds($filterUnits);
         $selectedUnitId = $this->resolveSelectedUnitId($request->query('unit_id'), $allowedUnitIds);
         $selectedRole = $this->resolveSelectedRole($request->query('role'));
+        $selectedPaymentDay = $this->resolveSelectedPaymentDay($request->query('payment_day'));
         $selectedUserId = $this->resolveSelectedUserId($request->query('user_id'));
         $selectedPaymentStatus = $this->resolveSelectedPaymentStatus($request->query('payment_status'));
         $selectedUnit = $selectedUnitId
@@ -367,6 +368,31 @@ class PayrollController extends Controller
             ])
             ->values();
 
+        $paymentDayOptions = $this->newPayrollUsersQuery($request, false)
+            ->when($selectedUnitId, function ($query, int $unitId) {
+                $this->applyUnitFilterToUsersQuery($query, $unitId);
+            })
+            ->when($selectedRole !== null, fn ($query) => $query->where('funcao', $selectedRole))
+            ->where('salario', '>', 0)
+            ->whereNotNull('payment_day')
+            ->reorder()
+            ->select('payment_day')
+            ->distinct()
+            ->orderBy('payment_day')
+            ->pluck('payment_day')
+            ->map(fn ($paymentDay) => [
+                'id' => (int) $paymentDay,
+                'label' => str_pad((string) $paymentDay, 2, '0', STR_PAD_LEFT),
+            ])
+            ->values();
+
+        if (
+            ! array_key_exists('payment_day', $request->query())
+            && $selectedPaymentDay === null
+        ) {
+            $selectedPaymentDay = $this->resolveDefaultPaymentDayOption($paymentDayOptions);
+        }
+
         $baseUsersQuery = $this->newPayrollUsersQuery($request, false);
 
         if ($selectedUnitId) {
@@ -375,6 +401,10 @@ class PayrollController extends Controller
 
         if ($selectedRole !== null) {
             $baseUsersQuery->where('funcao', $selectedRole);
+        }
+
+        if ($selectedPaymentDay !== null) {
+            $baseUsersQuery->where('payment_day', $selectedPaymentDay);
         }
 
         if ($selectedUserId !== null) {
@@ -405,7 +435,15 @@ class PayrollController extends Controller
                 $filterUsersQuery->where('funcao', $selectedRole);
             }
 
+            if ($selectedPaymentDay !== null) {
+                $filterUsersQuery->where('payment_day', $selectedPaymentDay);
+            }
+
             $filterUsersQuery->where('salario', '>', 0);
+        }
+
+        if ($selectedUserId === null && $selectedPaymentDay !== null) {
+            $filterUsersQuery->where('payment_day', $selectedPaymentDay);
         }
 
         $filterUsers = $filterUsersQuery
@@ -611,8 +649,10 @@ class PayrollController extends Controller
             'endDate' => $endDate,
             'filterUnits' => $filterUnits,
             'filterUsers' => $filterUsers,
+            'paymentDayOptions' => $paymentDayOptions,
             'roleOptions' => $roleOptions,
             'selectedUnitId' => $selectedUnitId,
+            'selectedPaymentDay' => $selectedPaymentDay,
             'selectedRole' => $selectedRole,
             'selectedUserId' => $selectedUserId,
             'selectedPaymentStatus' => $selectedPaymentStatus,
