@@ -368,7 +368,7 @@ class PayrollController extends Controller
             ])
             ->values();
 
-        $paymentDayOptions = $this->newPayrollUsersQuery($request, false)
+        $paymentDayOptions = $this->newPayrollUsersQuery($request, true)
             ->when($selectedUnitId, function ($query, int $unitId) {
                 $this->applyUnitFilterToUsersQuery($query, $unitId);
             })
@@ -393,7 +393,7 @@ class PayrollController extends Controller
             $selectedPaymentDay = $this->resolveDefaultPaymentDayOption($paymentDayOptions);
         }
 
-        $baseUsersQuery = $this->newPayrollUsersQuery($request, false);
+        $baseUsersQuery = $this->newPayrollUsersQuery($request, true);
 
         if ($selectedUnitId) {
             $this->applyUnitFilterToUsersQuery($baseUsersQuery, $selectedUnitId);
@@ -426,6 +426,8 @@ class PayrollController extends Controller
                 ->orderBy('name');
 
             ManagementScope::applyManagedUserScope($filterUsersQuery, $request->user());
+
+            $filterUsersQuery->where('is_active', true);
 
             if ($selectedUnitId) {
                 $this->applyUnitFilterToUsersQuery($filterUsersQuery, $selectedUnitId);
