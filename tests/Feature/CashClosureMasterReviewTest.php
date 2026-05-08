@@ -123,10 +123,10 @@ class CashClosureMasterReviewTest extends TestCase
         $response->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Reports/CashClosure')
             ->has('records', 1)
-            ->where('records.0.closure.cash_amount', 90.0)
-            ->where('records.0.closure.card_amount', 210.0)
-            ->where('records.0.closure.original_cash_amount', 100.0)
-            ->where('records.0.closure.original_card_amount', 200.0)
+            ->where('records.0.closure.cash_amount', fn ($value) => (float) $value === 90.0)
+            ->where('records.0.closure.card_amount', fn ($value) => (float) $value === 210.0)
+            ->where('records.0.closure.original_cash_amount', fn ($value) => (float) $value === 100.0)
+            ->where('records.0.closure.original_card_amount', fn ($value) => (float) $value === 200.0)
             ->where('records.0.closure.master_review.reviewed', true)
             ->where('records.0.closure.master_review.checked_by_name', 'Master')
         );
@@ -270,15 +270,207 @@ class CashClosureMasterReviewTest extends TestCase
             ->component('Reports/CashClosure')
             ->has('records', 2)
             ->where('records.0.cashier_name', 'Caixa A')
-            ->where('records.0.small_card_complements.total', 1.25)
+            ->where('records.0.small_card_complements.total', fn ($value) => (float) $value === 1.25)
             ->has('records.0.small_card_complements.items', 2)
-            ->where('records.0.small_card_complements.items.0.receipt.id', $paymentA2->tb4_id)
-            ->where('records.0.small_card_complements.items.1.receipt.id', $paymentA1->tb4_id)
+            ->where('records.0.small_card_complements.items', function ($items) use ($paymentA1, $paymentA2) {
+                $receiptIds = collect($items)->pluck('receipt.id')->sort()->values()->all();
+
+                return $receiptIds === collect([$paymentA1->tb4_id, $paymentA2->tb4_id])->sort()->values()->all();
+            })
             ->where('records.1.cashier_name', 'Caixa B')
-            ->where('records.1.small_card_complements.total', 0.9)
+            ->where('records.1.small_card_complements.total', fn ($value) => (float) $value === 0.9)
             ->has('records.1.small_card_complements.items', 1)
             ->where('records.1.small_card_complements.items.0.receipt.id', $paymentB1->tb4_id)
         );
+    }
+
+    public function test_manager_can_close_cash_closure_with_system_values_from_report(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-08 12:00:00'));
+
+        $unit = $this->makeUnit('Setor-30');
+        $manager = $this->makeUser('Gerente', 1, $unit);
+        $cashier = $this->makeUser('Caixa', 3, $unit);
+        $product = $this->makeProduct();
+        $supplier = $this->makeSupplier();
+
+        $payment = VendaPagamento::create([
+            'valor_total' => 150,
+            'tipo_pagamento' => 'dinheiro',
+            'valor_pago' => 150,
+            'troco' => 0,
+            'dois_pgto' => 25,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Venda::create([
+            'tb4_id' => $payment->tb4_id,
+            'tb1_id' => $product->tb1_id,
+            'id_comanda' => '501',
+            'produto_nome' => $product->tb1_nome,
+            'valor_unitario' => 150,
+            'quantidade' => 1,
+            'valor_total' => 150,
+            'data_hora' => now(),
+            'id_user_caixa' => $cashier->id,
+            'id_user_vale' => null,
+            'id_lanc' => null,
+            'id_unidade' => $unit->tb2_id,
+            'tipo_pago' => 'dinheiro',
+            'status_pago' => true,
+            'status' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Expense::create([
+            'supplier_id' => $supplier->id,
+            'unit_id' => $unit->tb2_id,
+            'user_id' => $cashier->id,
+            'expense_date' => '2026-04-08',
+            'amount' => 15,
+            'notes' => 'Despesa do caixa',
+        ]);
+
+        $response = $this
+            ->actingAs($manager)
+            ->postJson(route('reports.cash.closure.close'), [
+                'cashier_id' => $cashier->id,
+                'unit_id' => $unit->tb2_id,
+                'closed_date' => '2026-04-08',
+                'mode' => 'system',
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('message', 'Caixa fechado com os valores do sistema.');
+
+        $this->assertDatabaseHas('cashier_closures', [
+            'user_id' => $cashier->id,
+            'unit_id' => $unit->tb2_id,
+            'closed_date' => '2026-04-08',
+            'cash_amount' => 110.00,
+            'card_amount' => 25.00,
+        ]);
+    }
+
+    public function test_master_can_close_cash_closure_zeroed_from_report(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-08 12:00:00'));
+
+        $unit = $this->makeUnit('Setor-31');
+        $master = $this->makeUser('Master', 0, $unit);
+        $cashier = $this->makeUser('Caixa', 3, $unit);
+        $product = $this->makeProduct();
+
+        $payment = VendaPagamento::create([
+            'valor_total' => 80,
+            'tipo_pagamento' => 'maquina',
+            'valor_pago' => null,
+            'troco' => 0,
+            'dois_pgto' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Venda::create([
+            'tb4_id' => $payment->tb4_id,
+            'tb1_id' => $product->tb1_id,
+            'id_comanda' => '601',
+            'produto_nome' => $product->tb1_nome,
+            'valor_unitario' => 80,
+            'quantidade' => 1,
+            'valor_total' => 80,
+            'data_hora' => now(),
+            'id_user_caixa' => $cashier->id,
+            'id_user_vale' => null,
+            'id_lanc' => null,
+            'id_unidade' => $unit->tb2_id,
+            'tipo_pago' => 'maquina',
+            'status_pago' => true,
+            'status' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this
+            ->actingAs($master)
+            ->postJson(route('reports.cash.closure.close'), [
+                'cashier_id' => $cashier->id,
+                'unit_id' => $unit->tb2_id,
+                'closed_date' => '2026-04-08',
+                'mode' => 'zeroed',
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('message', 'Caixa fechado com valores zerados.');
+
+        $this->assertDatabaseHas('cashier_closures', [
+            'user_id' => $cashier->id,
+            'unit_id' => $unit->tb2_id,
+            'closed_date' => '2026-04-08',
+            'cash_amount' => 0.00,
+            'card_amount' => 0.00,
+        ]);
+    }
+
+    public function test_manager_cannot_close_cash_closure_from_unmanaged_unit(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-08 12:00:00'));
+
+        $managerUnit = $this->makeUnit('Setor-32');
+        $otherUnit = $this->makeUnit('Setor-33');
+        $manager = $this->makeUser('Gerente', 1, $managerUnit);
+        $cashier = $this->makeUser('Caixa', 3, $otherUnit);
+        $product = $this->makeProduct();
+
+        $payment = VendaPagamento::create([
+            'valor_total' => 90,
+            'tipo_pagamento' => 'dinheiro',
+            'valor_pago' => 90,
+            'troco' => 0,
+            'dois_pgto' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Venda::create([
+            'tb4_id' => $payment->tb4_id,
+            'tb1_id' => $product->tb1_id,
+            'id_comanda' => '701',
+            'produto_nome' => $product->tb1_nome,
+            'valor_unitario' => 90,
+            'quantidade' => 1,
+            'valor_total' => 90,
+            'data_hora' => now(),
+            'id_user_caixa' => $cashier->id,
+            'id_user_vale' => null,
+            'id_lanc' => null,
+            'id_unidade' => $otherUnit->tb2_id,
+            'tipo_pago' => 'dinheiro',
+            'status_pago' => true,
+            'status' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this
+            ->actingAs($manager)
+            ->postJson(route('reports.cash.closure.close'), [
+                'cashier_id' => $cashier->id,
+                'unit_id' => $otherUnit->tb2_id,
+                'closed_date' => '2026-04-08',
+                'mode' => 'system',
+            ])
+            ->assertForbidden();
+
+        $this->assertDatabaseMissing('cashier_closures', [
+            'user_id' => $cashier->id,
+            'unit_id' => $otherUnit->tb2_id,
+            'closed_date' => '2026-04-08',
+        ]);
     }
 
     public function test_cash_closure_report_deducts_expenses_from_cash_conference_base(): void
@@ -358,15 +550,15 @@ class CashClosureMasterReviewTest extends TestCase
             ->component('Reports/CashClosure')
             ->has('records', 1)
             ->where('records.0.cashier_name', 'Caixa')
-            ->where('records.0.expense_total', 20.0)
+            ->where('records.0.expense_total', fn ($value) => (float) $value === 20.0)
             ->has('records.0.expense_details', 1)
             ->where('records.0.expense_details.0.supplier', 'Fornecedor teste')
-            ->where('records.0.expense_details.0.amount', 20.0)
+            ->where('records.0.expense_details.0.amount', fn ($value) => (float) $value === 20.0)
             ->where('records.0.expense_details.0.notes', 'Gasto do caixa')
-            ->where('records.0.conference_base_cash', 80.0)
-            ->where('records.0.conference_base_total', 80.0)
-            ->where('records.0.closure.differences.cash', 0.0)
-            ->where('records.0.closure.differences.total', 0.0)
+            ->where('records.0.conference_base_cash', fn ($value) => (float) $value === 80.0)
+            ->where('records.0.conference_base_total', fn ($value) => (float) $value === 80.0)
+            ->where('records.0.closure.differences.cash', fn ($value) => (float) $value === 0.0)
+            ->where('records.0.closure.differences.total', fn ($value) => (float) $value === 0.0)
         );
     }
 

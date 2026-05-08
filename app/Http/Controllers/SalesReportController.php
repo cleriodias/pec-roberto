@@ -2199,6 +2199,91 @@ class SalesReportController extends Controller
         ]);
     }
 
+    public function closeCashClosure(Request $request): JsonResponse
+    {
+        $this->ensureManager($request);
+
+        $validated = $request->validate([
+            'cashier_id' => ['required', 'integer', 'exists:users,id'],
+            'unit_id' => ['required', 'integer', 'min:1'],
+            'closed_date' => ['required', 'date_format:Y-m-d'],
+            'mode' => ['required', 'in:zeroed,system'],
+        ]);
+
+        $actingUser = $request->user();
+        $cashierId = (int) $validated['cashier_id'];
+        $unitId = (int) $validated['unit_id'];
+        $closedDate = Carbon::createFromFormat('Y-m-d', $validated['closed_date'])->startOfDay();
+
+        if (! ManagementScope::canManageUnit($actingUser, $unitId)) {
+            abort(403);
+        }
+
+        $alreadyClosed = CashierClosure::query()
+            ->where('user_id', $cashierId)
+            ->whereDate('closed_date', $closedDate->toDateString())
+            ->where(function ($query) use ($unitId) {
+                $query->whereNull('unit_id')->orWhere('unit_id', $unitId);
+            })
+            ->exists();
+
+        if ($alreadyClosed) {
+            return response()->json([
+                'message' => 'O caixa ja foi fechado para esta unidade nesta data.',
+            ], 422);
+        }
+
+        if ($closedDate->isSameDay(Carbon::today())) {
+            $openComandas = Venda::query()
+                ->whereNotNull('id_comanda')
+                ->whereBetween('id_comanda', [3000, 3100])
+                ->where('status', 0)
+                ->where('id_unidade', $unitId)
+                ->exists();
+
+            if ($openComandas) {
+                return response()->json([
+                    'message' => 'Existem comandas da lanchonete em aberto. Finalize antes de fechar o caixa.',
+                ], 422);
+            }
+        }
+
+        $closureTotals = $this->resolveCashClosureTotals($cashierId, $unitId, $closedDate);
+
+        if ($closureTotals === null) {
+            return response()->json([
+                'message' => 'Nao foi possivel localizar vendas deste caixa para a data informada.',
+            ], 422);
+        }
+
+        $amounts = $validated['mode'] === 'zeroed'
+            ? ['cash_amount' => 0.0, 'card_amount' => 0.0]
+            : [
+                'cash_amount' => $closureTotals['cash_amount'],
+                'card_amount' => $closureTotals['card_amount'],
+            ];
+
+        $unitName = Unidade::active()->find($unitId, ['tb2_id', 'tb2_nome'])?->tb2_nome
+            ?? ('Unidade #' . $unitId);
+
+        $closure = CashierClosure::create([
+            'user_id' => $cashierId,
+            'unit_id' => $unitId,
+            'unit_name' => $unitName,
+            'cash_amount' => $amounts['cash_amount'],
+            'card_amount' => $amounts['card_amount'],
+            'closed_date' => $closedDate->toDateString(),
+            'closed_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => $validated['mode'] === 'zeroed'
+                ? 'Caixa fechado com valores zerados.'
+                : 'Caixa fechado com os valores do sistema.',
+            'closure_id' => $closure->id,
+        ]);
+    }
+
     public function cashDiscrepancies(Request $request): Response
     {
         $this->ensureManager($request);
@@ -3203,6 +3288,73 @@ class SalesReportController extends Controller
                 ];
             })
             ->values();
+    }
+
+    private function resolveCashClosureTotals(int $cashierId, int $unitId, Carbon $date): ?array
+    {
+        $start = $date->copy()->startOfDay();
+        $end = $date->copy()->endOfDay();
+
+        $payments = VendaPagamento::query()
+            ->whereBetween('created_at', [$start, $end])
+            ->with(['vendas' => function ($query) use ($cashierId, $unitId) {
+                $query->select(
+                    'tb3_id',
+                    'tb4_id',
+                    'id_user_caixa',
+                    'id_unidade'
+                )
+                    ->where('id_user_caixa', $cashierId)
+                    ->where('id_unidade', $unitId)
+                    ->orderBy('tb3_id');
+            }])
+            ->whereHas('vendas', function ($query) use ($cashierId, $unitId) {
+                $query->where('id_user_caixa', $cashierId)
+                    ->where('id_unidade', $unitId);
+            })
+            ->get([
+                'tb4_id',
+                'valor_total',
+                'tipo_pagamento',
+                'valor_pago',
+                'troco',
+                'dois_pgto',
+                'created_at',
+            ]);
+
+        if ($payments->isEmpty()) {
+            return null;
+        }
+
+        $totals = [
+            'dinheiro' => 0.0,
+            'maquina' => 0.0,
+            'vale' => 0.0,
+            'refeicao' => 0.0,
+            'faturar' => 0.0,
+        ];
+
+        foreach ($payments as $payment) {
+            foreach ($this->breakdownPayment($payment) as $type => $amount) {
+                $totals[$type] += $amount;
+            }
+        }
+
+        $expenseData = $this->groupExpenseDataByCashierUnit(
+            $date->toDateString(),
+            $unitId,
+            null,
+            $cashierId
+        );
+
+        $expenseTotal = (float) ($expenseData->get($cashierId . '-' . $unitId)['total'] ?? 0.0);
+        $cashAmount = round(max((float) $totals['dinheiro'] - $expenseTotal, 0.0), 2);
+        $cardAmount = round((float) $totals['maquina'], 2);
+
+        return [
+            'cash_amount' => $cashAmount,
+            'card_amount' => $cardAmount,
+        ];
     }
 
     private function breakdownPayment(VendaPagamento $payment): array

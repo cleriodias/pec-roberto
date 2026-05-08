@@ -168,7 +168,9 @@ export default function CashClosure({
     meta = {},
 }) {
     const { auth } = usePage().props;
-    const isMaster = Number(auth?.user?.funcao ?? -1) === 0;
+    const currentRole = Number(auth?.user?.funcao ?? -1);
+    const isMaster = currentRole === 0;
+    const canManageCashClosures = [0, 1].includes(currentRole);
     const normalizedSelectedUnit = selectedUnitId ?? null;
     const [dateInput, setDateInput] = useState(dateInputValue ?? '');
     const [unitFilter, setUnitFilter] = useState(normalizedSelectedUnit);
@@ -202,6 +204,12 @@ export default function CashClosure({
     });
     const [selectedReceipt, setSelectedReceipt] = useState(null);
     const [printError, setPrintError] = useState('');
+    const [closeActionState, setCloseActionState] = useState({
+        rowKey: null,
+        mode: null,
+        error: '',
+        processing: false,
+    });
 
     useEffect(() => {
         setDateInput(dateInputValue ?? '');
@@ -475,6 +483,75 @@ export default function CashClosure({
         }
     };
 
+    const closeCashierClosure = async (record, mode) => {
+        const rowKey = record?.row_key ?? `${record?.cashier_id}-${record?.unit_id ?? 'none'}`;
+
+        if (!record?.cashier_id || !record?.unit_id || !dateInputValue) {
+            setCloseActionState({
+                rowKey,
+                mode,
+                error: 'Nao foi possivel identificar o fechamento deste caixa.',
+                processing: false,
+            });
+            return;
+        }
+
+        const confirmationMessage =
+            mode === 'zeroed'
+                ? `Fechar zerado o caixa de ${record.cashier_name}?`
+                : `Fechar com os valores do sistema o caixa de ${record.cashier_name}?`;
+
+        if (!window.confirm(confirmationMessage)) {
+            return;
+        }
+
+        setCloseActionState({
+            rowKey,
+            mode,
+            error: '',
+            processing: true,
+        });
+
+        try {
+            await axios.post(route('reports.cash.closure.close'), {
+                cashier_id: record.cashier_id,
+                unit_id: record.unit_id,
+                closed_date: dateInputValue,
+                mode,
+            });
+
+            setCloseActionState({
+                rowKey: null,
+                mode: null,
+                error: '',
+                processing: false,
+            });
+
+            router.reload({
+                only: ['records', 'dateValue', 'dateInputValue', 'filterUnits', 'selectedUnitId', 'selectedUnit', 'discardDetails', 'meta'],
+                preserveScroll: true,
+            });
+        } catch (error) {
+            let message = 'Nao foi possivel fechar o caixa.';
+
+            if (error.response?.data?.errors) {
+                const firstError = Object.values(error.response.data.errors).flat()[0];
+                if (firstError) {
+                    message = String(firstError);
+                }
+            } else if (error.response?.data?.message) {
+                message = String(error.response.data.message);
+            }
+
+            setCloseActionState({
+                rowKey,
+                mode,
+                error: message,
+                processing: false,
+            });
+        }
+    };
+
     const renderSystemAlignedCell = (label, value) => (
         <div className="space-y-1 text-right">
             <div>
@@ -721,17 +798,57 @@ export default function CashClosure({
                                 const closure = record.closure ?? null;
                                 const closed = closure?.closed;
                                 const masterReviewed = Boolean(closure?.master_review?.reviewed);
+                                const canCloseRecord =
+                                    canManageCashClosures &&
+                                    !closed &&
+                                    record?.unit_id !== null &&
+                                    record?.unit_id !== undefined;
                                 const statusClass = closed
                                     ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200'
                                     : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200';
                                 const rowKey =
                                     record.row_key ??
                                     `${record.cashier_id}-${record.unit_id ?? 'none'}`;
+                                const isClosingRow =
+                                    closeActionState.rowKey === rowKey && closeActionState.processing;
+                                const isClosingZeroed = isClosingRow && closeActionState.mode === 'zeroed';
+                                const isClosingSystem = isClosingRow && closeActionState.mode === 'system';
 
                                 return (
                                     <tr key={rowKey}>
                                         <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
-                                            {record.cashier_name}
+                                            <div className="space-y-2">
+                                                <p className="font-medium">{record.cashier_name}</p>
+                                                {canCloseRecord && (
+                                                    <div className="space-y-2">
+                                                        <div className="flex flex-wrap gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => closeCashierClosure(record, 'zeroed')}
+                                                                disabled={isClosingRow}
+                                                                className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                            >
+                                                                <i className="bi bi-x-circle-fill" aria-hidden="true"></i>
+                                                                {isClosingZeroed ? 'Fechando...' : 'Fechar Zerado'}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => closeCashierClosure(record, 'system')}
+                                                                disabled={isClosingRow}
+                                                                className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                            >
+                                                                <i className="bi bi-check-circle-fill" aria-hidden="true"></i>
+                                                                {isClosingSystem ? 'Fechando...' : 'Fechar OK'}
+                                                            </button>
+                                                        </div>
+                                                        {closeActionState.rowKey === rowKey && closeActionState.error && (
+                                                            <p className="text-xs font-medium text-red-600">
+                                                                {closeActionState.error}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-3 py-2 text-gray-600 dark:text-gray-300">
                                             {record.unit_name ?? '---'}
