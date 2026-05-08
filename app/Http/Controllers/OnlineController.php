@@ -257,6 +257,8 @@ class OnlineController extends Controller
                 'name' => (string) $user->name,
                 'role' => (int) $user->funcao,
                 'role_label' => self::ROLE_LABELS[(int) $user->funcao] ?? '---',
+                'original_role' => (int) ($user->funcao_original ?? $user->funcao),
+                'original_role_label' => self::ROLE_LABELS[(int) ($user->funcao_original ?? $user->funcao)] ?? '---',
                 'unit_id' => $this->resolveActiveUnitId($request),
                 'unit_name' => $this->resolveActiveUnitName($request),
             ],
@@ -304,18 +306,14 @@ class OnlineController extends Controller
 
         $onlineUsers = $visiblePresences
             ->map(function (OnlineUser $presence) {
-                $displayRole = (int) ($presence->user?->funcao_original ?? $presence->user?->funcao ?? $presence->active_role);
-
-                return [
-                    'id' => (int) $presence->user_id,
-                    'name' => (string) $presence->user->name,
-                    'role' => $displayRole,
-                    'role_label' => self::ROLE_LABELS[$displayRole] ?? '---',
-                    'unit_id' => $presence->active_unit_id ? (int) $presence->active_unit_id : null,
-                    'unit_name' => $presence->unit?->tb2_nome ?? 'Sem loja ativa',
-                    'last_seen_at' => optional($presence->last_seen_at)->toIso8601String(),
-                    'is_online' => true,
-                ];
+                return $this->buildContactPayload(
+                    target: $presence->user,
+                    currentRole: (int) $presence->active_role,
+                    unitId: $presence->active_unit_id ? (int) $presence->active_unit_id : null,
+                    unitName: $presence->unit?->tb2_nome ?? 'Sem loja ativa',
+                    isOnline: true,
+                    lastSeenAt: optional($presence->last_seen_at)->toIso8601String(),
+                );
             })
             ->sortBy(fn (array $item) => mb_strtolower($item['name'], 'UTF-8'))
             ->values();
@@ -323,7 +321,10 @@ class OnlineController extends Controller
         $offlineUsers = User::query()
             ->with(['primaryUnit:tb2_id,tb2_nome', 'units:tb2_id,tb2_nome'])
             ->whereNotIn('id', array_merge($onlineUserIds, [(int) $viewer->id]))
-            ->whereIn('funcao', [0, 1, 2, 3, 4])
+            ->where(function ($query) {
+                $query->whereIn('funcao', [0, 1, 2, 3, 4])
+                    ->orWhereIn('funcao_original', [0, 1, 2, 3, 4]);
+            })
             ->get()
             ->filter(function (User $target) use ($viewerRole, $viewerUnitId, $managedUnitIds) {
                 $targetRole = (int) $target->funcao;
@@ -339,28 +340,31 @@ class OnlineController extends Controller
                     $primaryTargetUnitId ? (int) $primaryTargetUnitId : null
                 );
             })
-            ->map(function (User $target) {
-                $targetUnitIds = ManagementScope::targetUserUnitIds($target);
-                $primaryTargetUnitId = $targetUnitIds->first();
-                $displayRole = (int) ($target->funcao_original ?? $target->funcao);
-                $unitName = $target->primaryUnit?->tb2_nome
-                    ?? $target->units->firstWhere('tb2_id', $primaryTargetUnitId)?->tb2_nome
-                    ?? $target->units->first()?->tb2_nome
-                    ?? 'Sem loja ativa';
-
-                return [
-                    'id' => (int) $target->id,
-                    'name' => (string) $target->name,
-                    'role' => $displayRole,
-                    'role_label' => self::ROLE_LABELS[$displayRole] ?? '---',
-                    'unit_id' => $primaryTargetUnitId ? (int) $primaryTargetUnitId : null,
-                    'unit_name' => $unitName,
-                    'last_seen_at' => null,
-                    'is_online' => false,
-                ];
-            })
+            ->map(fn (User $target) => $this->buildOfflineContactPayload($target))
             ->sortBy(fn (array $item) => mb_strtolower($item['name'], 'UTF-8'))
             ->values();
+
+        $existingContactIds = $onlineUsers->pluck('id')
+            ->merge($offlineUsers->pluck('id'))
+            ->unique()
+            ->values()
+            ->all();
+
+        $conversationOnlyUsers = User::query()
+            ->with(['primaryUnit:tb2_id,tb2_nome', 'units:tb2_id,tb2_nome'])
+            ->whereIn('id', $this->conversationContactIds((int) $viewer->id))
+            ->whereNotIn('id', array_merge($existingContactIds, [(int) $viewer->id]))
+            ->get()
+            ->map(fn (User $target) => $this->buildOfflineContactPayload($target))
+            ->sortBy(fn (array $item) => mb_strtolower($item['name'], 'UTF-8'))
+            ->values();
+
+        if ($conversationOnlyUsers->isNotEmpty()) {
+            $offlineUsers = $offlineUsers
+                ->concat($conversationOnlyUsers)
+                ->unique('id')
+                ->values();
+        }
 
         $visibleUserIds = $onlineUsers->pluck('id')
             ->merge($offlineUsers->pluck('id'))
@@ -368,7 +372,7 @@ class OnlineController extends Controller
             ->values()
             ->all();
 
-        $latestPreviewByContact = $this->latestPreviewByContact((int) $viewer->id, $visibleUserIds);
+        $latestMessageMetaByContact = $this->latestMessageMetaByContact((int) $viewer->id, $visibleUserIds);
 
         $unreadBySender = empty($visibleUserIds)
             ? collect()
@@ -381,9 +385,11 @@ class OnlineController extends Controller
                 ->pluck('total', 'sender_id');
 
         $attachUnread = fn (Collection $contacts) => $contacts
-            ->map(function (array $contact) use ($unreadBySender, $latestPreviewByContact) {
+            ->map(function (array $contact) use ($unreadBySender, $latestMessageMetaByContact) {
+                $messageMeta = $latestMessageMetaByContact[(int) $contact['id']] ?? null;
                 $contact['unread_count'] = (int) ($unreadBySender[(int) $contact['id']] ?? 0);
-                $contact['last_message_preview'] = $latestPreviewByContact[(int) $contact['id']] ?? '';
+                $contact['last_message_preview'] = (string) ($messageMeta['preview'] ?? '');
+                $contact['last_message_at'] = $messageMeta['sent_at'] ?? null;
 
                 return $contact;
             })
@@ -414,14 +420,14 @@ class OnlineController extends Controller
         ];
     }
 
-    private function latestPreviewByContact(int $viewerId, array $visibleUserIds): array
+    private function latestMessageMetaByContact(int $viewerId, array $visibleUserIds): array
     {
         if (empty($visibleUserIds)) {
             return [];
         }
 
         $messages = ChatMessage::query()
-            ->select(['id', 'sender_id', 'recipient_id', 'message'])
+            ->select(['id', 'sender_id', 'recipient_id', 'message', 'created_at'])
             ->where(function ($query) use ($viewerId, $visibleUserIds) {
                 $query->where('sender_id', $viewerId)
                     ->whereIn('recipient_id', $visibleUserIds);
@@ -433,19 +439,22 @@ class OnlineController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        $previews = [];
+        $messageMeta = [];
 
         foreach ($messages as $message) {
             $contactId = (int) ((int) $message->sender_id === $viewerId ? $message->recipient_id : $message->sender_id);
 
-            if (isset($previews[$contactId])) {
+            if (isset($messageMeta[$contactId])) {
                 continue;
             }
 
-            $previews[$contactId] = $this->messagePreview((string) $message->message);
+            $messageMeta[$contactId] = [
+                'preview' => $this->messagePreview((string) $message->message),
+                'sent_at' => optional($message->created_at)->toIso8601String(),
+            ];
         }
 
-        return $previews;
+        return $messageMeta;
     }
 
     private function messagePreview(string $message): string
@@ -468,7 +477,7 @@ class OnlineController extends Controller
     private function buildConversation(int $viewerId, int $otherUserId): array
     {
         return ChatMessage::query()
-            ->with(['sender:id,name'])
+            ->with(['sender:id,name,funcao,funcao_original'])
             ->where(function ($query) use ($viewerId, $otherUserId) {
                 $query->where('sender_id', $viewerId)
                     ->where('recipient_id', $otherUserId);
@@ -492,9 +501,73 @@ class OnlineController extends Controller
                 'read_at' => optional($message->read_at)->toIso8601String(),
                 'sender_role' => (int) $message->sender_role,
                 'sender_role_label' => self::ROLE_LABELS[(int) $message->sender_role] ?? '---',
+                'sender_original_role' => (int) ($message->sender?->funcao_original ?? $message->sender?->funcao ?? $message->sender_role),
+                'sender_original_role_label' => self::ROLE_LABELS[(int) ($message->sender?->funcao_original ?? $message->sender?->funcao ?? $message->sender_role)] ?? '---',
                 'is_mine' => (int) $message->sender_id === $viewerId,
                 'can_manage' => (int) $message->sender_id === $viewerId && $message->read_at === null,
             ])
+            ->all();
+    }
+
+    private function buildOfflineContactPayload(User $target): array
+    {
+        $targetUnitIds = ManagementScope::targetUserUnitIds($target);
+        $primaryTargetUnitId = $targetUnitIds->first();
+        $unitName = $target->primaryUnit?->tb2_nome
+            ?? $target->units->firstWhere('tb2_id', $primaryTargetUnitId)?->tb2_nome
+            ?? $target->units->first()?->tb2_nome
+            ?? 'Sem loja ativa';
+
+        return $this->buildContactPayload(
+            target: $target,
+            currentRole: (int) $target->funcao,
+            unitId: $primaryTargetUnitId ? (int) $primaryTargetUnitId : null,
+            unitName: $unitName,
+            isOnline: false,
+            lastSeenAt: null,
+        );
+    }
+
+    private function buildContactPayload(
+        User $target,
+        int $currentRole,
+        ?int $unitId,
+        ?string $unitName,
+        bool $isOnline,
+        ?string $lastSeenAt,
+    ): array {
+        $originalRole = (int) ($target->funcao_original ?? $target->funcao ?? $currentRole);
+
+        return [
+            'id' => (int) $target->id,
+            'name' => (string) $target->name,
+            'role' => $currentRole,
+            'role_label' => self::ROLE_LABELS[$currentRole] ?? '---',
+            'original_role' => $originalRole,
+            'original_role_label' => self::ROLE_LABELS[$originalRole] ?? '---',
+            'unit_id' => $unitId,
+            'unit_name' => $unitName ?? 'Sem loja ativa',
+            'last_seen_at' => $lastSeenAt,
+            'is_online' => $isOnline,
+        ];
+    }
+
+    private function conversationContactIds(int $viewerId): array
+    {
+        return ChatMessage::query()
+            ->select(['sender_id', 'recipient_id'])
+            ->where('sender_id', $viewerId)
+            ->orWhere('recipient_id', $viewerId)
+            ->orderByDesc('id')
+            ->get()
+            ->flatMap(function (ChatMessage $message) use ($viewerId) {
+                return [
+                    (int) $message->sender_id === $viewerId ? (int) $message->recipient_id : (int) $message->sender_id,
+                ];
+            })
+            ->filter(fn (int $contactId) => $contactId > 0 && $contactId !== $viewerId)
+            ->unique()
+            ->values()
             ->all();
     }
 

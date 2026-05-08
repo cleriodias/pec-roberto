@@ -7,7 +7,6 @@ import {
     formatUnitBadgeLabel,
     getRoleBadgeStyle,
     getUnitBadgeStyle,
-    getUserNameBadgeClassName,
 } from '@/Utils/brandBadges';
 import { formatBrazilDateTime } from '@/Utils/date';
 import { Head, usePage } from '@inertiajs/react';
@@ -224,13 +223,52 @@ export default function OnlineIndex({
     const selectedUserIdRef = useRef(initialSelectedUserId);
     const hasInitialConversationScrollRef = useRef(false);
 
+    const sortedContacts = useMemo(() => {
+        const toTimestamp = (value) => {
+            if (!value) {
+                return 0;
+            }
+
+            const date = new Date(value);
+
+            return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+        };
+
+        const getUnreadRank = (user) => (Number(user.unread_count ?? 0) > 0 ? 1 : 0);
+        const getAvailabilityRank = (user) => (user.is_online ? 1 : 0);
+
+        return [...onlineUsers, ...offlineUsers].sort((left, right) => {
+            const leftUnreadRank = getUnreadRank(left);
+            const rightUnreadRank = getUnreadRank(right);
+
+            if (leftUnreadRank !== rightUnreadRank) {
+                return rightUnreadRank - leftUnreadRank;
+            }
+
+            const leftTimestamp = toTimestamp(left.last_message_at);
+            const rightTimestamp = toTimestamp(right.last_message_at);
+
+            if (leftTimestamp !== rightTimestamp) {
+                return rightTimestamp - leftTimestamp;
+            }
+
+            const leftAvailabilityRank = getAvailabilityRank(left);
+            const rightAvailabilityRank = getAvailabilityRank(right);
+
+            if (leftAvailabilityRank !== rightAvailabilityRank) {
+                return rightAvailabilityRank - leftAvailabilityRank;
+            }
+
+            return String(left.name ?? '').localeCompare(String(right.name ?? ''), 'pt-BR');
+        });
+    }, [onlineUsers, offlineUsers]);
+
     const selectedUser = useMemo(
         () =>
-            [...onlineUsers, ...offlineUsers].find((user) => Number(user.id) === Number(selectedUserId)) ??
-            onlineUsers[0] ??
-            offlineUsers[0] ??
+            sortedContacts.find((user) => Number(user.id) === Number(selectedUserId)) ??
+            sortedContacts[0] ??
             null,
-        [onlineUsers, offlineUsers, selectedUserId],
+        [sortedContacts, selectedUserId],
     );
 
     const editingMessage = useMemo(
@@ -649,66 +687,90 @@ export default function OnlineIndex({
     const renderContactButton = (user, offline = false) => {
         const isSelected = Number(user.id) === Number(selectedUser?.id);
         const hasUnread = Number(user.unread_count ?? 0) > 0;
+        const preview = String(user.last_message_preview ?? '').trim() || 'Sem mensagens recentes.';
+        const lastMessageAt = user.last_message_at ? formatBrazilDateTime(user.last_message_at) : '--';
 
         return (
             <button
                 type="button"
                 key={`${offline ? 'offline' : 'online'}-${user.id}`}
                 onClick={() => handleSelectUser(user.id)}
-                className={`flex w-full flex-col gap-1 overflow-hidden border-b border-gray-100 px-4 py-4 text-left transition last:border-b-0 dark:border-gray-800 ${
+                className={`group mx-3 my-2 flex w-[calc(100%-1.5rem)] flex-col gap-3 rounded-2xl border px-4 py-4 text-left shadow-sm transition ${
                     isSelected
                         ? hasUnread
-                            ? 'border-l-4 border-l-emerald-500 bg-slate-100 dark:border-l-emerald-400 dark:bg-slate-800/80'
-                            : 'bg-slate-100 dark:bg-slate-800/80'
+                            ? 'border-emerald-200 bg-emerald-50 shadow-md ring-1 ring-emerald-200 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:ring-emerald-500/20'
+                            : 'border-slate-200 bg-slate-50 shadow-md ring-1 ring-slate-200 dark:border-slate-600 dark:bg-slate-800/80 dark:ring-slate-600/40'
                         : hasUnread
-                          ? 'border-l-4 border-l-emerald-500 bg-emerald-50/80 hover:bg-emerald-100/70 dark:border-l-emerald-400 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/15'
+                          ? 'border-emerald-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/80 dark:border-emerald-500/20 dark:bg-gray-900 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-500/10'
                           : offline
-                            ? 'bg-gray-50/80 hover:bg-gray-100 dark:bg-gray-900/40 dark:hover:bg-gray-800/60'
-                            : 'hover:bg-gray-50 dark:hover:bg-gray-800/70'
+                            ? 'border-gray-200 bg-gray-50/90 hover:border-gray-300 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900/60 dark:hover:bg-gray-800/70'
+                            : 'border-gray-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800/70'
                 }`}
             >
-                <div className="flex w-full items-start gap-2">
-                    <span
-                        className={`inline-flex min-w-[72px] max-w-[108px] items-center justify-center ${getUserNameBadgeClassName()}`}
-                    >
-                        <span className="truncate">
-                            {String(user.name ?? '').toUpperCase()}
+                <div className="flex w-full items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-black shadow-sm">
+                                <span className="max-w-[148px] truncate">
+                                    {String(user.name ?? '').toUpperCase()}
+                                </span>
+                            </span>
+                            {!offline && (
+                                <span className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.15)]" />
+                            )}
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span
+                                className={COMPACT_BADGE_CLASSNAME}
+                                style={{
+                                    ...getRoleBadgeStyle(user.original_role_label ?? user.role_label),
+                                    padding: '2px 8px',
+                                    fontSize: '10px',
+                                    lineHeight: '14px',
+                                    minHeight: '20px',
+                                }}
+                            >
+                                {formatRoleBadgeLabel(user.original_role_label ?? user.role_label)}
+                            </span>
+                            <span
+                                className={COMPACT_BADGE_CLASSNAME}
+                                style={{
+                                    ...getUnitBadgeStyle(user.unit_name),
+                                    padding: '2px 8px',
+                                    fontSize: '10px',
+                                    lineHeight: '14px',
+                                    minHeight: '20px',
+                                }}
+                            >
+                                {formatUnitBadgeLabel(user.unit_name)}
+                            </span>
+                            {offline && (
+                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                    Offline
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                        <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                            {lastMessageAt}
                         </span>
-                    </span>
-                    <span
-                        className={COMPACT_BADGE_CLASSNAME}
-                        style={{
-                            ...getRoleBadgeStyle(user.role_label),
-                            padding: '0 6px',
-                            fontSize: '9px',
-                            lineHeight: '12px',
-                            minHeight: '16px',
-                        }}
-                    >
-                        {formatRoleBadgeLabel(user.role_label)}
-                    </span>
-                    <span
-                        className={COMPACT_BADGE_CLASSNAME}
-                        style={{
-                            ...getUnitBadgeStyle(user.unit_name),
-                            padding: '0 6px',
-                            fontSize: '9px',
-                            lineHeight: '12px',
-                            minHeight: '16px',
-                            minWidth: '52px',
-                        }}
-                    >
-                        {formatUnitBadgeLabel(user.unit_name)}
-                    </span>
-                    {hasUnread && (
-                        <span className="ms-auto -mt-3 shrink-0 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm">
-                            {user.unread_count}
-                        </span>
-                    )}
+                        {hasUnread ? (
+                            <span className="inline-flex min-w-[24px] items-center justify-center rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
+                                {user.unread_count}
+                            </span>
+                        ) : (
+                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 text-slate-300 dark:border-slate-700 dark:text-slate-600">
+                                <i className="bi bi-chat-left-text text-[11px]" aria-hidden="true"></i>
+                            </span>
+                        )}
+                    </div>
                 </div>
-                <span className="block w-full truncate text-[11px] font-medium leading-4 text-gray-500 dark:text-gray-400">
-                    {String(user.last_message_preview ?? '').trim()}
-                </span>
+
+                <div className="rounded-2xl bg-slate-50 px-3 py-2 text-sm leading-5 text-slate-600 transition group-hover:bg-white/80 dark:bg-slate-800/70 dark:text-slate-300 dark:group-hover:bg-slate-800">
+                    <p className="line-clamp-2 break-words">{preview}</p>
+                </div>
             </button>
         );
     };
@@ -738,41 +800,40 @@ export default function OnlineIndex({
                             <div className="border-b border-gray-200 px-4 py-4 dark:border-gray-700">
                                 <div className="flex items-center justify-between gap-3">
                                     <div>
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">On-Line</p>
-                                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
-                                            {onlineUsers.length} usuario(s)
+                                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-300">Central de CHATS</p>
+                                        <h3 className="text-2xl font-semibold tracking-tight text-gray-800 dark:text-gray-100">
+                                            {sortedContacts.length} chats(s)
                                         </h3>
+                                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                                            Mensagens Internas.
+                                        </p>
                                     </div>
                                     <button
                                         type="button"
                                         onClick={() => loadSnapshot(selectedUserIdRef.current)}
                                         disabled={loadingSnapshot || refreshingSnapshot}
-                                        className="rounded-full border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 transition hover:border-indigo-400 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-70 dark:border-gray-600 dark:text-gray-200"
+                                        title={loadingSnapshot || refreshingSnapshot ? 'Atualizando conversas' : 'Atualizar conversas'}
+                                        aria-label={loadingSnapshot || refreshingSnapshot ? 'Atualizando conversas' : 'Atualizar conversas'}
+                                        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 transition hover:border-indigo-400 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-70 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
                                     >
-                                        {loadingSnapshot || refreshingSnapshot ? 'Atualizando...' : 'Atualizar'}
+                                        <i
+                                            className={`bi ${loadingSnapshot || refreshingSnapshot ? 'bi-arrow-repeat animate-spin' : 'bi-arrow-clockwise'} text-lg`}
+                                            aria-hidden="true"
+                                        ></i>
+                                        <span className="sr-only">
+                                            {loadingSnapshot || refreshingSnapshot ? 'Atualizando conversas' : 'Atualizar conversas'}
+                                        </span>
                                     </button>
                                 </div>
                             </div>
 
-                            <div className="max-h-[68vh] overflow-y-auto">
-                                {onlineUsers.length === 0 && offlineUsers.length === 0 ? (
+                            <div className="max-h-[68vh] overflow-y-auto bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_18%)] dark:bg-[linear-gradient(180deg,#111827_0%,#0f172a_18%)]">
+                                {sortedContacts.length === 0 ? (
                                     <div className="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">
-                                        Nenhum usuario visivel neste momento.
+                                        Nenhuma conversa disponivel neste momento.
                                     </div>
                                 ) : (
-                                    <>
-                                        {onlineUsers.length > 0 && onlineUsers.map((user) => renderContactButton(user))}
-
-                                        {offlineUsers.length > 0 && (
-                                            <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
-                                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                                    Offline
-                                                </p>
-                                            </div>
-                                        )}
-
-                                        {offlineUsers.length > 0 && offlineUsers.map((user) => renderContactButton(user, true))}
-                                    </>
+                                    sortedContacts.map((user) => renderContactButton(user, !user.is_online))
                                 )}
                             </div>
                         </div>
@@ -785,7 +846,7 @@ export default function OnlineIndex({
                                             {selectedUser.name}
                                         </h3>
                                         <p className="text-sm text-gray-500 dark:text-gray-300">
-                                            {selectedUser.role_label} | Loja: {selectedUser.unit_name ?? '---'}
+                                            {selectedUser.original_role_label ?? selectedUser.role_label} | Loja: {selectedUser.unit_name ?? '---'}
                                         </p>
                                     </div>
                                 ) : (
@@ -833,7 +894,7 @@ export default function OnlineIndex({
                                                             }`}
                                                             style={message.is_mine ? { color: '#475569' } : undefined}
                                                         >
-                                                            {String(message.sender_name ?? '---').toUpperCase()} - {message.sender_role_label}
+                                                            {String(message.sender_name ?? '---').toUpperCase()} - {message.sender_original_role_label ?? message.sender_role_label}
                                                         </div>
                                                         <div
                                                             className="prose prose-sm max-w-none text-inherit prose-p:my-0 prose-strong:text-inherit prose-em:text-inherit prose-u:text-inherit"
