@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ProductStockMovement;
 use App\Models\Produto;
+use App\Support\ProductQuickLookupCache;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -87,7 +88,10 @@ class ProductStockController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(
+        Request $request,
+        ProductQuickLookupCache $quickLookupCache
+    ): RedirectResponse
     {
         $data = $request->validate(
             [
@@ -166,6 +170,7 @@ class ProductStockController extends Controller
                 'notes' => trim((string) ($data['notes'] ?? '')) ?: null,
             ]);
         });
+        $quickLookupCache->invalidateCatalog();
 
         return redirect()
             ->route('products.production-stock', ['product_id' => $data['product_id']])

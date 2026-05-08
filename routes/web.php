@@ -74,6 +74,7 @@ if (class_exists(\App\Http\Controllers\MobileRevenueController::class)) {
 Route::get('/dashboard', function (Request $request, ProductQuickLookupCache $quickLookupCache) {
     $contraChequeShortcutSummary = null;
     $authUser = $request->user();
+    $quickLookupSnapshot = $quickLookupCache->snapshotForRequest($request);
 
     if ($authUser) {
         $salaryTotalsByPaymentDay = User::query()
@@ -117,7 +118,8 @@ Route::get('/dashboard', function (Request $request, ProductQuickLookupCache $qu
     }
 
     return Inertia::render('Dashboard', [
-        'quickLookupProducts' => fn () => $quickLookupCache->forRequest($request),
+        'quickLookupProducts' => fn () => $quickLookupSnapshot['products'] ?? [],
+        'quickLookupProductsVersion' => fn () => (int) ($quickLookupSnapshot['version'] ?? 1),
         'contraChequeShortcutSummary' => $contraChequeShortcutSummary,
     ]);
 })->middleware(['auth', 'verified'])->name('dashboard');
@@ -288,6 +290,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/products/production-stock', [ProductStockController::class, 'index'])->name('products.production-stock');
     Route::post('/products/production-stock', [ProductStockController::class, 'store'])->name('products.production-stock.store');
     Route::get('/products/quick-lookup', [ProductController::class, 'quickLookup'])->name('products.quick-lookup');
+    Route::get('/products/quick-lookup/snapshot', [ProductController::class, 'quickLookupSnapshot'])->name('products.quick-lookup.snapshot');
     Route::get('/products/search', [ProductController::class, 'search'])->name('products.search');
     Route::get('/products/favorites', [ProductController::class, 'favorites'])->name('products.favorites');
     Route::post('/products/{product}/favorite', [ProductController::class, 'toggleFavorite'])->name('products.favorite');

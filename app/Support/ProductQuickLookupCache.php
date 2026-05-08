@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 class ProductQuickLookupCache
 {
     private const CACHE_VERSION = 'v1';
+    private const CATALOG_VERSION_KEY = 'dashboard:quick-products:v1:catalog-version';
 
     private const CACHE_TTL_MINUTES = 480;
 
@@ -28,10 +29,29 @@ class ProductQuickLookupCache
         return $this->forUnit($unitId);
     }
 
-    public function forUnit(int $unitId): array
+    public function snapshotForRequest(Request $request): array
     {
+        $unitId = $this->resolveActiveUnitId($request);
+
+        return $this->snapshotForUnit($unitId);
+    }
+
+    public function snapshotForUnit(int $unitId): array
+    {
+        $version = $this->catalogVersion();
+
+        return [
+            'version' => $version,
+            'products' => $unitId > 0 ? $this->forUnit($unitId, $version) : [],
+        ];
+    }
+
+    public function forUnit(int $unitId, ?int $catalogVersion = null): array
+    {
+        $catalogVersion ??= $this->catalogVersion();
+
         return Cache::remember(
-            $this->cacheKey($unitId),
+            $this->cacheKey($unitId, $catalogVersion),
             now()->addMinutes(self::CACHE_TTL_MINUTES),
             fn () => $this->buildForUnit($unitId)
         );
@@ -45,7 +65,7 @@ class ProductQuickLookupCache
             return;
         }
 
-        $key = $this->cacheKey($unitId);
+        $key = $this->cacheKey($unitId, $this->catalogVersion());
         $productPayload = $this->productPayload($product);
         $currentProducts = Cache::get($key, []);
 
@@ -62,6 +82,33 @@ class ProductQuickLookupCache
         $nextProducts = array_slice($nextProducts, 0, self::POPULAR_PRODUCTS_LIMIT);
 
         Cache::put($key, $nextProducts, now()->addMinutes(self::CACHE_TTL_MINUTES));
+    }
+
+    public function catalogVersion(): int
+    {
+        $key = $this->catalogVersionKey();
+        $version = Cache::get($key);
+
+        if (! is_numeric($version) || (int) $version < 1) {
+            Cache::forever($key, 1);
+
+            return 1;
+        }
+
+        return (int) $version;
+    }
+
+    public function invalidateCatalog(): int
+    {
+        $key = $this->catalogVersionKey();
+
+        if (! Cache::has($key)) {
+            Cache::forever($key, 2);
+
+            return 2;
+        }
+
+        return (int) Cache::increment($key);
     }
 
     public function productPayload(Produto $product): array
@@ -148,8 +195,18 @@ class ProductQuickLookupCache
         return $unitId;
     }
 
-    private function cacheKey(int $unitId): string
+    private function cacheKey(int $unitId, int $catalogVersion): string
     {
-        return sprintf('dashboard:quick-products:%s:unit:%d', self::CACHE_VERSION, $unitId);
+        return sprintf(
+            'dashboard:quick-products:%s:catalog:%d:unit:%d',
+            self::CACHE_VERSION,
+            $catalogVersion,
+            $unitId
+        );
+    }
+
+    private function catalogVersionKey(): string
+    {
+        return self::CATALOG_VERSION_KEY;
     }
 }

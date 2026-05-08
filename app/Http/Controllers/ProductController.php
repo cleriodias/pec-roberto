@@ -199,7 +199,7 @@ class ProductController extends Controller
         ]);
     }
 
-    public function applyFiscalReference(Request $request)
+    public function applyFiscalReference(Request $request, ProductQuickLookupCache $quickLookupCache)
     {
         $data = $request->validate(
             [
@@ -238,6 +238,7 @@ class ProductController extends Controller
                 'tb1_aliquota_cbs' => $this->normalizeNullableDecimal($reference->tb29_aliquota_cbs, 4),
                 'tb1_aliquota_is' => $this->normalizeNullableDecimal($reference->tb29_aliquota_is, 4),
             ]);
+        $quickLookupCache->invalidateCatalog();
 
         return Redirect::route('products.fiscal-queue', $this->buildFiscalQueueQueryFromRequest($request))
             ->with('success', sprintf(
@@ -247,7 +248,7 @@ class ProductController extends Controller
             ));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, ProductQuickLookupCache $quickLookupCache)
     {
         $data = $this->validateProduct($request);
 
@@ -259,6 +260,7 @@ class ProductController extends Controller
         $data = $this->prepareProductData($data);
 
         $product = Produto::create($data);
+        $quickLookupCache->invalidateCatalog();
 
         return Redirect::route('products.show', ['product' => $product->tb1_id])
             ->with('success', 'Produto cadastrado com sucesso!');
@@ -272,27 +274,33 @@ class ProductController extends Controller
         ));
     }
 
-    public function update(Request $request, Produto $product)
+    public function update(Request $request, Produto $product, ProductQuickLookupCache $quickLookupCache)
     {
         $data = $this->validateProduct($request, $product);
         $data['tb1_vr_credit'] = (bool) ($data['tb1_vr_credit'] ?? false);
         $data = $this->prepareProductData($data, $product);
 
         $product->update($data);
+        $quickLookupCache->invalidateCatalog();
 
         return Redirect::route('products.show', ['product' => $product->tb1_id])
             ->with('success', 'Produto atualizado com sucesso!');
     }
 
-    public function destroy(Produto $product)
+    public function destroy(Produto $product, ProductQuickLookupCache $quickLookupCache)
     {
         $product->delete();
+        $quickLookupCache->invalidateCatalog();
 
         return Redirect::route('products.index')
             ->with('success', 'Produto removido com sucesso!');
     }
 
-    public function toggleFavorite(Request $request, Produto $product)
+    public function toggleFavorite(
+        Request $request,
+        Produto $product,
+        ProductQuickLookupCache $quickLookupCache
+    )
     {
         $data = $request->validate([
             'favorite' => 'required|boolean',
@@ -301,6 +309,7 @@ class ProductController extends Controller
         $product->update([
             'tb1_favorito' => $data['favorite'],
         ]);
+        $quickLookupCache->invalidateCatalog();
 
         return Redirect::back()->with('success', $data['favorite'] ? 'Produto marcado como favorito.' : 'Produto removido dos favoritos.');
     }
@@ -430,6 +439,28 @@ class ProductController extends Controller
         $quickLookupCache->rememberProductForRequest($product, $request);
 
         return response()->json($quickLookupCache->productPayload($product));
+    }
+
+    public function quickLookupSnapshot(
+        Request $request,
+        ProductQuickLookupCache $quickLookupCache
+    ): JsonResponse {
+        $snapshot = $quickLookupCache->snapshotForRequest($request);
+        $requestedVersion = (int) $request->query('version', 0);
+        $currentVersion = (int) ($snapshot['version'] ?? 1);
+
+        if ($requestedVersion > 0 && $requestedVersion === $currentVersion) {
+            return response()->json([
+                'changed' => false,
+                'version' => $currentVersion,
+            ]);
+        }
+
+        return response()->json([
+            'changed' => true,
+            'version' => $currentVersion,
+            'products' => $snapshot['products'] ?? [],
+        ]);
     }
 
     private function parseWeightedBarcode(?string $barcode): ?array
