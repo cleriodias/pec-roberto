@@ -105,12 +105,12 @@ class SaleRefeicaoRulesTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertJsonPath('sale.total', 20.0)
+            ->assertJsonPath('sale.total', 20)
             ->assertJsonPath('sale.tipo_pago', 'refeicao')
             ->assertJsonPath('sale.vale_user_name', 'Clerio');
     }
 
-    public function test_user_search_returns_refeicao_daily_usage_fields(): void
+    public function test_user_search_returns_refeicao_daily_usage_fields_for_users_from_any_unit(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-04-06 12:00:00'));
 
@@ -154,8 +154,11 @@ class SaleRefeicaoRulesTest extends TestCase
                 'refeicao_daily_used' => 6.0,
                 'refeicao_daily_remaining' => 6.0,
             ])
-            ->assertJsonMissing([
+            ->assertJsonFragment([
                 'name' => $otherEmployee->name,
+                'refeicao_daily_limit' => 12.0,
+                'refeicao_daily_used' => 0.0,
+                'refeicao_daily_remaining' => 12.0,
             ]);
     }
 

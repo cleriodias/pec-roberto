@@ -389,21 +389,7 @@ class UserController extends Controller
         $users = User::query();
         $authUser = $request->user();
 
-        if ((int) $authUser->funcao === 3) {
-            $activeUnitId = (int) ($request->session()->get('active_unit.id') ?? $authUser->tb2_id ?? 0);
-
-            if ($activeUnitId <= 0) {
-                return response()->json([]);
-            }
-
-            $users->where(function (Builder $query) use ($activeUnitId) {
-                $query
-                    ->where('users.tb2_id', $activeUnitId)
-                    ->orWhereHas('units', function (Builder $unitQuery) use ($activeUnitId) {
-                        $unitQuery->where('tb2_unidades.tb2_id', $activeUnitId);
-                    });
-            });
-        } else {
+        if ((int) $authUser->funcao !== 3) {
             ManagementScope::applyManagedUserScope($users, $authUser);
         }
 
