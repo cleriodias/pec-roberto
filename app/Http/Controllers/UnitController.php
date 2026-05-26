@@ -8,7 +8,9 @@ use App\Support\ManagementScope;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -149,6 +151,12 @@ class UnitController extends Controller
         $currentStatus = $configuration->exists
             ? (bool) $configuration->tb26_geracao_automatica_ativa
             : true;
+
+        if (! $currentStatus && ! Hash::check((string) $request->input('password', ''), (string) $request->user()->password)) {
+            throw ValidationException::withMessages([
+                'password' => 'Senha invalida para ativar a emissao de notas.',
+            ]);
+        }
 
         $configuration->tb26_geracao_automatica_ativa = ! $currentStatus;
         $configuration->save();

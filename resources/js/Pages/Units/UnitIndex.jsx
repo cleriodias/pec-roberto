@@ -3,14 +3,19 @@ import PrimaryButton from "@/Components/Button/PrimaryButton";
 import SuccessButton from "@/Components/Button/SuccessButton";
 import WarningButton from "@/Components/Button/WarningButton";
 import ConfirmDeleteButton from "@/Components/Delete/ConfirmDeleteButton";
+import Modal from "@/Components/Modal";
 import Pagination from "@/Components/Pagination";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
-import { Head, Link, router, usePage } from "@inertiajs/react";
+import { Head, Link, router, useForm, usePage } from "@inertiajs/react";
 import { useState } from "react";
 
 export default function UnitIndex({ auth, units, canCreate = false }) {
     const { flash } = usePage().props;
     const [togglingUnitId, setTogglingUnitId] = useState(null);
+    const [activationUnit, setActivationUnit] = useState(null);
+    const activationForm = useForm({
+        password: '',
+    });
 
     const formatCurrency = (value) =>
         Number(value ?? 0).toLocaleString('pt-BR', {
@@ -23,6 +28,13 @@ export default function UnitIndex({ auth, units, canCreate = false }) {
             return;
         }
 
+        if (!unit.tb26_geracao_automatica_ativa) {
+            activationForm.clearErrors();
+            activationForm.setData('password', '');
+            setActivationUnit(unit);
+            return;
+        }
+
         setTogglingUnitId(unit.tb2_id);
 
         router.patch(
@@ -30,6 +42,35 @@ export default function UnitIndex({ auth, units, canCreate = false }) {
             {},
             {
                 preserveScroll: true,
+                onFinish: () => setTogglingUnitId(null),
+            }
+        );
+    };
+
+    const closeActivationModal = () => {
+        if (activationForm.processing) {
+            return;
+        }
+
+        setActivationUnit(null);
+        activationForm.reset();
+        activationForm.clearErrors();
+    };
+
+    const submitFiscalActivation = (event) => {
+        event.preventDefault();
+
+        if (!activationUnit?.tb2_id) {
+            return;
+        }
+
+        setTogglingUnitId(activationUnit.tb2_id);
+
+        activationForm.patch(
+            route('units.fiscal-generation.toggle', { unit: activationUnit.tb2_id }),
+            {
+                preserveScroll: true,
+                onSuccess: closeActivationModal,
                 onFinish: () => setTogglingUnitId(null),
             }
         );
@@ -202,6 +243,66 @@ export default function UnitIndex({ auth, units, canCreate = false }) {
                     <Pagination links={units.links} currentPage={units.current_page} />
                 </div>
             </div>
+
+            <Modal show={Boolean(activationUnit)} onClose={closeActivationModal} maxWidth="md" tone="light">
+                <form onSubmit={submitFiscalActivation} className="space-y-5 p-6">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-900">Ativar emissao de NF</h3>
+                            <p className="mt-1 text-sm text-gray-500">
+                                {activationUnit?.tb2_nome ?? 'Unidade'} exigira senha para ligar a geracao automatica.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={closeActivationModal}
+                            disabled={activationForm.processing}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-40"
+                            aria-label="Fechar"
+                            title="Fechar"
+                        >
+                            <i className="bi bi-x-lg" aria-hidden="true"></i>
+                        </button>
+                    </div>
+
+                    <div>
+                        <label htmlFor="fiscal_activation_password" className="mb-1 block text-sm font-medium text-gray-700">
+                            Senha
+                        </label>
+                        <input
+                            id="fiscal_activation_password"
+                            type="password"
+                            value={activationForm.data.password}
+                            onChange={(event) => activationForm.setData('password', event.target.value)}
+                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                            autoComplete="current-password"
+                            autoFocus
+                        />
+                        {activationForm.errors.password && (
+                            <p className="mt-1 text-sm text-red-600">{activationForm.errors.password}</p>
+                        )}
+                    </div>
+
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                        Ao confirmar, a emissao automatica de notas fiscais sera ativada para esta unidade.
+                    </div>
+
+                    <div className="flex justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={closeActivationModal}
+                            disabled={activationForm.processing}
+                            className="inline-flex items-center rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-40"
+                        >
+                            Cancelar
+                        </button>
+                        <PrimaryButton type="submit" disabled={activationForm.processing || !activationForm.data.password}>
+                            <i className="bi bi-check2 mr-2 text-lg" aria-hidden="true"></i>
+                            Ativar
+                        </PrimaryButton>
+                    </div>
+                </form>
+            </Modal>
         </AuthenticatedLayout>
     );
 }
