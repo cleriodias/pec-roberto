@@ -21,6 +21,7 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
     const renameForm = useForm({
         tb1_nome: "",
         group_id: "",
+        apply_group_to_filters: false,
         filters: {},
     });
 
@@ -34,6 +35,7 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
     const selectedGroup = groups.find((group) => Number(group.tb33_id) === Number(data.group_id));
     const selectedCategoryInactive = selectedCategory && !Boolean(selectedCategory.tb30_ativo);
     const selectedGroupInactive = selectedGroup && !Boolean(selectedGroup.tb33_ativo);
+    const currentSearchTotal = Number(products.total ?? products.data.length ?? 0);
     const summary = useMemo(() => ({
         total: Number(fiscalSummary.total ?? 0),
         linked: Number(fiscalSummary.linked ?? 0),
@@ -77,6 +79,7 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
         renameForm.setData({
             tb1_nome: product.tb1_nome ?? "",
             group_id: product.tb33_grupo_ncm_id ?? "",
+            apply_group_to_filters: false,
             filters,
         });
     };
@@ -113,6 +116,13 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
         event.preventDefault();
 
         if (!editingProduct) {
+            return;
+        }
+
+        if (
+            renameForm.data.apply_group_to_filters
+            && !window.confirm(`Aplicar este Grupo NCM em ${currentSearchTotal} produto(s) da busca atual? O nome sera alterado somente neste produto.`)
+        ) {
             return;
         }
 
@@ -352,6 +362,23 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
                         </select>
                         {renameForm.errors.group_id && (
                             <p className="mt-1 text-sm text-red-600">{renameForm.errors.group_id}</p>
+                        )}
+                    </div>
+
+                    <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+                        <label className="flex items-start gap-2 text-sm text-gray-700">
+                            <input
+                                type="checkbox"
+                                checked={Boolean(renameForm.data.apply_group_to_filters)}
+                                onChange={(event) => renameForm.setData("apply_group_to_filters", event.target.checked)}
+                                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600"
+                            />
+                            <span>Aplicar Grupo NCM em todos os resultados da busca atual</span>
+                        </label>
+                        {renameForm.data.apply_group_to_filters && (
+                            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                                Todos os {currentSearchTotal} item(ns) da busca atual receberao este Grupo NCM. O nome sera alterado somente neste produto.
+                            </div>
                         )}
                     </div>
 

@@ -31,14 +31,7 @@ class ProductFiscalMassAssociationController extends Controller
             'only_exception' => $request->boolean('only_exception'),
         ];
 
-        $baseQuery = $this->filteredProductsQuery($filters);
-        $products = (clone $baseQuery)
-            ->when($filters['without_category'], fn ($query) => $query->where(function ($builder) {
-                $builder->whereNull('tb30_categoria_fiscal_id')
-                    ->orWhereNull('tb33_grupo_ncm_id');
-            }))
-            ->when($filters['category_id'] !== '', fn ($query) => $query->where('tb30_categoria_fiscal_id', (int) $filters['category_id']))
-            ->when($filters['group_id'] !== '', fn ($query) => $query->where('tb33_grupo_ncm_id', (int) $filters['group_id']))
+        $products = $this->filteredProductsSearchQuery($filters)
             ->with(
                 'categoriaFiscal:tb30_id,tb30_nome,tb30_ativo',
                 'grupoNcm:tb33_id,tb33_nome,tb33_ativo',
@@ -95,6 +88,17 @@ class ProductFiscalMassAssociationController extends Controller
                     ->where('tb30_origem_mercadoria', $filters['origin']));
             })
             ->when($filters['only_exception'], fn ($query) => $query->where('tb1_usa_excecao_fiscal', true));
+    }
+
+    private function filteredProductsSearchQuery(array $filters)
+    {
+        return $this->filteredProductsQuery($filters)
+            ->when($filters['without_category'], fn ($query) => $query->where(function ($builder) {
+                $builder->whereNull('tb30_categoria_fiscal_id')
+                    ->orWhereNull('tb33_grupo_ncm_id');
+            }))
+            ->when($filters['category_id'] !== '', fn ($query) => $query->where('tb30_categoria_fiscal_id', (int) $filters['category_id']))
+            ->when($filters['group_id'] !== '', fn ($query) => $query->where('tb33_grupo_ncm_id', (int) $filters['group_id']));
     }
 
     private function fiscalSummary(): array
@@ -212,6 +216,7 @@ class ProductFiscalMassAssociationController extends Controller
                 Rule::exists('tb33_grupos_ncm', 'tb33_id')->where('tb33_ativo', true),
             ],
             'filters' => ['nullable', 'array'],
+            'apply_group_to_filters' => ['nullable', 'boolean'],
         ], [
             'tb1_nome.required' => 'Informe o nome do produto.',
             'tb1_nome.max' => 'O nome nao pode exceder :max caracteres.',
@@ -220,6 +225,9 @@ class ProductFiscalMassAssociationController extends Controller
         ]);
 
         $name = $this->normalizeProductName($data['tb1_nome']);
+        $groupId = (int) $data['group_id'];
+        $applyGroupToFilters = (bool) ($data['apply_group_to_filters'] ?? false);
+        $userId = $request->user()?->id;
 
         if ($name === '') {
             throw ValidationException::withMessages([
@@ -227,17 +235,62 @@ class ProductFiscalMassAssociationController extends Controller
             ]);
         }
 
-        $product->update([
-            'tb1_nome' => $name,
-            'tb33_grupo_ncm_id' => (int) $data['group_id'],
-            'tb1_responsavel_ultima_alteracao' => $request->user()?->id,
-        ]);
+        $affectedGroupProducts = DB::transaction(function () use ($product, $name, $groupId, $applyGroupToFilters, $data, $userId) {
+            $filters = array_merge([
+                'search' => '',
+                'type' => '',
+                'origin' => '',
+                'without_category' => false,
+                'category_id' => '',
+                'group_id' => '',
+                'only_exception' => false,
+            ], $this->filterQueryFromPayload($data['filters'] ?? []));
+
+            $targetProducts = $applyGroupToFilters
+                ? $this->filteredProductsSearchQuery($filters)
+                    ->lockForUpdate()
+                    ->get(['tb1_id', 'tb30_categoria_fiscal_id', 'tb33_grupo_ncm_id'])
+                : Produto::query()
+                    ->where('tb1_id', $product->tb1_id)
+                    ->lockForUpdate()
+                    ->get(['tb1_id', 'tb30_categoria_fiscal_id', 'tb33_grupo_ncm_id']);
+
+            $product->update([
+                'tb1_nome' => $name,
+                'tb1_responsavel_ultima_alteracao' => $userId,
+            ]);
+
+            foreach ($targetProducts as $targetProduct) {
+                CategoriaFiscalHistorico::create([
+                    'tb30_categoria_fiscal_id' => $targetProduct->tb30_categoria_fiscal_id,
+                    'tb1_id' => $targetProduct->tb1_id,
+                    'user_id' => $userId,
+                    'tb32_acao' => $applyGroupToFilters ? 'grupo_ncm_massa_busca' : 'edicao_produto_modal',
+                    'tb32_campo' => 'tb33_grupo_ncm_id',
+                    'tb32_valor_anterior' => $targetProduct->tb33_grupo_ncm_id === null ? null : (string) $targetProduct->tb33_grupo_ncm_id,
+                    'tb32_valor_novo' => (string) $groupId,
+                    'tb32_registros_afetados' => $targetProducts->count(),
+                ]);
+            }
+
+            Produto::query()
+                ->whereIn('tb1_id', $targetProducts->pluck('tb1_id'))
+                ->update([
+                    'tb33_grupo_ncm_id' => $groupId,
+                    'tb1_responsavel_ultima_alteracao' => $userId,
+                    'updated_at' => now(),
+                ]);
+
+            return $targetProducts->count();
+        });
 
         $quickLookupCache->invalidateCatalog();
 
         return redirect()
             ->route('products.fiscal-mass-association.index', $this->filterQueryFromPayload($data['filters'] ?? []))
-            ->with('success', 'Nome do produto atualizado com sucesso.');
+            ->with('success', $applyGroupToFilters
+                ? sprintf('Nome do produto atualizado. Grupo NCM aplicado em %d produto(s) da busca atual.', $affectedGroupProducts)
+                : 'Nome e Grupo NCM do produto atualizados com sucesso.');
     }
 
     private function typeOptions(): array
