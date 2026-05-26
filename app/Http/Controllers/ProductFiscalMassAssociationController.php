@@ -206,10 +206,17 @@ class ProductFiscalMassAssociationController extends Controller
     {
         $data = $request->validate([
             'tb1_nome' => ['required', 'string', 'max:45'],
+            'group_id' => [
+                'required',
+                'integer',
+                Rule::exists('tb33_grupos_ncm', 'tb33_id')->where('tb33_ativo', true),
+            ],
             'filters' => ['nullable', 'array'],
         ], [
             'tb1_nome.required' => 'Informe o nome do produto.',
             'tb1_nome.max' => 'O nome nao pode exceder :max caracteres.',
+            'group_id.required' => 'Selecione o grupo NCM.',
+            'group_id.exists' => 'Selecione um grupo NCM ativo.',
         ]);
 
         $name = $this->normalizeProductName($data['tb1_nome']);
@@ -222,6 +229,7 @@ class ProductFiscalMassAssociationController extends Controller
 
         $product->update([
             'tb1_nome' => $name,
+            'tb33_grupo_ncm_id' => (int) $data['group_id'],
             'tb1_responsavel_ultima_alteracao' => $request->user()?->id,
         ]);
 

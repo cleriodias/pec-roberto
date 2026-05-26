@@ -20,6 +20,7 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
     });
     const renameForm = useForm({
         tb1_nome: "",
+        group_id: "",
         filters: {},
     });
 
@@ -75,6 +76,7 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
         renameForm.clearErrors();
         renameForm.setData({
             tb1_nome: product.tb1_nome ?? "",
+            group_id: product.tb33_grupo_ncm_id ?? "",
             filters,
         });
     };
@@ -331,11 +333,33 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
                         )}
                     </div>
 
+                    <div>
+                        <label htmlFor="rename_product_group" className="mb-1 block text-sm font-medium text-gray-700">
+                            Grupo NCM
+                        </label>
+                        <select
+                            id="rename_product_group"
+                            value={renameForm.data.group_id}
+                            onChange={(event) => renameForm.setData("group_id", event.target.value)}
+                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                        >
+                            <option value="">Selecione o grupo NCM</option>
+                            {groups.map((group) => (
+                                <option key={group.tb33_id} value={group.tb33_id} disabled={!group.tb33_ativo}>
+                                    {group.tb33_nome}{group.tb33_ativo ? "" : " (inativo)"}
+                                </option>
+                            ))}
+                        </select>
+                        {renameForm.errors.group_id && (
+                            <p className="mt-1 text-sm text-red-600">{renameForm.errors.group_id}</p>
+                        )}
+                    </div>
+
                     <div className="flex justify-end gap-2">
                         <button type="button" onClick={closeRenameModal} disabled={renameForm.processing} className="inline-flex items-center rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-40">
                             Cancelar
                         </button>
-                        <PrimaryButton type="submit" disabled={renameForm.processing || !renameForm.data.tb1_nome.trim()}>
+                        <PrimaryButton type="submit" disabled={renameForm.processing || !renameForm.data.tb1_nome.trim() || !renameForm.data.group_id}>
                             <i className="bi bi-check2 mr-2 text-lg" aria-hidden="true"></i>
                             Salvar
                         </PrimaryButton>
