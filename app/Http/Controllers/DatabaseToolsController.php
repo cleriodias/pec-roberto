@@ -45,6 +45,7 @@ class DatabaseToolsController extends Controller
 
         return Inertia::render('Settings/DatabaseTools', [
             'artisanOutput' => $request->session()->pull('artisan_output'),
+            'artisanErrorDetail' => $request->session()->pull('artisan_error_detail'),
             'lastAction' => $request->session()->pull('artisan_action'),
             'environment' => app()->environment(),
             'migrationStatus' => $this->resolveMigrationStatus(),
@@ -63,12 +64,14 @@ class DatabaseToolsController extends Controller
 
         $action = $data['action'];
         $selectedSeeder = $data['seeder'] ?? null;
-        $commands = $this->commandsForAction($action, $data['seeder'] ?? null);
+        $commands = [];
         $outputBlocks = [];
         $hasFailure = false;
         $commandResults = [];
 
         try {
+            $commands = $this->commandsForAction($action, $data['seeder'] ?? null);
+
             foreach ($commands as [$command, $params]) {
                 $exitCode = Artisan::call($command, $params);
                 $rawOutput = trim(Artisan::output());
@@ -110,9 +113,10 @@ class DatabaseToolsController extends Controller
                 ->with('artisan_output', implode("\n\n", $outputBlocks))
                 ->with('artisan_action', $action);
         } catch (Throwable $e) {
+            $errorDetail = $e->getMessage();
             $outputBlocks[] = implode("\n", array_filter([
                 'Erro:',
-                $e->getMessage(),
+                $errorDetail,
                 'Arquivo: ' . $e->getFile() . ':' . $e->getLine(),
                 $selectedSeeder ? 'Seeder: ' . $selectedSeeder : null,
             ]));
@@ -128,6 +132,7 @@ class DatabaseToolsController extends Controller
 
             return back()
                 ->with('error', 'Falha ao executar o comando. Consulte o log.')
+                ->with('artisan_error_detail', $errorDetail)
                 ->with('artisan_output', implode("\n\n", $outputBlocks))
                 ->with('artisan_action', $action);
         }

@@ -51,6 +51,7 @@ const formatDateTime = (value) => {
 export default function DatabaseTools({
     auth,
     artisanOutput,
+    artisanErrorDetail,
     lastAction,
     environment,
     migrationStatus,
@@ -148,6 +149,14 @@ export default function DatabaseTools({
             <div className="py-8">
                 <div className="mx-auto max-w-5xl space-y-6 px-4 sm:px-6 lg:px-8">
                     <AlertMessage message={flash} />
+                    {artisanErrorDetail && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-500/40 dark:bg-red-900/20 dark:text-red-200">
+                            <p className="font-semibold">Erro tecnico</p>
+                            <pre className="mt-2 whitespace-pre-wrap break-words text-xs">
+                                {artisanErrorDetail}
+                            </pre>
+                        </div>
+                    )}
 
                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-200">
                         <p className="font-semibold">Atencao</p>
