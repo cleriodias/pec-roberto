@@ -31,9 +31,18 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Provision App Service (Bicep)
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+      - name: Ensure App Service exists
         run: |
+          if az webapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --query id \
+            --output tsv >/dev/null 2>&1; then
+            echo "App Service $AZURE_WEBAPP_NAME already exists in $AZURE_RESOURCE_GROUP."
+            exit 0
+          fi
+
+          echo "App Service $AZURE_WEBAPP_NAME not found in $AZURE_RESOURCE_GROUP. Provisioning with Bicep..."
           az deployment group create \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --template-file infra/main.bicep \
