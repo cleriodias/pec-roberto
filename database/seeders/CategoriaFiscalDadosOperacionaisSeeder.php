@@ -252,7 +252,7 @@ class CategoriaFiscalDadosOperacionaisSeeder extends Seeder
                 'tb30_observacao_fiscal' => 'Leite de revenda ativado com dados aproximados. Pode haver beneficio fiscal, reducao, isencao ou regra estadual especifica. Conferir XML do fornecedor e contador.',
             ],
             [
-                'tb30_codigo' => 'REVENDA_IOGURTES_BEBIDAS_LACTEAS',
+                'tb30_codigo' => 'REV_IOGURTES_BEBIDAS_LACT',
                 'tb30_nome' => 'REVENDA IOGURTES E BEBIDAS LACTEAS',
                 'tb30_origem_mercadoria' => CategoriaFiscal::ORIGEM_REVENDA,
                 'tb30_descricao' => 'Iogurtes, bebidas lacteas, achocolatados lacteos e similares comprados para revenda.',
@@ -302,7 +302,7 @@ class CategoriaFiscalDadosOperacionaisSeeder extends Seeder
                 'tb30_observacao_fiscal' => 'Saboes e detergentes de revenda ativados com dados aproximados. Produtos de limpeza podem ter CEST/ST e NCM especifico. Conferir XML do fornecedor e contador.',
             ],
             [
-                'tb30_codigo' => 'REVENDA_AGUA_SANITARIA_DESINFETANTES',
+                'tb30_codigo' => 'REV_AGUA_SANIT_DESINFET',
                 'tb30_nome' => 'REVENDA AGUA SANITARIA E DESINFETANTES',
                 'tb30_origem_mercadoria' => CategoriaFiscal::ORIGEM_REVENDA,
                 'tb30_descricao' => 'Agua sanitaria, desinfetante, multiuso, limpadores e saneantes domesticos.',
@@ -328,7 +328,7 @@ class CategoriaFiscalDadosOperacionaisSeeder extends Seeder
                 'tb30_observacao_fiscal' => 'Higiene pessoal de revenda ativada com dados aproximados. Validar NCM, CEST, ST, monofasico/PIS-COFINS quando aplicavel, XML do fornecedor e contador.',
             ],
             [
-                'tb30_codigo' => 'REVENDA_PAPEL_HIGIENICO_DESCARTAVEIS',
+                'tb30_codigo' => 'REV_PAPEL_HIG_DESCARTAVEIS',
                 'tb30_nome' => 'REVENDA PAPEL HIGIENICO E DESCARTAVEIS',
                 'tb30_origem_mercadoria' => CategoriaFiscal::ORIGEM_REVENDA,
                 'tb30_descricao' => 'Papel higienico, papel toalha, guardanapos, copos, pratos, talheres e embalagens descartaveis.',
