@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CategoriaFiscal;
 use App\Models\CategoriaFiscalHistorico;
+use App\Models\GrupoNcm;
 use App\Models\Produto;
 use App\Support\ProductQuickLookupCache;
 use Illuminate\Http\RedirectResponse;
@@ -26,14 +27,22 @@ class ProductFiscalMassAssociationController extends Controller
             'origin' => $request->query('origin', ''),
             'without_category' => $request->boolean('without_category'),
             'category_id' => $request->query('category_id', ''),
+            'group_id' => $request->query('group_id', ''),
             'only_exception' => $request->boolean('only_exception'),
         ];
 
         $baseQuery = $this->filteredProductsQuery($filters);
         $products = (clone $baseQuery)
-            ->when($filters['without_category'], fn ($query) => $query->whereNull('tb30_categoria_fiscal_id'))
+            ->when($filters['without_category'], fn ($query) => $query->where(function ($builder) {
+                $builder->whereNull('tb30_categoria_fiscal_id')
+                    ->orWhereNull('tb33_grupo_ncm_id');
+            }))
             ->when($filters['category_id'] !== '', fn ($query) => $query->where('tb30_categoria_fiscal_id', (int) $filters['category_id']))
-            ->with('categoriaFiscal:tb30_id,tb30_nome,tb30_ativo')
+            ->when($filters['group_id'] !== '', fn ($query) => $query->where('tb33_grupo_ncm_id', (int) $filters['group_id']))
+            ->with(
+                'categoriaFiscal:tb30_id,tb30_nome,tb30_ativo',
+                'grupoNcm:tb33_id,tb33_nome,tb33_ativo',
+            )
             ->orderBy('tb1_nome')
             ->paginate(50)
             ->withQueryString();
@@ -44,6 +53,10 @@ class ProductFiscalMassAssociationController extends Controller
                 ->orderByDesc('tb30_ativo')
                 ->orderBy('tb30_nome')
                 ->get(['tb30_id', 'tb30_nome', 'tb30_ativo', 'tb30_origem_mercadoria']),
+            'groups' => GrupoNcm::query()
+                ->orderByDesc('tb33_ativo')
+                ->orderBy('tb33_nome')
+                ->get(['tb33_id', 'tb33_nome', 'tb33_ativo']),
             'filters' => $filters,
             'typeOptions' => $this->typeOptions(),
             'fiscalSummary' => $this->fiscalSummary(),
@@ -88,7 +101,10 @@ class ProductFiscalMassAssociationController extends Controller
     {
         $baseQuery = Produto::query()->whereIn('tb1_tipo', [0, 1]);
         $total = (clone $baseQuery)->count();
-        $linked = (clone $baseQuery)->whereNotNull('tb30_categoria_fiscal_id')->count();
+        $linked = (clone $baseQuery)
+            ->whereNotNull('tb30_categoria_fiscal_id')
+            ->whereNotNull('tb33_grupo_ncm_id')
+            ->count();
         $pending = max($total - $linked, 0);
 
         return [
@@ -110,22 +126,30 @@ class ProductFiscalMassAssociationController extends Controller
                 'integer',
                 Rule::exists('tb30_categorias_fiscais', 'tb30_id')->where('tb30_ativo', true),
             ],
+            'group_id' => [
+                'required',
+                'integer',
+                Rule::exists('tb33_grupos_ncm', 'tb33_id')->where('tb33_ativo', true),
+            ],
         ], [
             'product_ids.required' => 'Selecione pelo menos um produto.',
             'product_ids.min' => 'Selecione pelo menos um produto.',
             'category_id.required' => 'Selecione a nova categoria fiscal.',
             'category_id.exists' => 'Selecione uma categoria fiscal ativa.',
+            'group_id.required' => 'Selecione o novo grupo NCM.',
+            'group_id.exists' => 'Selecione um grupo NCM ativo.',
         ]);
 
         $productIds = collect($data['product_ids'])->map(fn ($id) => (int) $id)->unique()->values();
         $categoryId = (int) $data['category_id'];
+        $groupId = (int) $data['group_id'];
         $userId = $request->user()?->id;
 
-        $affected = DB::transaction(function () use ($productIds, $categoryId, $userId) {
+        $affected = DB::transaction(function () use ($productIds, $categoryId, $groupId, $userId) {
             $products = Produto::query()
                 ->whereIn('tb1_id', $productIds)
                 ->lockForUpdate()
-                ->get(['tb1_id', 'tb30_categoria_fiscal_id']);
+                ->get(['tb1_id', 'tb30_categoria_fiscal_id', 'tb33_grupo_ncm_id']);
 
             foreach ($products as $product) {
                 CategoriaFiscalHistorico::create([
@@ -138,12 +162,24 @@ class ProductFiscalMassAssociationController extends Controller
                     'tb32_valor_novo' => (string) $categoryId,
                     'tb32_registros_afetados' => $products->count(),
                 ]);
+
+                CategoriaFiscalHistorico::create([
+                    'tb30_categoria_fiscal_id' => $categoryId,
+                    'tb1_id' => $product->tb1_id,
+                    'user_id' => $userId,
+                    'tb32_acao' => 'associacao_massa',
+                    'tb32_campo' => 'tb33_grupo_ncm_id',
+                    'tb32_valor_anterior' => $product->tb33_grupo_ncm_id === null ? null : (string) $product->tb33_grupo_ncm_id,
+                    'tb32_valor_novo' => (string) $groupId,
+                    'tb32_registros_afetados' => $products->count(),
+                ]);
             }
 
             Produto::query()
                 ->whereIn('tb1_id', $products->pluck('tb1_id'))
                 ->update([
                     'tb30_categoria_fiscal_id' => $categoryId,
+                    'tb33_grupo_ncm_id' => $groupId,
                     'tb1_responsavel_ultima_alteracao' => $userId,
                     'updated_at' => now(),
                 ]);
@@ -160,9 +196,10 @@ class ProductFiscalMassAssociationController extends Controller
                 'origin',
                 'without_category',
                 'category_id',
+                'group_id',
                 'only_exception',
             ]))
-            ->with('success', sprintf('Categoria fiscal aplicada em %d produto(s).', $affected));
+            ->with('success', sprintf('Categoria fiscal e grupo NCM aplicados em %d produto(s).', $affected));
     }
 
     public function renameProduct(Request $request, Produto $product, ProductQuickLookupCache $quickLookupCache): RedirectResponse
@@ -221,7 +258,7 @@ class ProductFiscalMassAssociationController extends Controller
     {
         $query = [];
 
-        foreach (['search', 'type', 'origin', 'category_id'] as $field) {
+        foreach (['search', 'type', 'origin', 'category_id', 'group_id'] as $field) {
             $value = trim((string) ($filters[$field] ?? ''));
 
             if ($value !== '') {

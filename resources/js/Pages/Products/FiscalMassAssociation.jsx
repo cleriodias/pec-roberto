@@ -8,7 +8,7 @@ import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, Link, router, useForm, usePage } from "@inertiajs/react";
 import { useEffect, useMemo, useState } from "react";
 
-export default function FiscalMassAssociation({ auth, products, categories = [], filters = {}, typeOptions = [], originOptions = [], fiscalSummary = {} }) {
+export default function FiscalMassAssociation({ auth, products, categories = [], groups = [], filters = {}, typeOptions = [], originOptions = [], fiscalSummary = {} }) {
     const { flash } = usePage().props;
     const [selectedProducts, setSelectedProducts] = useState([]);
     const [filterState, setFilterState] = useState(filters);
@@ -16,6 +16,7 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
     const { data, setData, post, processing, errors } = useForm({
         product_ids: [],
         category_id: "",
+        group_id: "",
     });
     const renameForm = useForm({
         tb1_nome: "",
@@ -29,7 +30,9 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
     const visibleIds = useMemo(() => products.data.map((product) => Number(product.tb1_id)), [products.data]);
     const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedProducts.includes(id));
     const selectedCategory = categories.find((category) => Number(category.tb30_id) === Number(data.category_id));
+    const selectedGroup = groups.find((group) => Number(group.tb33_id) === Number(data.group_id));
     const selectedCategoryInactive = selectedCategory && !Boolean(selectedCategory.tb30_ativo);
+    const selectedGroupInactive = selectedGroup && !Boolean(selectedGroup.tb33_ativo);
     const summary = useMemo(() => ({
         total: Number(fiscalSummary.total ?? 0),
         linked: Number(fiscalSummary.linked ?? 0),
@@ -89,12 +92,12 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
     const submit = (event) => {
         event.preventDefault();
 
-        if (selectedCategoryInactive) {
-            window.alert("A categoria fiscal selecionada esta inativa. Ative e revise a categoria antes de aplicar em massa.");
+        if (selectedCategoryInactive || selectedGroupInactive) {
+            window.alert("Selecione apenas categoria fiscal e grupo NCM ativos antes de aplicar em massa.");
             return;
         }
 
-        if (!window.confirm(`Aplicar categoria em ${selectedProducts.length} produto(s)?`)) {
+        if (!window.confirm(`Aplicar categoria fiscal e grupo NCM em ${selectedProducts.length} produto(s)?`)) {
             return;
         }
 
@@ -139,7 +142,7 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
                 <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,420px)]">
                         <div className="space-y-3">
-                            <div className="grid gap-3 md:grid-cols-2">
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                                 <input value={filterState.search ?? ""} onChange={(e) => setFilterState({ ...filterState, search: e.target.value })} placeholder="Descricao, ID ou codigo" className="rounded-md border border-gray-300 px-3 py-2 text-sm" />
                                 <select value={filterState.type ?? ""} onChange={(e) => setFilterState({ ...filterState, type: e.target.value })} className="rounded-md border border-gray-300 px-3 py-2 text-sm">
                                     <option value="">Tipo</option>
@@ -153,6 +156,10 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
                                     <option value="">Categoria atual</option>
                                     {categories.map((category) => <option key={category.tb30_id} value={category.tb30_id}>{category.tb30_nome}</option>)}
                                 </select>
+                                <select value={filterState.group_id ?? ""} onChange={(e) => setFilterState({ ...filterState, group_id: e.target.value })} className="rounded-md border border-gray-300 px-3 py-2 text-sm">
+                                    <option value="">Grupo NCM atual</option>
+                                    {groups.map((group) => <option key={group.tb33_id} value={group.tb33_id}>{group.tb33_nome}</option>)}
+                                </select>
                             </div>
 
                             <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700">
@@ -161,7 +168,7 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
                                 </InfoButton>
                                 <label className="flex items-center gap-2">
                                     <input type="checkbox" checked={Boolean(filterState.without_category)} onChange={(e) => setFilterState({ ...filterState, without_category: e.target.checked ? 1 : 0 })} className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
-                                    Produtos sem categoria
+                                    Produtos sem vinculo fiscal
                                 </label>
                                 <label className="flex items-center gap-2">
                                     <input type="checkbox" checked={Boolean(filterState.only_exception)} onChange={(e) => setFilterState({ ...filterState, only_exception: e.target.checked ? 1 : 0 })} className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
@@ -182,7 +189,7 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
                                 <div>
                                     <p className="text-xs font-semibold uppercase text-gray-500">Resumo fiscal</p>
                                     <p className="mt-1 text-2xl font-semibold text-gray-900">{summary.total}</p>
-                                    <p className="text-xs text-gray-500">produto(s) no filtro atual</p>
+                                    <p className="text-xs text-gray-500">produto(s) de balanca/industria</p>
                                 </div>
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between gap-3">
@@ -199,7 +206,7 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
                     </div>
 
                     <form onSubmit={submit} className="space-y-4">
-                        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                        <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
                             <select value={data.category_id} onChange={(e) => setData("category_id", e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm">
                                 <option value="">Nova categoria fiscal</option>
                                 {categories.map((category) => (
@@ -208,19 +215,29 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
                                     </option>
                                 ))}
                             </select>
-                            <SuccessButton type="submit" disabled={processing || selectedProducts.length === 0 || !data.category_id || selectedCategoryInactive} aria-label="Aplicar" title="Aplicar">
+                            <select value={data.group_id} onChange={(e) => setData("group_id", e.target.value)} className="rounded-md border border-gray-300 px-3 py-2 text-sm">
+                                <option value="">Novo grupo NCM</option>
+                                {groups.map((group) => (
+                                    <option key={group.tb33_id} value={group.tb33_id} disabled={!group.tb33_ativo}>
+                                        {group.tb33_nome}{group.tb33_ativo ? "" : " (inativo)"}
+                                    </option>
+                                ))}
+                            </select>
+                            <SuccessButton type="submit" disabled={processing || selectedProducts.length === 0 || !data.category_id || !data.group_id || selectedCategoryInactive || selectedGroupInactive} aria-label="Aplicar" title="Aplicar">
                                 <i className="bi bi-check2 text-lg" aria-hidden="true"></i>
                             </SuccessButton>
                         </div>
                         {errors.category_id && <p className="text-sm text-red-600">{errors.category_id}</p>}
+                        {errors.group_id && <p className="text-sm text-red-600">{errors.group_id}</p>}
                         {errors.product_ids && <p className="text-sm text-red-600">{errors.product_ids}</p>}
 
                         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                             Previa: {selectedProducts.length} produto(s) selecionado(s)
-                            {selectedCategory ? ` para ${selectedCategory.tb30_nome}.` : "."}
-                            {selectedCategoryInactive && (
+                            {selectedCategory ? ` para ${selectedCategory.tb30_nome}` : ""}
+                            {selectedGroup ? ` / ${selectedGroup.tb33_nome}.` : selectedCategory ? "." : "."}
+                            {(selectedCategoryInactive || selectedGroupInactive) && (
                                 <span className="mt-1 block font-semibold">
-                                    Categoria inativa nao pode ser aplicada em massa.
+                                    Categoria fiscal ou grupo NCM inativo nao pode ser aplicado em massa.
                                 </span>
                             )}
                         </div>
@@ -234,13 +251,14 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
                                         </th>
                                         <th className="px-3 py-2">Produto</th>
                                         <th className="px-3 py-2">Categoria atual</th>
+                                        <th className="px-3 py-2">Grupo NCM atual</th>
                                         <th className="px-3 py-2">Excecao</th>
                                         <th className="px-3 py-2 text-right">Acoes</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200">
                                     {products.data.map((product) => (
-                                        <tr key={product.tb1_id} className={product.tb30_categoria_fiscal_id ? "" : "bg-amber-50"}>
+                                        <tr key={product.tb1_id} className={product.tb30_categoria_fiscal_id && product.tb33_grupo_ncm_id ? "" : "bg-amber-50"}>
                                             <td className="px-3 py-2">
                                                 <input type="checkbox" checked={selectedProducts.includes(Number(product.tb1_id))} onChange={() => toggleProduct(product.tb1_id)} className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
                                             </td>
@@ -253,6 +271,14 @@ export default function FiscalMassAssociation({ auth, products, categories = [],
                                                 {product.categoria_fiscal && !product.categoria_fiscal.tb30_ativo && (
                                                     <span className="ml-2 rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
                                                         inativa
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                {product.grupo_ncm?.tb33_nome ?? "Sem grupo NCM"}
+                                                {product.grupo_ncm && !product.grupo_ncm.tb33_ativo && (
+                                                    <span className="ml-2 rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
+                                                        inativo
                                                     </span>
                                                 )}
                                             </td>

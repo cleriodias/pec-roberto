@@ -19,29 +19,23 @@ class FiscalProductTaxService
     {
         $date ??= Carbon::today();
         $hasCategoryAttribute = array_key_exists('tb30_categoria_fiscal_id', $product->getAttributes());
-        $category = $hasCategoryAttribute
-            ? (
-                $product->relationLoaded('categoriaFiscal')
-                    ? $product->categoriaFiscal
-                    : $product->categoriaFiscal()->first()
-            )
-            : null;
+        $hasCategoryBinding = $hasCategoryAttribute || $product->relationLoaded('categoriaFiscal');
+        $category = $product->relationLoaded('categoriaFiscal')
+            ? $product->categoriaFiscal
+            : ($hasCategoryAttribute ? $product->categoriaFiscal()->first() : null);
         $hasGrupoNcmAttribute = array_key_exists('tb33_grupo_ncm_id', $product->getAttributes());
-        $grupoNcm = $hasGrupoNcmAttribute
-            ? (
-                $product->relationLoaded('grupoNcm')
-                    ? $product->grupoNcm
-                    : $product->grupoNcm()->first()
-            )
-            : null;
+        $hasGrupoNcmBinding = $hasGrupoNcmAttribute || $product->relationLoaded('grupoNcm');
+        $grupoNcm = $product->relationLoaded('grupoNcm')
+            ? $product->grupoNcm
+            : ($hasGrupoNcmAttribute ? $product->grupoNcm()->first() : null);
         $exception = $this->activeException($product, $date);
         $base = $category instanceof CategoriaFiscal
             ? $this->categoryPayload($category, $operation, $date)
-            : $this->legacyProductPayload($product, $operation, $hasCategoryAttribute);
+            : $this->legacyProductPayload($product, $operation, $hasCategoryBinding);
 
         if ($grupoNcm instanceof GrupoNcm) {
             $base = array_merge($base, $this->grupoNcmPayload($grupoNcm));
-        } elseif ($hasGrupoNcmAttribute) {
+        } elseif ($hasGrupoNcmBinding) {
             $base['grupo_ncm_active'] = false;
             $base['grupo_ncm_id'] = null;
             $base['grupo_ncm_nome'] = null;

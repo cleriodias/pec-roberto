@@ -24,6 +24,7 @@ class FiscalInvoicePreparationService
     {
         $payment->loadMissing([
             'vendas.produto.categoriaFiscal',
+            'vendas.produto.grupoNcm',
             'vendas.produto.excecoesFiscais',
             'vendas.unidade',
         ]);
@@ -197,7 +198,12 @@ class FiscalInvoicePreparationService
                 'xml_assinado',
                 'erro_transmissao',
             ])
-            ->with('pagamento.vendas.produto', 'pagamento.vendas.unidade')
+            ->with(
+                'pagamento.vendas.produto.categoriaFiscal',
+                'pagamento.vendas.produto.grupoNcm',
+                'pagamento.vendas.produto.excecoesFiscais',
+                'pagamento.vendas.unidade',
+            )
             ->get();
 
         foreach ($invoices as $invoice) {

@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Models\ConfiguracaoFiscal;
+use App\Models\CategoriaFiscal;
+use App\Models\GrupoNcm;
 use App\Models\Produto;
 use App\Models\Venda;
 use App\Models\VendaPagamento;
@@ -48,6 +50,17 @@ class FiscalInvoicePreparationServiceTest extends TestCase
         $errors = $validatePayload->invoke($service, $payment, $config, 'nfce', null, $eligibleSales, $excludedItems);
 
         $this->assertSame([], $errors);
+    }
+
+    public function test_split_sales_accepts_product_with_category_and_group_ncm_links(): void
+    {
+        $service = $this->makeService();
+        $payment = $this->makePaymentWithCategorizedProduct();
+
+        [$eligibleSales, $excludedItems] = $this->splitSalesForFiscal($payment, $service);
+
+        $this->assertCount(1, $eligibleSales);
+        $this->assertSame([], $excludedItems);
     }
 
     public function test_validate_payload_accepts_fiscal_coupon_with_cpf_only(): void
@@ -257,6 +270,66 @@ class FiscalInvoicePreparationServiceTest extends TestCase
             'tb4_id' => 99,
             'valor_total' => 15,
             'tipo_pagamento' => 'dinheiro',
+        ]);
+        $payment->setRelation('vendas', collect([$sale]));
+
+        return $payment;
+    }
+
+    private function makePaymentWithCategorizedProduct(): VendaPagamento
+    {
+        $product = new Produto([
+            'tb1_id' => 10,
+            'tb1_nome' => 'COCA COLA 200 ML GARRAFA',
+            'tb1_codbar' => '7890000000000',
+            'tb30_categoria_fiscal_id' => 5,
+            'tb33_grupo_ncm_id' => 7,
+            'tb1_usa_excecao_fiscal' => false,
+        ]);
+        $product->setRelation('categoriaFiscal', new CategoriaFiscal([
+            'tb30_id' => 5,
+            'tb30_nome' => 'REVENDA BEBIDAS INDUSTRIALIZADAS',
+            'tb30_origem_mercadoria' => CategoriaFiscal::ORIGEM_REVENDA,
+            'tb30_ativo' => true,
+            'tb30_cfop_venda_interna' => '5102',
+            'tb30_csosn' => '102',
+            'tb30_cst_icms' => null,
+            'tb30_cst_ibs' => '000',
+            'tb30_cst_cbs' => '000',
+            'tb30_cclass_trib' => '000001',
+            'tb30_aliquota_icms' => 0,
+            'tb30_aliquota_ibs_uf' => 0.05,
+            'tb30_aliquota_ibs_municipio' => 0.05,
+            'tb30_aliquota_cbs' => 0.9,
+        ]));
+        $product->setRelation('grupoNcm', new GrupoNcm([
+            'tb33_id' => 7,
+            'tb33_nome' => 'BEBIDAS PRONTAS REVENDA',
+            'tb33_ncm' => '22029900',
+            'tb33_cest' => null,
+            'tb33_cclass_trib' => '000001',
+            'tb33_ativo' => true,
+        ]));
+        $product->setRelation('excecoesFiscais', collect());
+
+        $sale = new Venda([
+            'tb1_id' => 10,
+            'produto_nome' => 'COCA COLA 200 ML GARRAFA',
+            'quantidade' => 1,
+            'valor_unitario' => 3,
+            'valor_total' => 3,
+        ]);
+        $sale->setRelation('produto', $product);
+        $sale->setRelation('unidade', new \App\Models\Unidade([
+            'tb2_id' => 1,
+            'tb2_nome' => 'LOJA TESTE',
+            'tb2_cnpj' => '11.222.333/0001-44',
+        ]));
+
+        $payment = new VendaPagamento([
+            'tb4_id' => 100,
+            'valor_total' => 3,
+            'tipo_pagamento' => 'pix',
         ]);
         $payment->setRelation('vendas', collect([$sale]));
 
