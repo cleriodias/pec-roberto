@@ -9,11 +9,12 @@ const formatCurrency = (value) =>
 
 export default function PdrCacheReport({
     products = [],
-    cacheLimit = 300,
+    cacheLimit = 0,
     cacheHours = 8,
     auth,
 }) {
     const unitName = auth?.unit?.name ?? '---';
+    const cacheLimitLabel = Number(cacheLimit) > 0 ? cacheLimit : 'Todos ativos';
 
     return (
         <AuthenticatedLayout
@@ -46,7 +47,7 @@ export default function PdrCacheReport({
                                 Limite
                             </p>
                             <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">
-                                {cacheLimit}
+                                {cacheLimitLabel}
                             </p>
                         </div>
                         <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
