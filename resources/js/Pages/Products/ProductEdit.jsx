@@ -6,7 +6,23 @@ import { useEffect } from "react";
 
 const normalizeProductName = (value) => value.toLocaleUpperCase("pt-BR");
 
-export default function ProductEdit({ auth, product, typeOptions = [], statusOptions = [], originOptions = [] }) {
+const fiscalSummaryFields = [
+    ["tb30_cfop_venda_interna", "CFOP interno"],
+    ["tb30_csosn", "CSOSN"],
+    ["tb30_cst_icms", "CST ICMS"],
+    ["tb30_cst_ibs", "CST IBS"],
+    ["tb30_cst_cbs", "CST CBS"],
+    ["tb30_cclass_trib", "cClassTrib"],
+];
+
+const ncmSummaryFields = [
+    ["tb33_ncm", "NCM"],
+    ["tb33_cest", "CEST"],
+    ["tb33_cclass_trib", "cClassTrib"],
+];
+
+export default function ProductEdit({ auth, product, fiscalData = {}, typeOptions = [], statusOptions = [], originOptions = [], fiscalCategories = [], gruposNcm = [] }) {
+    const activeException = (product.excecoes_fiscais ?? []).find((exception) => Boolean(exception.tb31_ativo)) ?? {};
     const { data, setData, put, processing, errors } = useForm({
         tb1_id: product.tb1_id ?? "",
         tb1_nome: product.tb1_nome ?? "",
@@ -17,6 +33,26 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
             Number(product.tb1_tipo) === 1 ||
             String(product.tb1_codbar ?? "").trim() === String(product.tb1_id ?? "").trim(),
         tb1_tipo: product.tb1_tipo ?? typeOptions[0]?.value ?? 0,
+        tb30_categoria_fiscal_id: product.tb30_categoria_fiscal_id ?? "",
+        tb33_grupo_ncm_id: product.tb33_grupo_ncm_id ?? "",
+        tb1_ncm_proprio: product.tb1_ncm_proprio ?? "",
+        tb1_usa_excecao_fiscal: Boolean(product.tb1_usa_excecao_fiscal),
+        excecao_fiscal: {
+            tb31_motivo_excecao: activeException.tb31_motivo_excecao ?? "",
+            tb31_ncm: activeException.tb31_ncm ?? "",
+            tb31_cest: activeException.tb31_cest ?? "",
+            tb31_cfop_venda_interna: activeException.tb31_cfop_venda_interna ?? "",
+            tb31_csosn: activeException.tb31_csosn ?? "",
+            tb31_cst_icms: activeException.tb31_cst_icms ?? "",
+            tb31_cst_ibs: activeException.tb31_cst_ibs ?? "",
+            tb31_cst_cbs: activeException.tb31_cst_cbs ?? "",
+            tb31_cclass_trib: activeException.tb31_cclass_trib ?? "",
+            tb31_aliquota_ibs_uf: activeException.tb31_aliquota_ibs_uf ?? "",
+            tb31_aliquota_ibs_municipio: activeException.tb31_aliquota_ibs_municipio ?? "",
+            tb31_aliquota_cbs: activeException.tb31_aliquota_cbs ?? "",
+            tb31_aliquota_is: activeException.tb31_aliquota_is ?? "",
+            tb31_observacao_fiscal: activeException.tb31_observacao_fiscal ?? "",
+        },
         tb1_ncm: product.tb1_ncm ?? "",
         tb1_cest: product.tb1_cest ?? "",
         tb1_cfop: product.tb1_cfop ?? "",
@@ -43,6 +79,21 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
     const isProductionProduct = Number(data.tb1_tipo) === 3;
     const canEditPrices = [0, 1, 2].includes(Number(auth?.user?.funcao ?? -1));
     const withoutBarcode = isBalanceProduct || Boolean(data.sem_codigo_barras);
+    const selectedFiscalCategory = fiscalCategories.find(
+        (category) => Number(category.tb30_id) === Number(data.tb30_categoria_fiscal_id)
+    );
+    const selectedGrupoNcm = gruposNcm.find(
+        (group) => Number(group.tb33_id) === Number(data.tb33_grupo_ncm_id)
+    );
+    const selectedFiscalCategoryInactive = selectedFiscalCategory && !Boolean(selectedFiscalCategory.tb30_ativo);
+    const selectedGrupoNcmInactive = selectedGrupoNcm && !Boolean(selectedGrupoNcm.tb33_ativo);
+
+    const setExceptionField = (field, value) => {
+        setData("excecao_fiscal", {
+            ...data.excecao_fiscal,
+            [field]: value,
+        });
+    };
 
     useEffect(() => {
         if (isBalanceProduct && !data.sem_codigo_barras) {
@@ -291,6 +342,133 @@ export default function ProductEdit({ auth, product, typeOptions = [], statusOpt
                                 </label>
                                 {errors.tb1_vr_credit && (
                                     <span className="text-red-600">{errors.tb1_vr_credit}</span>
+                                )}
+                            </div>
+
+                            <div className="mb-6 rounded-md border border-gray-200 bg-white p-4">
+                                <div className="mb-4">
+                                    <h4 className="text-sm font-semibold text-gray-800">Categoria fiscal</h4>
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        O produto herda a tributacao da categoria fiscal e a classificacao fiscal do grupo NCM.
+                                    </p>
+                                </div>
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label htmlFor="tb30_categoria_fiscal_id" className="block text-sm font-medium text-gray-700">
+                                            Categoria fiscal
+                                        </label>
+                                        <select id="tb30_categoria_fiscal_id" value={data.tb30_categoria_fiscal_id} onChange={(e) => setData("tb30_categoria_fiscal_id", e.target.value)} className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm sm:text-sm">
+                                            <option value="">Selecione</option>
+                                            {fiscalCategories.map((category) => (
+                                                <option key={category.tb30_id} value={category.tb30_id} disabled={!category.tb30_ativo && Number(category.tb30_id) !== Number(data.tb30_categoria_fiscal_id)}>
+                                                    {category.tb30_nome}{category.tb30_ativo ? "" : " (inativa)"}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Para trocar a categoria, escolha uma categoria fiscal ativa e revisada.
+                                        </p>
+                                        {errors.tb30_categoria_fiscal_id && <span className="text-red-600">{errors.tb30_categoria_fiscal_id}</span>}
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tb33_grupo_ncm_id" className="block text-sm font-medium text-gray-700">
+                                            Grupo NCM
+                                        </label>
+                                        <select id="tb33_grupo_ncm_id" value={data.tb33_grupo_ncm_id} onChange={(e) => setData("tb33_grupo_ncm_id", e.target.value)} className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm sm:text-sm">
+                                            <option value="">Selecione</option>
+                                            {gruposNcm.map((group) => (
+                                                <option key={group.tb33_id} value={group.tb33_id} disabled={!group.tb33_ativo && Number(group.tb33_id) !== Number(data.tb33_grupo_ncm_id)}>
+                                                    {group.tb33_nome} - {group.tb33_ncm}{group.tb33_ativo ? "" : " (inativo)"}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Para trocar o NCM, escolha um grupo NCM ativo e revisado.
+                                        </p>
+                                        {errors.tb33_grupo_ncm_id && <span className="text-red-600">{errors.tb33_grupo_ncm_id}</span>}
+                                    </div>
+                                </div>
+
+                                {selectedFiscalCategory && (
+                                    <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3">
+                                        {selectedFiscalCategoryInactive && (
+                                            <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900">
+                                                Categoria inativa: a emissao da nota sera bloqueada ate a categoria ser ativada.
+                                            </p>
+                                        )}
+                                        <p className="mb-2 text-xs font-semibold text-gray-700">Dados fiscais herdados da categoria</p>
+                                        <div className="grid gap-2 text-xs text-gray-700 sm:grid-cols-4">
+                                            {fiscalSummaryFields.map(([field, label]) => (
+                                                <p key={field}>
+                                                    <span className="font-semibold">{label}:</span> {selectedFiscalCategory[field] ?? "--"}
+                                                </p>
+                                            ))}
+                                            <p><span className="font-semibold">Fonte atual:</span> {fiscalData.source ?? "--"}</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {selectedGrupoNcm && (
+                                    <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3">
+                                        {selectedGrupoNcmInactive && (
+                                            <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900">
+                                                Grupo NCM inativo: a emissao da nota sera bloqueada ate o grupo ser ativado.
+                                            </p>
+                                        )}
+                                        <p className="mb-2 text-xs font-semibold text-gray-700">Classificacao fiscal herdada do grupo NCM</p>
+                                        <div className="grid gap-2 text-xs text-gray-700 sm:grid-cols-3">
+                                            {ncmSummaryFields.map(([field, label]) => (
+                                                <p key={field}>
+                                                    <span className="font-semibold">{label}:</span> {selectedGrupoNcm[field] ?? "--"}
+                                                </p>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="mt-4">
+                                    <label htmlFor="tb1_ncm_proprio" className="block text-sm font-medium text-gray-700">
+                                        NCM proprio do produto
+                                    </label>
+                                    <input id="tb1_ncm_proprio" type="text" maxLength="8" value={data.tb1_ncm_proprio} onChange={(e) => setData("tb1_ncm_proprio", e.target.value)} className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm sm:text-sm" />
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        Opcional. Use apenas quando este produto tiver NCM diferente do grupo.
+                                    </p>
+                                    {errors.tb1_ncm_proprio && <span className="text-red-600">{errors.tb1_ncm_proprio}</span>}
+                                </div>
+
+                                <label className="mt-4 flex items-center gap-2 text-sm text-gray-700">
+                                    <input type="checkbox" checked={Boolean(data.tb1_usa_excecao_fiscal)} onChange={(event) => setData("tb1_usa_excecao_fiscal", event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                                    Usar excecao fiscal neste produto
+                                </label>
+                                {data.tb1_usa_excecao_fiscal && (
+                                    <p className="mt-2 text-xs text-amber-700">
+                                        A excecao fiscal sobrescreve a categoria apenas nos campos preenchidos. Revise antes de salvar.
+                                    </p>
+                                )}
+
+                                {data.tb1_usa_excecao_fiscal && (
+                                    <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                                        <div className="lg:col-span-4">
+                                            <label className="block text-sm font-medium text-gray-700">Motivo</label>
+                                            <input type="text" value={data.excecao_fiscal.tb31_motivo_excecao} onChange={(e) => setExceptionField("tb31_motivo_excecao", e.target.value)} className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm sm:text-sm" />
+                                        </div>
+                                        {[
+                                            ["tb31_ncm", "NCM", "8"],
+                                            ["tb31_cest", "CEST", "7"],
+                                            ["tb31_cfop_venda_interna", "CFOP interno", "4"],
+                                            ["tb31_csosn", "CSOSN", "4"],
+                                            ["tb31_cst_icms", "CST ICMS", "3"],
+                                            ["tb31_cst_ibs", "CST IBS", "3"],
+                                            ["tb31_cst_cbs", "CST CBS", "3"],
+                                            ["tb31_cclass_trib", "cClassTrib", "6"],
+                                        ].map(([field, label, maxLength]) => (
+                                            <div key={field}>
+                                                <label className="block text-sm font-medium text-gray-700">{label}</label>
+                                                <input type="text" maxLength={maxLength} value={data.excecao_fiscal[field]} onChange={(e) => setExceptionField(field, e.target.value)} className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm sm:text-sm" />
+                                            </div>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
 

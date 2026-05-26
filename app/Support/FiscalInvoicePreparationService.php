@@ -16,13 +16,15 @@ class FiscalInvoicePreparationService
         private readonly FiscalCertificateService $fiscalCertificateService,
         private readonly FiscalNfceXmlService $fiscalNfceXmlService,
         private readonly FiscalMunicipalityCodeService $fiscalMunicipalityCodeService,
+        private readonly FiscalProductTaxService $fiscalProductTaxService = new FiscalProductTaxService(),
     ) {
     }
 
     public function prepareForPayment(VendaPagamento $payment, ?array $consumer = null): ?NotaFiscal
     {
         $payment->loadMissing([
-            'vendas.produto',
+            'vendas.produto.categoriaFiscal',
+            'vendas.produto.excecoesFiscais',
             'vendas.unidade',
         ]);
 
@@ -257,6 +259,9 @@ class FiscalInvoicePreparationService
             'itens' => $eligibleSales->map(function ($sale) {
                 /** @var Produto|null $product */
                 $product = $sale->produto;
+                $taxData = $product
+                    ? $this->fiscalProductTaxService->resolve($product)
+                    : [];
 
                 return [
                     'produto_id' => (int) $sale->tb1_id,
@@ -264,24 +269,29 @@ class FiscalInvoicePreparationService
                     'quantidade' => (int) $sale->quantidade,
                     'valor_unitario' => round((float) $sale->valor_unitario, 2),
                     'valor_total' => round((float) $sale->valor_total, 2),
-                    'ncm' => $product?->tb1_ncm,
-                    'cest' => $product?->tb1_cest,
-                    'cfop' => $product?->tb1_cfop,
-                    'origem' => $product?->tb1_origem,
-                    'csosn' => $product?->tb1_csosn,
-                    'cst' => $product?->tb1_cst,
-                    'aliquota_icms' => $product?->tb1_aliquota_icms,
-                    'cst_ibscbs' => $product?->tb1_cst_ibscbs,
-                    'cclasstrib' => $product?->tb1_cclasstrib,
-                    'ind_doacao' => (bool) ($product?->tb1_ind_doacao ?? false),
-                    'aliquota_ibs_uf' => $product?->tb1_aliquota_ibs_uf,
-                    'aliquota_ibs_mun' => $product?->tb1_aliquota_ibs_mun,
-                    'aliquota_cbs' => $product?->tb1_aliquota_cbs,
-                    'aliquota_is' => $product?->tb1_aliquota_is,
-                    'unidade_comercial' => $product?->tb1_unidade_comercial,
-                    'unidade_tributavel' => $product?->tb1_unidade_tributavel,
+                    'categoria_fiscal_id' => $taxData['categoria_fiscal_id'] ?? null,
+                    'categoria_fiscal_nome' => $taxData['categoria_nome'] ?? null,
+                    'grupo_ncm_id' => $taxData['grupo_ncm_id'] ?? null,
+                    'grupo_ncm_nome' => $taxData['grupo_ncm_nome'] ?? null,
+                    'origem_dados_fiscais' => $taxData['source'] ?? null,
+                    'ncm' => $taxData['ncm'] ?? null,
+                    'cest' => $taxData['cest'] ?? null,
+                    'cfop' => $taxData['cfop'] ?? null,
+                    'origem' => $taxData['origem'] ?? null,
+                    'csosn' => $taxData['csosn'] ?? null,
+                    'cst' => $taxData['cst'] ?? null,
+                    'aliquota_icms' => $taxData['aliquota_icms'] ?? null,
+                    'cst_ibscbs' => $taxData['cst_ibscbs'] ?? null,
+                    'cclasstrib' => $taxData['cclasstrib'] ?? null,
+                    'ind_doacao' => (bool) ($taxData['ind_doacao'] ?? false),
+                    'aliquota_ibs_uf' => $taxData['aliquota_ibs_uf'] ?? null,
+                    'aliquota_ibs_mun' => $taxData['aliquota_ibs_mun'] ?? null,
+                    'aliquota_cbs' => $taxData['aliquota_cbs'] ?? null,
+                    'aliquota_is' => $taxData['aliquota_is'] ?? null,
+                    'unidade_comercial' => $taxData['unidade_comercial'] ?? null,
+                    'unidade_tributavel' => $taxData['unidade_tributavel'] ?? null,
                     'codigo_barras' => $product?->tb1_codbar,
-                    'rtc_emissao_apta' => $this->hasRtcTaxData($product),
+                    'rtc_emissao_apta' => $this->fiscalProductTaxService->hasRtcTaxData($taxData),
                 ];
             })->values()->all(),
             'itens_excluidos' => $excludedItems,
@@ -460,6 +470,15 @@ class FiscalInvoicePreparationService
                 : 'Nenhum item da venda possui dados fiscais minimos para gerar a nota.';
         }
 
+        foreach ($excludedItems as $excludedItem) {
+            $errors[] = sprintf(
+                'Produto %d (%s) bloqueou a emissao fiscal: %s.',
+                (int) $excludedItem['produto_id'],
+                (string) $excludedItem['descricao'],
+                implode(', ', $excludedItem['campos_faltantes'] ?? [])
+            );
+        }
+
         foreach ($eligibleSales as $sale) {
             /** @var Produto|null $product */
             $product = $sale->produto;
@@ -471,21 +490,27 @@ class FiscalInvoicePreparationService
                 continue;
             }
 
-            $missingFields = [];
+            $taxData = $this->fiscalProductTaxService->resolve($product);
+            $missingFields = $this->fiscalProductTaxService->missingRequiredFields($taxData);
 
-            foreach ([
-                'tb1_ncm' => 'NCM',
-                'tb1_cfop' => 'CFOP',
-                'tb1_unidade_comercial' => 'Unidade comercial',
-                'tb1_unidade_tributavel' => 'Unidade tributavel',
-            ] as $field => $label) {
-                if (blank($product->{$field})) {
-                    $missingFields[] = $label;
-                }
+            if (($taxData['source'] ?? null) === 'sem_categoria') {
+                $missingFields[] = 'Categoria fiscal';
             }
 
-            if (blank($product->tb1_csosn) && blank($product->tb1_cst)) {
-                $missingFields[] = 'CSOSN/CST';
+            if (($taxData['source'] ?? null) !== 'produto_legado' && blank($taxData['grupo_ncm_id'] ?? null)) {
+                $missingFields[] = 'Grupo NCM';
+            }
+
+            if (! (bool) ($taxData['category_active'] ?? false)) {
+                $missingFields[] = 'Categoria fiscal ativa';
+            }
+
+            if (! (bool) ($taxData['grupo_ncm_active'] ?? false)) {
+                $missingFields[] = 'Grupo NCM ativo';
+            }
+
+            if (! (bool) ($taxData['category_current'] ?? false)) {
+                $missingFields[] = 'Categoria fiscal vigente';
             }
 
             if ($missingFields !== []) {
@@ -614,16 +639,27 @@ class FiscalInvoicePreparationService
             if (! $product) {
                 $missingFields = ['Produto nao encontrado'];
             } else {
-                if (blank($product->tb1_ncm)) {
-                    $missingFields[] = 'NCM';
+                $taxData = $this->fiscalProductTaxService->resolve($product);
+                $missingFields = $this->fiscalProductTaxService->missingRequiredFields($taxData);
+
+                if (($taxData['source'] ?? null) === 'sem_categoria') {
+                    array_unshift($missingFields, 'Categoria fiscal');
                 }
 
-                if (blank($product->tb1_cfop)) {
-                    $missingFields[] = 'CFOP';
+                if (($taxData['source'] ?? null) !== 'produto_legado' && blank($taxData['grupo_ncm_id'] ?? null)) {
+                    $missingFields[] = 'Grupo NCM';
                 }
 
-                if (blank($product->tb1_csosn) && blank($product->tb1_cst)) {
-                    $missingFields[] = 'CSOSN/CST';
+                if (! (bool) ($taxData['category_active'] ?? false)) {
+                    $missingFields[] = 'Categoria fiscal ativa';
+                }
+
+                if (! (bool) ($taxData['grupo_ncm_active'] ?? false)) {
+                    $missingFields[] = 'Grupo NCM ativo';
+                }
+
+                if (! (bool) ($taxData['category_current'] ?? false)) {
+                    $missingFields[] = 'Categoria fiscal vigente';
                 }
             }
 
@@ -645,19 +681,6 @@ class FiscalInvoicePreparationService
         }
 
         return [$eligibleSales, $excludedItems];
-    }
-
-    private function hasRtcTaxData(?Produto $product): bool
-    {
-        if (! $product) {
-            return false;
-        }
-
-        return filled($product->tb1_cst_ibscbs)
-            && filled($product->tb1_cclasstrib)
-            && $product->tb1_aliquota_ibs_uf !== null
-            && $product->tb1_aliquota_ibs_mun !== null
-            && $product->tb1_aliquota_cbs !== null;
     }
 
     private function onlyDigits(?string $value): ?string

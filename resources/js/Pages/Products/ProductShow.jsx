@@ -20,7 +20,7 @@ const resolveLabel = (labels, key) => {
     return labels[key] ?? "---";
 };
 
-export default function ProductShow({ auth, product, typeLabels, statusLabels }) {
+export default function ProductShow({ auth, product, fiscalData = {}, typeLabels, statusLabels }) {
     const { flash } = usePage().props;
 
     return (
@@ -99,6 +99,20 @@ export default function ProductShow({ auth, product, typeLabels, statusLabels })
                                 <p className="text-gray-600 dark:text-gray-400">{Number(product.tb1_qtd ?? 0)}</p>
                             </div>
                         )}
+                        <div className="mt-6 rounded-md border border-gray-200 bg-white p-4 dark:bg-gray-800">
+                            <p className="text-md font-semibold text-gray-700 dark:text-gray-200">Dados fiscais herdados da categoria</p>
+                            <div className="mt-3 grid gap-3 text-gray-600 sm:grid-cols-2 lg:grid-cols-4 dark:text-gray-300">
+                                <p><span className="font-semibold">Categoria:</span> {fiscalData.categoria_nome ?? "--"}</p>
+                                <p><span className="font-semibold">Grupo NCM:</span> {fiscalData.grupo_ncm_nome ?? "--"}</p>
+                                <p><span className="font-semibold">Fonte:</span> {fiscalData.source ?? "--"}</p>
+                                <p><span className="font-semibold">NCM:</span> {fiscalData.ncm ?? "--"}</p>
+                                <p><span className="font-semibold">CEST:</span> {fiscalData.cest ?? "--"}</p>
+                                <p><span className="font-semibold">CFOP:</span> {fiscalData.cfop ?? "--"}</p>
+                                <p><span className="font-semibold">CSOSN:</span> {fiscalData.csosn ?? "--"}</p>
+                                <p><span className="font-semibold">CST ICMS:</span> {fiscalData.cst ?? "--"}</p>
+                                <p><span className="font-semibold">cClassTrib:</span> {fiscalData.cclasstrib ?? "--"}</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

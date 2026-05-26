@@ -282,6 +282,42 @@ export default function ProductIndex({
                                         <i className="bi bi-ui-checks-grid text-sm" aria-hidden="true"></i>
                                     </InfoButton>
                                 </Link>
+                                <Link
+                                    href={route("products.fiscal-categories.index")}
+                                    className="self-start sm:self-auto"
+                                >
+                                    <InfoButton
+                                        aria-label="Categorias fiscais"
+                                        title="Categorias fiscais"
+                                        className="whitespace-nowrap"
+                                    >
+                                        <i className="bi bi-tags text-sm" aria-hidden="true"></i>
+                                    </InfoButton>
+                                </Link>
+                                <Link
+                                    href={route("products.grupos-ncm.index")}
+                                    className="self-start sm:self-auto"
+                                >
+                                    <InfoButton
+                                        aria-label="Grupos NCM"
+                                        title="Grupos NCM"
+                                        className="whitespace-nowrap"
+                                    >
+                                        <i className="bi bi-upc-scan text-sm" aria-hidden="true"></i>
+                                    </InfoButton>
+                                </Link>
+                                <Link
+                                    href={route("products.fiscal-mass-association.index")}
+                                    className="self-start sm:self-auto"
+                                >
+                                    <InfoButton
+                                        aria-label="Associacao fiscal em massa"
+                                        title="Associacao fiscal em massa"
+                                        className="whitespace-nowrap"
+                                    >
+                                        <i className="bi bi-check2-square text-sm" aria-hidden="true"></i>
+                                    </InfoButton>
+                                </Link>
                                 <input
                                     id="product-search"
                                     type="text"

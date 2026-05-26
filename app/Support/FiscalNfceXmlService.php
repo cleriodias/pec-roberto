@@ -20,6 +20,7 @@ class FiscalNfceXmlService
 
     public function __construct(
         private readonly FiscalWebserviceResolverService $fiscalWebserviceResolverService,
+        private readonly FiscalProductTaxService $fiscalProductTaxService = new FiscalProductTaxService(),
     ) {
     }
 
@@ -262,8 +263,9 @@ class FiscalNfceXmlService
                 throw new RuntimeException('A geracao automatica de XML assinado nesta etapa esta preparada apenas para CRT 1.');
             }
 
+            $taxData = $this->fiscalProductTaxService->resolve($product);
             $allowedCsosn = ['102', '103', '300', '400'];
-            $csosn = str_pad((string) $product->tb1_csosn, 3, '0', STR_PAD_LEFT);
+            $csosn = str_pad((string) ($taxData['csosn'] ?? ''), 3, '0', STR_PAD_LEFT);
 
             if (! in_array($csosn, $allowedCsosn, true)) {
                 throw new RuntimeException(sprintf(
@@ -292,15 +294,15 @@ class FiscalNfceXmlService
             $this->appendTextElement($document, $prod, 'cProd', (string) $sale->tb1_id);
             $this->appendTextElement($document, $prod, 'cEAN', $ean);
             $this->appendTextElement($document, $prod, 'xProd', $productDescription);
-            $this->appendTextElement($document, $prod, 'NCM', $this->requiredDigits($product->tb1_ncm, 8, sprintf('NCM do produto %s', $sale->produto_nome)));
-            $this->appendOptionalTextElement($document, $prod, 'CEST', $this->optionalDigits($product->tb1_cest, 7));
-            $this->appendTextElement($document, $prod, 'CFOP', $this->requiredDigits($product->tb1_cfop, 4, sprintf('CFOP do produto %s', $sale->produto_nome)));
-            $this->appendTextElement($document, $prod, 'uCom', (string) $product->tb1_unidade_comercial);
+            $this->appendTextElement($document, $prod, 'NCM', $this->requiredDigits($taxData['ncm'] ?? null, 8, sprintf('NCM do produto %s', $sale->produto_nome)));
+            $this->appendOptionalTextElement($document, $prod, 'CEST', $this->optionalDigits($taxData['cest'] ?? null, 7));
+            $this->appendTextElement($document, $prod, 'CFOP', $this->requiredDigits($taxData['cfop'] ?? null, 4, sprintf('CFOP do produto %s', $sale->produto_nome)));
+            $this->appendTextElement($document, $prod, 'uCom', (string) ($taxData['unidade_comercial'] ?? 'UN'));
             $this->appendTextElement($document, $prod, 'qCom', $quantity);
             $this->appendTextElement($document, $prod, 'vUnCom', $unitPrice);
             $this->appendTextElement($document, $prod, 'vProd', $total);
             $this->appendTextElement($document, $prod, 'cEANTrib', $ean);
-            $this->appendTextElement($document, $prod, 'uTrib', (string) $product->tb1_unidade_tributavel);
+            $this->appendTextElement($document, $prod, 'uTrib', (string) ($taxData['unidade_tributavel'] ?? 'UN'));
             $this->appendTextElement($document, $prod, 'qTrib', $quantity);
             $this->appendTextElement($document, $prod, 'vUnTrib', $unitPrice);
             $this->appendTextElement($document, $prod, 'indTot', '1');
@@ -312,7 +314,7 @@ class FiscalNfceXmlService
             $imposto->appendChild($icms);
             $icmsSimpleNational = $document->createElement('ICMSSN' . $csosn);
             $icms->appendChild($icmsSimpleNational);
-            $this->appendTextElement($document, $icmsSimpleNational, 'orig', $this->requiredDigits((string) $product->tb1_origem, 1, sprintf('Origem fiscal do produto %s', $sale->produto_nome)));
+            $this->appendTextElement($document, $icmsSimpleNational, 'orig', $this->requiredDigits((string) ($taxData['origem'] ?? 0), 1, sprintf('Origem fiscal do produto %s', $sale->produto_nome)));
             $this->appendTextElement($document, $icmsSimpleNational, 'CSOSN', $csosn);
 
             $pis = $document->createElement('PIS');
@@ -333,7 +335,7 @@ class FiscalNfceXmlService
             $this->appendTextElement($document, $cofinsOther, 'pCOFINS', '0.00');
             $this->appendTextElement($document, $cofinsOther, 'vCOFINS', '0.00');
 
-            $rtcTaxes = $this->resolveRtcTaxes($sale, $product);
+            $rtcTaxes = $this->resolveRtcTaxes($sale, $taxData);
 
             if ($rtcTaxes !== null) {
                 $this->appendRtcTaxGroup($document, $imposto, $rtcTaxes);
@@ -617,28 +619,28 @@ class FiscalNfceXmlService
         return preg_replace('/\D+/', '', (string) $value);
     }
 
-    private function resolveRtcTaxes(Venda $sale, Produto $product): ?array
+    private function resolveRtcTaxes(Venda $sale, array $taxData): ?array
     {
-        $cstIbsCbs = $this->optionalDigits($product->tb1_cst_ibscbs, 3);
-        $cClassTrib = $this->optionalDigits($product->tb1_cclasstrib, 6);
+        $cstIbsCbs = $this->optionalDigits($taxData['cst_ibscbs'] ?? null, 3);
+        $cClassTrib = $this->optionalDigits($taxData['cclasstrib'] ?? null, 6);
 
         if ($cstIbsCbs === null || $cClassTrib === null) {
             return null;
         }
 
         if (
-            $product->tb1_aliquota_ibs_uf === null
-            || $product->tb1_aliquota_ibs_mun === null
-            || $product->tb1_aliquota_cbs === null
+            ($taxData['aliquota_ibs_uf'] ?? null) === null
+            || ($taxData['aliquota_ibs_mun'] ?? null) === null
+            || ($taxData['aliquota_cbs'] ?? null) === null
         ) {
             return null;
         }
 
         $base = round((float) $sale->valor_total, 2);
-        $aliquotaIbsUf = round((float) $product->tb1_aliquota_ibs_uf, 4);
-        $aliquotaIbsMun = round((float) $product->tb1_aliquota_ibs_mun, 4);
-        $aliquotaCbs = round((float) $product->tb1_aliquota_cbs, 4);
-        $aliquotaIs = round((float) ($product->tb1_aliquota_is ?? 0), 4);
+        $aliquotaIbsUf = round((float) $taxData['aliquota_ibs_uf'], 4);
+        $aliquotaIbsMun = round((float) $taxData['aliquota_ibs_mun'], 4);
+        $aliquotaCbs = round((float) $taxData['aliquota_cbs'], 4);
+        $aliquotaIs = round((float) ($taxData['aliquota_is'] ?? 0), 4);
         $valorIbsUf = $this->calculateRtcTaxValue($base, $aliquotaIbsUf);
         $valorIbsMun = $this->calculateRtcTaxValue($base, $aliquotaIbsMun);
         $valorCbs = $this->calculateRtcTaxValue($base, $aliquotaCbs);
@@ -647,7 +649,7 @@ class FiscalNfceXmlService
         return [
             'CST' => $cstIbsCbs,
             'cClassTrib' => $cClassTrib,
-            'indDoacao' => (bool) $product->tb1_ind_doacao,
+            'indDoacao' => (bool) ($taxData['ind_doacao'] ?? false),
             'vBC' => $this->formatMoney($base),
             'pIBSUF' => $this->formatRate($aliquotaIbsUf),
             'vIBSUF' => $this->formatMoney($valorIbsUf),

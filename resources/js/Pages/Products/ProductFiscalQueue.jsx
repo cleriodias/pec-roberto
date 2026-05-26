@@ -14,7 +14,8 @@ const TYPE_LABELS = {
 };
 
 const FISCAL_FIELDS = [
-    { key: "tb1_ncm", label: "NCM" },
+    { key: "tb30_categoria_fiscal_id", label: "Categoria fiscal" },
+    { key: "tb33_grupo_ncm_id", label: "Grupo NCM" },
     { key: "tb1_cfop", label: "CFOP" },
     { key: "tb1_csosn", label: "CSOSN" },
     { key: "tb1_cst", label: "CST" },
@@ -235,6 +236,21 @@ export default function ProductFiscalQueue({
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
+                        <Link href={route("products.fiscal-categories.index")}>
+                            <InfoButton aria-label="Categorias fiscais" title="Categorias fiscais">
+                                <i className="bi bi-tags text-lg" aria-hidden="true"></i>
+                            </InfoButton>
+                        </Link>
+                        <Link href={route("products.grupos-ncm.index")}>
+                            <InfoButton aria-label="Grupos NCM" title="Grupos NCM">
+                                <i className="bi bi-upc-scan text-lg" aria-hidden="true"></i>
+                            </InfoButton>
+                        </Link>
+                        <Link href={route("products.fiscal-mass-association.index")}>
+                            <InfoButton aria-label="Associacao fiscal em massa" title="Associacao fiscal em massa">
+                                <i className="bi bi-ui-checks-grid text-lg" aria-hidden="true"></i>
+                            </InfoButton>
+                        </Link>
                         <Link href={route("products.fiscal-references.index")}>
                             <SuccessButton aria-label="Cadastrar referencias fiscais" title="Cadastrar referencias fiscais">
                                 <i className="bi bi-journal-plus text-lg" aria-hidden="true"></i>

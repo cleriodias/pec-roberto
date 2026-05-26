@@ -2,9 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CategoriaFiscal;
+use App\Models\CategoriaFiscalHistorico;
+use App\Models\GrupoNcm;
 use App\Models\Produto;
+use App\Models\ProdutoExcecaoFiscal;
 use App\Models\ReferenciaFiscal;
 use App\Models\User;
+use App\Support\FiscalProductTaxService;
 use App\Support\ProductQuickLookupCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -85,26 +90,52 @@ class ProductController extends Controller
 
         if (in_array($fiscalStatus, ['complete', 'incomplete'], true)) {
             $query->where(function ($builder) use ($fiscalStatus) {
-                $requiredFiscalFields = [
-                    'tb1_ncm',
-                    'tb1_cfop',
-                    'tb1_csosn',
-                    'tb1_cst',
-                    'tb1_cst_ibscbs',
-                    'tb1_cclasstrib',
-                    'tb1_aliquota_ibs_uf',
-                    'tb1_aliquota_ibs_mun',
-                    'tb1_aliquota_cbs',
-                ];
-
-                foreach ($requiredFiscalFields as $field) {
-                    if ($fiscalStatus === 'complete') {
-                        $builder->whereNotNull($field)
-                            ->where($field, '!=', '');
-                    } else {
-                        $builder->orWhereNull($field)
-                            ->orWhere($field, '=', '');
-                    }
+                if ($fiscalStatus === 'complete') {
+                    $builder->whereHas('categoriaFiscal', function ($categoryQuery) {
+                        $categoryQuery
+                            ->where('tb30_ativo', true)
+                            ->whereNotNull('tb30_cfop_venda_interna')
+                            ->where('tb30_cfop_venda_interna', '!=', '')
+                            ->where(function ($taxQuery) {
+                                $taxQuery->whereNotNull('tb30_csosn')
+                                    ->where('tb30_csosn', '!=', '')
+                                    ->orWhere(function ($cstQuery) {
+                                        $cstQuery->whereNotNull('tb30_cst_icms')
+                                            ->where('tb30_cst_icms', '!=', '');
+                                    });
+                            });
+                    })->whereHas('grupoNcm', function ($groupQuery) {
+                        $groupQuery
+                            ->where('tb33_ativo', true)
+                            ->whereNotNull('tb33_ncm')
+                            ->where('tb33_ncm', '!=', '');
+                    });
+                } else {
+                    $builder->whereNull('tb30_categoria_fiscal_id')
+                        ->orWhereNull('tb33_grupo_ncm_id')
+                        ->orWhereDoesntHave('categoriaFiscal')
+                        ->orWhereDoesntHave('grupoNcm')
+                        ->orWhereHas('grupoNcm', function ($groupQuery) {
+                            $groupQuery
+                                ->where('tb33_ativo', false)
+                                ->orWhereNull('tb33_ncm')
+                                ->orWhere('tb33_ncm', '=', '');
+                        })
+                        ->orWhereHas('categoriaFiscal', function ($categoryQuery) {
+                            $categoryQuery
+                                ->where('tb30_ativo', false)
+                                ->orWhereNull('tb30_cfop_venda_interna')
+                                ->orWhere('tb30_cfop_venda_interna', '=', '')
+                                ->orWhere(function ($taxQuery) {
+                                    $taxQuery->where(function ($csosnQuery) {
+                                        $csosnQuery->whereNull('tb30_csosn')
+                                            ->orWhere('tb30_csosn', '=', '');
+                                    })->where(function ($cstQuery) {
+                                        $cstQuery->whereNull('tb30_cst_icms')
+                                            ->orWhere('tb30_cst_icms', '=', '');
+                                    });
+                                });
+                        });
                 }
             });
         }
@@ -155,8 +186,11 @@ class ProductController extends Controller
 
     public function show(Produto $product): Response
     {
+        $product->load(['categoriaFiscal', 'grupoNcm', 'excecoesFiscais']);
+
         return Inertia::render('Products/ProductShow', [
             'product' => $product,
+            'fiscalData' => app(FiscalProductTaxService::class)->resolve($product),
             'typeLabels' => self::TYPE_LABELS,
             'statusLabels' => self::STATUS_LABELS,
         ]);
@@ -260,6 +294,8 @@ class ProductController extends Controller
         $data = $this->prepareProductData($data);
 
         $product = Produto::create($data);
+        $this->syncFiscalException($request, $product);
+        $this->logProductCategoryChange($request, $product, null, $product->tb30_categoria_fiscal_id, 'criacao_produto');
         $quickLookupCache->invalidateCatalog();
 
         return Redirect::route('products.show', ['product' => $product->tb1_id])
@@ -268,8 +304,13 @@ class ProductController extends Controller
 
     public function edit(Produto $product): Response
     {
+        $product->load(['categoriaFiscal', 'grupoNcm', 'excecoesFiscais']);
+
         return Inertia::render('Products/ProductEdit', array_merge(
-            ['product' => $product],
+            [
+                'product' => $product,
+                'fiscalData' => app(FiscalProductTaxService::class)->resolve($product),
+            ],
             $this->formOptions()
         ));
     }
@@ -279,8 +320,11 @@ class ProductController extends Controller
         $data = $this->validateProduct($request, $product);
         $data['tb1_vr_credit'] = (bool) ($data['tb1_vr_credit'] ?? false);
         $data = $this->prepareProductData($data, $product);
+        $previousCategoryId = $product->tb30_categoria_fiscal_id;
 
         $product->update($data);
+        $this->syncFiscalException($request, $product);
+        $this->logProductCategoryChange($request, $product, $previousCategoryId, $product->tb30_categoria_fiscal_id, 'troca_categoria_produto');
         $quickLookupCache->invalidateCatalog();
 
         return Redirect::route('products.show', ['product' => $product->tb1_id])
@@ -513,6 +557,20 @@ class ProductController extends Controller
                     'integer',
                     Rule::in(array_keys(self::TYPE_LABELS)),
                 ],
+                'tb30_categoria_fiscal_id' => [
+                    Rule::requiredIf(fn () => (int) $request->input('tb1_status', 1) === 1),
+                    'nullable',
+                    'integer',
+                    Rule::exists('tb30_categorias_fiscais', 'tb30_id'),
+                ],
+                'tb33_grupo_ncm_id' => [
+                    Rule::requiredIf(fn () => (int) $request->input('tb1_status', 1) === 1),
+                    'nullable',
+                    'integer',
+                    Rule::exists('tb33_grupos_ncm', 'tb33_id'),
+                ],
+                'tb1_ncm_proprio' => ['nullable', 'string', 'size:8'],
+                'tb1_usa_excecao_fiscal' => ['nullable', 'boolean'],
                 'tb1_ncm' => ['nullable', 'string', 'size:8'],
                 'tb1_cest' => ['nullable', 'string', 'size:7'],
                 'tb1_cfop' => ['nullable', 'string', 'size:4'],
@@ -545,6 +603,31 @@ class ProductController extends Controller
                     'nullable',
                     'boolean',
                 ],
+                'excecao_fiscal' => ['nullable', 'array'],
+                'excecao_fiscal.tb31_motivo_excecao' => ['nullable', 'string', 'max:255'],
+                'excecao_fiscal.tb31_data_inicio_vigencia' => ['nullable', 'date'],
+                'excecao_fiscal.tb31_data_fim_vigencia' => ['nullable', 'date', 'after_or_equal:excecao_fiscal.tb31_data_inicio_vigencia'],
+                'excecao_fiscal.tb31_ncm' => ['nullable', 'string', 'size:8'],
+                'excecao_fiscal.tb31_cest' => ['nullable', 'string', 'size:7'],
+                'excecao_fiscal.tb31_cclass_trib' => ['nullable', 'string', 'size:6'],
+                'excecao_fiscal.tb31_cst_ibs' => ['nullable', 'string', 'size:3'],
+                'excecao_fiscal.tb31_cst_cbs' => ['nullable', 'string', 'size:3'],
+                'excecao_fiscal.tb31_aliquota_ibs_uf' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'excecao_fiscal.tb31_aliquota_ibs_municipio' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'excecao_fiscal.tb31_aliquota_cbs' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'excecao_fiscal.tb31_aliquota_is' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'excecao_fiscal.tb31_cfop_venda_interna' => ['nullable', 'string', 'size:4'],
+                'excecao_fiscal.tb31_cfop_venda_interestadual' => ['nullable', 'string', 'size:4'],
+                'excecao_fiscal.tb31_cfop_consumo_local' => ['nullable', 'string', 'size:4'],
+                'excecao_fiscal.tb31_cfop_entrega' => ['nullable', 'string', 'size:4'],
+                'excecao_fiscal.tb31_csosn' => ['nullable', 'string', 'max:4'],
+                'excecao_fiscal.tb31_cst_icms' => ['nullable', 'string', 'max:3'],
+                'excecao_fiscal.tb31_cst_pis' => ['nullable', 'string', 'max:3'],
+                'excecao_fiscal.tb31_cst_cofins' => ['nullable', 'string', 'max:3'],
+                'excecao_fiscal.tb31_aliquota_icms' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'excecao_fiscal.tb31_aliquota_pis' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'excecao_fiscal.tb31_aliquota_cofins' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'excecao_fiscal.tb31_observacao_fiscal' => ['nullable', 'string'],
                 'sem_codigo_barras' => [
                     'nullable',
                     'boolean',
@@ -570,6 +653,11 @@ class ProductController extends Controller
                 'tb1_tipo.required' => 'Selecione o tipo do produto.',
                 'tb1_tipo.integer' => 'Tipo de produto invalido.',
                 'tb1_tipo.in' => 'Tipo de produto nao reconhecido.',
+                'tb30_categoria_fiscal_id.required' => 'Produto ativo deve estar vinculado a uma categoria fiscal.',
+                'tb30_categoria_fiscal_id.exists' => 'Categoria fiscal nao encontrada.',
+                'tb33_grupo_ncm_id.required' => 'Produto ativo deve estar vinculado a um grupo NCM.',
+                'tb33_grupo_ncm_id.exists' => 'Grupo NCM nao encontrado.',
+                'tb1_ncm_proprio.size' => 'O NCM proprio deve ter exatamente 8 digitos.',
                 'tb1_ncm.size' => 'O NCM deve ter exatamente 8 digitos.',
                 'tb1_cest.size' => 'O CEST deve ter exatamente 7 digitos.',
                 'tb1_cfop.size' => 'O CFOP deve ter exatamente 4 digitos.',
@@ -676,6 +764,43 @@ class ProductController extends Controller
             'typeOptions' => $format(self::TYPE_LABELS),
             'statusOptions' => $format(self::STATUS_LABELS),
             'originOptions' => $format(self::ORIGIN_LABELS),
+            'fiscalCategories' => CategoriaFiscal::query()
+                ->orderByDesc('tb30_ativo')
+                ->orderBy('tb30_nome')
+                ->get([
+                    'tb30_id',
+                    'tb30_nome',
+                    'tb30_ativo',
+                    'tb30_cfop_venda_interna',
+                    'tb30_cfop_venda_interestadual',
+                    'tb30_cfop_consumo_local',
+                    'tb30_cfop_entrega',
+                    'tb30_csosn',
+                    'tb30_cst_icms',
+                    'tb30_cst_pis',
+                    'tb30_cst_cofins',
+                    'tb30_cst_ibs',
+                    'tb30_cst_cbs',
+                    'tb30_cclass_trib',
+                    'tb30_aliquota_ibs_uf',
+                    'tb30_aliquota_ibs_municipio',
+                    'tb30_aliquota_cbs',
+                    'tb30_aliquota_is',
+                    'tb30_observacao_fiscal',
+                ]),
+            'gruposNcm' => GrupoNcm::query()
+                ->orderByDesc('tb33_ativo')
+                ->orderBy('tb33_nome')
+                ->get([
+                    'tb33_id',
+                    'tb33_codigo',
+                    'tb33_nome',
+                    'tb33_ncm',
+                    'tb33_cest',
+                    'tb33_cclass_trib',
+                    'tb33_ativo',
+                    'tb33_observacao_fiscal',
+                ]),
         ];
     }
 
@@ -687,6 +812,8 @@ class ProductController extends Controller
                 'tb1_nome',
                 'tb1_codbar',
                 'tb1_tipo',
+                'tb30_categoria_fiscal_id',
+                'tb33_grupo_ncm_id',
                 'tb1_ncm',
                 'tb1_cfop',
                 'tb1_csosn',
@@ -724,8 +851,8 @@ class ProductController extends Controller
             })
             ->where(function ($query) {
                 $query
-                    ->whereNull('tb1_ncm')
-                    ->orWhere('tb1_ncm', '=', '')
+                    ->whereNull('tb30_categoria_fiscal_id')
+                    ->orWhereNull('tb33_grupo_ncm_id')
                     ->orWhereNull('tb1_cfop')
                     ->orWhere('tb1_cfop', '=', '')
                     ->orWhereNull('tb1_csosn')
@@ -785,6 +912,15 @@ class ProductController extends Controller
 
         $data['tb1_nome'] = $this->normalizeProductName($data['tb1_nome'] ?? $product?->tb1_nome ?? '');
         $data['tb1_codbar'] = $this->resolveProductBarcode($data, $product);
+        $data['tb30_categoria_fiscal_id'] = isset($data['tb30_categoria_fiscal_id']) && $data['tb30_categoria_fiscal_id'] !== ''
+            ? (int) $data['tb30_categoria_fiscal_id']
+            : null;
+        $data['tb33_grupo_ncm_id'] = isset($data['tb33_grupo_ncm_id']) && $data['tb33_grupo_ncm_id'] !== ''
+            ? (int) $data['tb33_grupo_ncm_id']
+            : null;
+        $data['tb1_ncm_proprio'] = $this->normalizeDigitsField($data['tb1_ncm_proprio'] ?? $product?->tb1_ncm_proprio ?? null, 8);
+        $data['tb1_usa_excecao_fiscal'] = (bool) ($data['tb1_usa_excecao_fiscal'] ?? false);
+        $data['tb1_responsavel_ultima_alteracao'] = auth()->id();
         $data['tb1_ncm'] = $this->normalizeDigitsField($data['tb1_ncm'] ?? $product?->tb1_ncm ?? null, 8);
         $data['tb1_cest'] = $this->normalizeDigitsField($data['tb1_cest'] ?? $product?->tb1_cest ?? null, 7);
         $data['tb1_cfop'] = $this->normalizeDigitsField($data['tb1_cfop'] ?? $product?->tb1_cfop ?? null, 4);
@@ -810,12 +946,94 @@ class ProductController extends Controller
             : 0;
 
         unset($data['sem_codigo_barras']);
+        unset($data['excecao_fiscal']);
 
         if ($product) {
             unset($data['tb1_id']);
         }
 
         return $data;
+    }
+
+    private function syncFiscalException(Request $request, Produto $product): void
+    {
+        if (! $request->boolean('tb1_usa_excecao_fiscal')) {
+            $product->excecoesFiscais()
+                ->where('tb31_ativo', true)
+                ->update(['tb31_ativo' => false]);
+
+            return;
+        }
+
+        $exceptionData = $request->input('excecao_fiscal', []);
+
+        if (! is_array($exceptionData) || collect($exceptionData)->filter(fn ($value) => filled($value))->isEmpty()) {
+            return;
+        }
+
+        $prepared = ['tb1_id' => $product->tb1_id, 'tb31_ativo' => true];
+
+        foreach ([
+            'tb31_ncm' => 8,
+            'tb31_cest' => 7,
+            'tb31_cclass_trib' => 6,
+            'tb31_cst_ibs' => 3,
+            'tb31_cst_cbs' => 3,
+            'tb31_cfop_venda_interna' => 4,
+            'tb31_cfop_venda_interestadual' => 4,
+            'tb31_cfop_consumo_local' => 4,
+            'tb31_cfop_entrega' => 4,
+            'tb31_csosn' => 4,
+            'tb31_cst_icms' => 3,
+            'tb31_cst_pis' => 3,
+            'tb31_cst_cofins' => 3,
+        ] as $field => $size) {
+            $prepared[$field] = $this->normalizeDigitsField($exceptionData[$field] ?? null, $size);
+        }
+
+        foreach ([
+            'tb31_aliquota_ibs_uf',
+            'tb31_aliquota_ibs_municipio',
+            'tb31_aliquota_cbs',
+            'tb31_aliquota_is',
+            'tb31_aliquota_icms',
+            'tb31_aliquota_pis',
+            'tb31_aliquota_cofins',
+        ] as $field) {
+            $prepared[$field] = $this->normalizeNullableDecimal($exceptionData[$field] ?? null, str_contains($field, 'icms') ? 2 : 4);
+        }
+
+        foreach ([
+            'tb31_motivo_excecao',
+            'tb31_data_inicio_vigencia',
+            'tb31_data_fim_vigencia',
+            'tb31_observacao_fiscal',
+        ] as $field) {
+            $prepared[$field] = filled($exceptionData[$field] ?? null) ? $exceptionData[$field] : null;
+        }
+
+        ProdutoExcecaoFiscal::updateOrCreate(
+            ['tb1_id' => $product->tb1_id, 'tb31_ativo' => true],
+            $prepared
+        );
+    }
+
+    private function logProductCategoryChange(Request $request, Produto $product, mixed $previousCategoryId, mixed $newCategoryId, string $action): void
+    {
+        if ((string) $previousCategoryId === (string) $newCategoryId) {
+            return;
+        }
+
+        CategoriaFiscalHistorico::create([
+            'tb30_categoria_fiscal_id' => $newCategoryId ?: null,
+            'tb1_id' => $product->tb1_id,
+            'user_id' => $request->user()?->id,
+            'tb32_acao' => $action,
+            'tb32_campo' => 'tb30_categoria_fiscal_id',
+            'tb32_valor_anterior' => $previousCategoryId === null ? null : (string) $previousCategoryId,
+            'tb32_valor_novo' => $newCategoryId === null ? null : (string) $newCategoryId,
+            'tb32_registros_afetados' => 1,
+        ]);
     }
 
     private function resolveProductBarcode(array $data, ?Produto $product = null): string
