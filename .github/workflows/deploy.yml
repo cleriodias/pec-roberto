@@ -33,12 +33,13 @@ jobs:
 
       - name: Ensure App Service exists
         run: |
-          if az webapp show \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEBAPP_NAME" \
-            --query id \
-            --output tsv >/dev/null 2>&1; then
-            echo "App Service $AZURE_WEBAPP_NAME already exists in $AZURE_RESOURCE_GROUP."
+          app_resource_group="$(az webapp list \
+            --query "[?name=='$AZURE_WEBAPP_NAME'].resourceGroup | [0]" \
+            --output tsv)"
+
+          if [ -n "$app_resource_group" ]; then
+            echo "App Service $AZURE_WEBAPP_NAME already exists in $app_resource_group."
+            echo "AZURE_RESOURCE_GROUP=$app_resource_group" >> "$GITHUB_ENV"
             exit 0
           fi
 
