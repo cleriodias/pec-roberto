@@ -62,6 +62,7 @@ class DatabaseToolsController extends Controller
         ]);
 
         $action = $data['action'];
+        $selectedSeeder = $data['seeder'] ?? null;
         $commands = $this->commandsForAction($action, $data['seeder'] ?? null);
         $outputBlocks = [];
         $hasFailure = false;
@@ -88,6 +89,7 @@ class DatabaseToolsController extends Controller
             $logContext = [
                 'user_id' => $request->user()?->id,
                 'action' => $action,
+                'seeder' => $selectedSeeder,
             ];
 
             if ($hasFailure) {
@@ -108,10 +110,20 @@ class DatabaseToolsController extends Controller
                 ->with('artisan_output', implode("\n\n", $outputBlocks))
                 ->with('artisan_action', $action);
         } catch (Throwable $e) {
+            $outputBlocks[] = implode("\n", array_filter([
+                'Erro:',
+                $e->getMessage(),
+                'Arquivo: ' . $e->getFile() . ':' . $e->getLine(),
+                $selectedSeeder ? 'Seeder: ' . $selectedSeeder : null,
+            ]));
+
             Log::error('Database tools failed', [
                 'user_id' => $request->user()?->id,
                 'action' => $action,
+                'seeder' => $selectedSeeder,
                 'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
             ]);
 
             return back()
