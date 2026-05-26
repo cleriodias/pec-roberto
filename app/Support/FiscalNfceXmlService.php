@@ -193,6 +193,11 @@ class FiscalNfceXmlService
         }
 
         $consumerType = trim((string) ($consumer['type'] ?? ''));
+
+        if ($consumerType === 'balcao') {
+            return;
+        }
+
         $documentDigits = $this->onlyDigits($consumer['document'] ?? null);
         $isFiscalCoupon = $consumerType === 'cupom_fiscal';
 

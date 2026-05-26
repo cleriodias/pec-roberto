@@ -641,9 +641,9 @@ class SaleController extends Controller
         }
 
         $validated = $request->validate([
-            'consumer.type' => ['required', 'string', Rule::in(['cupom_fiscal', 'consumidor'])],
+            'consumer.type' => ['required', 'string', Rule::in(['balcao', 'cupom_fiscal', 'consumidor'])],
             'consumer.name' => ['nullable', 'string', 'max:60'],
-            'consumer.document' => ['required', 'string', 'max:18'],
+            'consumer.document' => ['nullable', 'string', 'max:18'],
             'consumer.cep' => ['nullable', 'string', 'max:9'],
             'consumer.street' => ['nullable', 'string', 'max:60'],
             'consumer.number' => ['nullable', 'string', 'max:20'],
@@ -685,7 +685,11 @@ class SaleController extends Controller
         return response()->json([
             'message' => sprintf(
                 '%s preparado para a venda %d.',
-                $consumer['type'] === 'cupom_fiscal' ? 'Cupom fiscal' : 'NF Consumidor',
+                match ($consumer['type'] ?? 'balcao') {
+                    'cupom_fiscal' => 'Cupom fiscal',
+                    'consumidor' => 'NF Consumidor',
+                    default => 'NF Balcao',
+                },
                 (int) $notaFiscal->tb4_id
             ),
             'fiscal' => $this->buildFiscalSummary($notaFiscal),
@@ -1122,10 +1126,14 @@ class SaleController extends Controller
         $cep = preg_replace('/\D+/', '', (string) ($consumer['cep'] ?? ''));
         $cityCode = preg_replace('/\D+/', '', (string) ($consumer['city_code'] ?? ''));
 
-        if (! in_array($type, ['cupom_fiscal', 'consumidor'], true)) {
+        if (! in_array($type, ['balcao', 'cupom_fiscal', 'consumidor'], true)) {
             throw ValidationException::withMessages([
                 'consumer.type' => 'Selecione um tipo fiscal valido para o consumidor.',
             ]);
+        }
+
+        if ($type === 'balcao') {
+            return ['type' => 'balcao'];
         }
 
         if ($type === 'cupom_fiscal' && strlen($document) !== 11) {

@@ -83,7 +83,7 @@ const createCartItemId = (productId, price) =>
     `product-${Number(productId ?? 0)}-price-${Number(price ?? 0).toFixed(2)}`;
 
 const DEFAULT_FISCAL_CONSUMER_FORM = {
-    type: 'cupom_fiscal',
+    type: 'balcao',
     name: '',
     document: '',
     cep: '',
@@ -145,9 +145,7 @@ const resolveFiscalReceiptItems = (receiptData) => {
 };
 
 const buildConsumerFiscalForm = (consumer = null) => ({
-    type: resolveFiscalConsumerType(consumer) === 'balcao'
-        ? 'cupom_fiscal'
-        : resolveFiscalConsumerType(consumer),
+    type: resolveFiscalConsumerType(consumer),
     name: String(consumer?.name ?? consumer?.consumer_name ?? '').trim(),
     document: String(consumer?.document ?? consumer?.consumer_document ?? consumer?.dest_document ?? '').trim(),
     cep: String(consumer?.cep ?? '').trim(),
@@ -1867,7 +1865,7 @@ export default function Dashboard({
                 [field]: normalizedValue,
             };
 
-            if (field === 'type' && normalizedValue === 'cupom_fiscal') {
+            if (field === 'type' && ['balcao', 'cupom_fiscal'].includes(normalizedValue)) {
                 next.name = '';
                 next.cep = '';
                 next.street = '';
@@ -1936,7 +1934,11 @@ export default function Dashboard({
                 setConsumerFiscalErrors(normalizedErrors);
             }
 
-            let message = `Nao foi possivel preparar ${consumerFiscalForm.type === 'cupom_fiscal' ? 'o cupom fiscal' : 'a NF Consumidor'}.`;
+            let message = `Nao foi possivel preparar ${
+                consumerFiscalForm.type === 'balcao'
+                    ? 'a NF Balcao'
+                    : (consumerFiscalForm.type === 'cupom_fiscal' ? 'o cupom fiscal' : 'a NF Consumidor')
+            }.`;
 
             if (error.response?.data?.message) {
                 message = error.response.data.message;
@@ -3200,13 +3202,25 @@ export default function Dashboard({
                             Identificacao fiscal
                         </h3>
                         <p className="mt-1 text-sm text-gray-600">
-                            Escolha entre cupom fiscal com CPF ou NF Consumidor completa e regenere a NFC-e com o destinatario correto.
+                            Escolha NF Balcao, cupom fiscal com CPF ou NF Consumidor completa e regenere a NFC-e.
                         </p>
                     </div>
                     <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
                         <div className="sm:col-span-2">
                             <label className="text-sm font-medium text-gray-700">Tipo fiscal</label>
-                            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                            <div className="mt-2 grid gap-3 sm:grid-cols-3">
+                                <button
+                                    type="button"
+                                    onClick={() => handleConsumerFiscalFieldChange('type', 'balcao')}
+                                    className={`rounded-xl border px-4 py-3 text-left text-sm transition ${
+                                        consumerFiscalForm.type === 'balcao'
+                                            ? 'border-cyan-500 bg-cyan-50 text-cyan-900'
+                                            : 'border-gray-300 bg-white text-gray-700 hover:border-cyan-300'
+                                    }`}
+                                >
+                                    <span className="block font-semibold">NF Balcao</span>
+                                    <span className="mt-1 block text-xs">Nao informa destinatario no XML.</span>
+                                </button>
                                 <button
                                     type="button"
                                     onClick={() => handleConsumerFiscalFieldChange('type', 'cupom_fiscal')}
@@ -3236,6 +3250,11 @@ export default function Dashboard({
                                 <p className="mt-1 text-xs text-red-600">{consumerFiscalErrors.type}</p>
                             )}
                         </div>
+                        {consumerFiscalForm.type === 'balcao' && (
+                            <div className="sm:col-span-2 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
+                                A NFC-e de balcao sera gerada sem o grupo de destinatario.
+                            </div>
+                        )}
                         {consumerFiscalForm.type === 'consumidor' && (
                         <div className="sm:col-span-2">
                             <label className="text-sm font-medium text-gray-700">Nome ou razao social</label>
@@ -3252,6 +3271,7 @@ export default function Dashboard({
                             )}
                         </div>
                         )}
+                        {consumerFiscalForm.type !== 'balcao' && (
                         <div>
                             <label className="text-sm font-medium text-gray-700">
                                 {consumerFiscalForm.type === 'cupom_fiscal' ? 'CPF' : 'CPF ou CNPJ'}
@@ -3268,6 +3288,7 @@ export default function Dashboard({
                                 <p className="mt-1 text-xs text-red-600">{consumerFiscalErrors.document}</p>
                             )}
                         </div>
+                        )}
                         {consumerFiscalForm.type === 'consumidor' && (
                         <>
                         <div>
@@ -3400,7 +3421,11 @@ export default function Dashboard({
                         >
                             {consumerFiscalLoading
                                 ? 'Gerando...'
-                                : (consumerFiscalForm.type === 'cupom_fiscal' ? 'Salvar cupom fiscal' : 'Salvar NF Consumidor')}
+                                : (
+                                    consumerFiscalForm.type === 'balcao'
+                                        ? 'Salvar NF Balcao'
+                                        : (consumerFiscalForm.type === 'cupom_fiscal' ? 'Salvar cupom fiscal' : 'Salvar NF Consumidor')
+                                )}
                         </button>
                     </div>
                 </form>

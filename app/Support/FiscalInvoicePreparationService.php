@@ -550,6 +550,10 @@ class FiscalInvoicePreparationService
             return null;
         }
 
+        if ($this->resolveConsumerType($consumer) === 'balcao') {
+            return null;
+        }
+
         $normalized = [
             'type' => $this->resolveConsumerType($consumer),
             'name' => trim((string) ($consumer['name'] ?? '')),
@@ -583,7 +587,7 @@ class FiscalInvoicePreparationService
     {
         $declaredType = trim((string) ($consumer['type'] ?? ''));
 
-        if (in_array($declaredType, ['cupom_fiscal', 'consumidor'], true)) {
+        if (in_array($declaredType, ['balcao', 'cupom_fiscal', 'consumidor'], true)) {
             return $declaredType;
         }
 
