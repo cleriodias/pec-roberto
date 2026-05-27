@@ -3808,11 +3808,13 @@ class SalesReportController extends Controller
         Collection $unitIds,
         string $paymentType,
     ): Collection {
-        $firstSaleIds = DB::table('tb3_vendas')
-            ->selectRaw('tb4_id, MIN(tb3_id) as first_tb3_id')
-            ->whereNotNull('tb4_id')
-            ->whereIn('id_unidade', $unitIds)
-            ->groupBy('tb4_id');
+        $firstSaleIds = DB::table('tb3_vendas as vendas')
+            ->join('tb4_vendas_pg as pagamentos_periodo', 'pagamentos_periodo.tb4_id', '=', 'vendas.tb4_id')
+            ->selectRaw('vendas.tb4_id, MIN(vendas.tb3_id) as first_tb3_id')
+            ->whereBetween('pagamentos_periodo.created_at', [$start, $end])
+            ->whereNotNull('vendas.tb4_id')
+            ->whereIn('vendas.id_unidade', $unitIds)
+            ->groupBy('vendas.tb4_id');
 
         $cashExpression = "
             CASE
