@@ -71,6 +71,13 @@ const paymentOptions = [
         classes: 'bg-gray-900 hover:bg-gray-800 focus:ring-gray-200 text-white',
     },
 ];
+const paymentKeyboardShortcuts = {
+    F2: 'dinheiro',
+    F4: 'cartao_credito',
+    F8: 'cartao_debito',
+    F9: 'pix',
+    F10: 'vale',
+};
 const faturarWarningText = [
     'Aviso sobre a utilização do pagamento “Faturar”',
     'A opção de pagamento “Faturar” deve ser utilizada exclusivamente em situações excepcionais, quando o cliente deixa o estabelecimento sem efetuar o pagamento devido. Ao selecionar esta opção, o utilizador reconhece que está a justificar a ausência do valor correspondente no caixa.',
@@ -2044,6 +2051,52 @@ export default function Dashboard({
     const handleCloseReceipt = () => {
         resetAfterReceipt();
     };
+
+    useEffect(() => {
+        const handleDashboardShortcut = (event) => {
+            if (showConsumerFiscalModal || showFaturarWarning) {
+                return;
+            }
+
+            if (showReceipt && receiptData) {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    handleCloseReceipt();
+                    return;
+                }
+
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    handlePrintReceipt();
+                }
+
+                return;
+            }
+
+            const paymentType = paymentKeyboardShortcuts[event.key];
+
+            if (!paymentType || event.repeat) {
+                return;
+            }
+
+            event.preventDefault();
+            handlePaymentClick(paymentType);
+        };
+
+        window.addEventListener('keydown', handleDashboardShortcut);
+
+        return () => {
+            window.removeEventListener('keydown', handleDashboardShortcut);
+        };
+    }, [
+        handleCloseReceipt,
+        handlePaymentClick,
+        handlePrintReceipt,
+        receiptData,
+        showConsumerFiscalModal,
+        showFaturarWarning,
+        showReceipt,
+    ]);
 
     const handleSaveCart = () => {
         if (items.length === 0) {
