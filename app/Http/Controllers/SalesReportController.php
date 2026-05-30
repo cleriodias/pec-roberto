@@ -1716,6 +1716,7 @@ class SalesReportController extends Controller
                 ? $start->format('d/m/Y')
                 : $start->format('d/m/Y') . ' a ' . $end->format('d/m/Y'),
             'canFilterDate' => $isMaster,
+            'canDeleteReceipts' => $isMaster,
             'unit' => [
                 'id' => $unit?->tb2_id ?? $unitId,
                 'name' => $unit?->tb2_nome ?? '---',

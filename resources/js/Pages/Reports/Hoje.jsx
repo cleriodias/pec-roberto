@@ -1,7 +1,8 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { formatBrazilDateTime } from '@/Utils/date';
 import { buildReceiptHtml } from '@/Utils/receipt';
-import { Head, useForm } from '@inertiajs/react';
+import axios from 'axios';
+import { Head, router, useForm } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 
 const PAYMENT_LABELS = {
@@ -27,7 +28,33 @@ const formatDateTime = (value) => {
     return formatBrazilDateTime(value);
 };
 
-export default function Hoje({ records = [], reportDate, unit, filters = {}, canFilterDate = false }) {
+const resolveErrorMessage = (error, fallback) => {
+    if (error?.response?.data?.errors) {
+        const first = Object.values(error.response.data.errors).flat()[0];
+        if (first) {
+            return String(first);
+        }
+    }
+
+    if (error?.response?.data?.message) {
+        return String(error.response.data.message);
+    }
+
+    if (error?.message) {
+        return String(error.message);
+    }
+
+    return fallback;
+};
+
+export default function Hoje({
+    records = [],
+    reportDate,
+    unit,
+    filters = {},
+    canFilterDate = false,
+    canDeleteReceipts = false,
+}) {
     const { data, setData, get, processing } = useForm({
         cupom: filters.cupom ?? '',
         comanda: filters.comanda ?? '',
@@ -38,6 +65,8 @@ export default function Hoje({ records = [], reportDate, unit, filters = {}, can
     });
     const [selectedReceipt, setSelectedReceipt] = useState(null);
     const [printError, setPrintError] = useState('');
+    const [deleteError, setDeleteError] = useState('');
+    const [deletingReceiptId, setDeletingReceiptId] = useState(null);
 
     const totalValue = useMemo(
         () => records.reduce((sum, record) => sum + Number(record.total ?? 0), 0),
@@ -110,6 +139,45 @@ export default function Hoje({ records = [], reportDate, unit, filters = {}, can
         printWindow.close();
     };
 
+    const handleDeleteReceipt = async (receiptId) => {
+        if (!canDeleteReceipts || deletingReceiptId) {
+            return;
+        }
+
+        const confirmed = window.confirm(`Deseja realmente excluir o cupom #${receiptId}?`);
+        if (!confirmed) {
+            return;
+        }
+
+        setDeleteError('');
+        setDeletingReceiptId(receiptId);
+
+        try {
+            await axios.delete(route('reports.sales.today.destroy', receiptId));
+
+            if (Number(selectedReceipt?.id ?? 0) === Number(receiptId)) {
+                setSelectedReceipt(null);
+            }
+
+            router.reload({
+                only: [
+                    'records',
+                    'reportDate',
+                    'canFilterDate',
+                    'canDeleteReceipts',
+                    'unit',
+                    'filters',
+                ],
+                preserveScroll: true,
+                preserveState: true,
+            });
+        } catch (error) {
+            setDeleteError(resolveErrorMessage(error, 'Nao foi possivel excluir o cupom.'));
+        } finally {
+            setDeletingReceiptId(null);
+        }
+    };
+
     const headerContent = (
         <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -143,6 +211,11 @@ export default function Hoje({ records = [], reportDate, unit, filters = {}, can
                     {printError && (
                         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
                             {printError}
+                        </div>
+                    )}
+                    {deleteError && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+                            {deleteError}
                         </div>
                     )}
 
@@ -317,13 +390,25 @@ export default function Hoje({ records = [], reportDate, unit, filters = {}, can
                                                     {formatCurrency(record.total)}
                                                 </td>
                                                 <td className="px-3 py-2 text-right">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setSelectedReceipt(record.receipt)}
-                                                        className="rounded-xl bg-indigo-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-indigo-700"
-                                                    >
-                                                        Abrir cupom
-                                                    </button>
+                                                    <div className="flex justify-end gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSelectedReceipt(record.receipt)}
+                                                            className="rounded-xl bg-indigo-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-indigo-700"
+                                                        >
+                                                            Abrir cupom
+                                                        </button>
+                                                        {canDeleteReceipts && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDeleteReceipt(record.id)}
+                                                                disabled={deletingReceiptId === record.id}
+                                                                className="rounded-xl bg-red-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                            >
+                                                                Excluir
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}

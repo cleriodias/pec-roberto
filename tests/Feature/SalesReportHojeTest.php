@@ -155,6 +155,7 @@ class SalesReportHojeTest extends TestCase
         $response->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Reports/Hoje')
             ->where('canFilterDate', true)
+            ->where('canDeleteReceipts', true)
             ->where('reportDate', '01/04/2026 a 03/04/2026')
             ->where('filters.data_inicio', '2026-04-01')
             ->where('filters.data_fim', '2026-04-03')
@@ -182,6 +183,7 @@ class SalesReportHojeTest extends TestCase
         $response->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Reports/Hoje')
             ->where('canFilterDate', false)
+            ->where('canDeleteReceipts', false)
             ->where('reportDate', '04/04/2026')
             ->where('filters.data_inicio', '')
             ->where('filters.data_fim', '')
