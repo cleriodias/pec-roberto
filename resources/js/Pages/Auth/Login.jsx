@@ -4,14 +4,76 @@ import InputLabel from '@/Components/InputLabel';
 import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
+import { useEffect, useState } from 'react';
 
 export default function Login({ status, canResetPassword, units = [] }) {
+    const [availableUnits, setAvailableUnits] = useState(units);
+    const [loadingUnits, setLoadingUnits] = useState(false);
+    const [unitsLoaded, setUnitsLoaded] = useState(units.length > 0);
+    const [unitsError, setUnitsError] = useState('');
+
     const { data, setData, post, processing, errors, reset, transform } = useForm({
         username: '',
         password: '',
         remember: false,
         unit_id: '',
     });
+
+    useEffect(() => {
+        const username = data.username.trim();
+        let ignore = false;
+
+        setData('unit_id', '');
+        setAvailableUnits([]);
+        setUnitsLoaded(false);
+        setUnitsError('');
+
+        if (!username) {
+            setLoadingUnits(false);
+            return;
+        }
+
+        setLoadingUnits(true);
+
+        const timeoutId = window.setTimeout(async () => {
+            try {
+                const response = await fetch(`${route('login.units')}?username=${encodeURIComponent(username)}`, {
+                    headers: {
+                        Accept: 'application/json',
+                    },
+                });
+
+                if (!response.ok) {
+                    throw new Error('Falha ao carregar lojas.');
+                }
+
+                const payload = await response.json();
+                if (ignore) {
+                    return;
+                }
+
+                setAvailableUnits(Array.isArray(payload) ? payload : []);
+                setUnitsLoaded(true);
+            } catch (error) {
+                if (ignore) {
+                    return;
+                }
+
+                setAvailableUnits([]);
+                setUnitsLoaded(true);
+                setUnitsError('Nao foi possivel carregar as lojas deste usuario.');
+            } finally {
+                if (!ignore) {
+                    setLoadingUnits(false);
+                }
+            }
+        }, 350);
+
+        return () => {
+            ignore = true;
+            window.clearTimeout(timeoutId);
+        };
+    }, [data.username]);
 
     const preventSubmit = (e) => {
         e.preventDefault();
@@ -40,14 +102,14 @@ export default function Login({ status, canResetPassword, units = [] }) {
 
             <form onSubmit={preventSubmit} className="mx-auto w-full max-w-md">
                 <div>
-                    <InputLabel htmlFor="username" value="Usuário" />
+                    <InputLabel htmlFor="username" value="Usuario" />
 
                     <div className="mt-1 flex overflow-hidden rounded-md border border-gray-300 bg-white shadow-sm focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900">
                         <TextInput
                             id="username"
                             type="text"
                             name="username"
-                            placeholder="Usuário"
+                            placeholder="Usuario"
                             value={data.username}
                             className="block w-full border-0 shadow-none focus:border-0 focus:ring-0"
                             autoComplete="username"
@@ -103,13 +165,16 @@ export default function Login({ status, canResetPassword, units = [] }) {
                             Esqueceu a senha?
                         </Link>
                     )}
-
                 </div>
 
                 <div className="mt-6">
-                    {units.length ? (
+                    {loadingUnits ? (
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                            Carregando lojas...
+                        </p>
+                    ) : availableUnits.length ? (
                         <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                            {units.map((unit) => (
+                            {availableUnits.map((unit) => (
                                 <button
                                     type="button"
                                     key={unit.tb2_id}
@@ -121,15 +186,25 @@ export default function Login({ status, canResetPassword, units = [] }) {
                                 </button>
                             ))}
                         </div>
+                    ) : unitsLoaded ? (
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                            Nenhuma loja liberada para este usuario.
+                        </p>
                     ) : (
                         <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                            Nenhuma unidade cadastrada.
+                            Informe o usuario para carregar as lojas liberadas.
                         </p>
                     )}
+
+                    {unitsError && (
+                        <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+                            {unitsError}
+                        </p>
+                    )}
+
                     <InputError message={errors.unit_id} className="mt-2" />
                 </div>
-
-        </form>
+            </form>
         </GuestLayout>
     );
 }

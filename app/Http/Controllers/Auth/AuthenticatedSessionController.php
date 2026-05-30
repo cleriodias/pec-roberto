@@ -7,36 +7,81 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Models\CashierClosure;
 use App\Models\OnlineUser;
 use App\Models\Unidade;
+use App\Models\User;
 use App\Support\PaymentControlNotificationService;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class AuthenticatedSessionController extends Controller
 {
+    private const LOGIN_DOMAIN = '@paoecafepremium.com.br';
+
     /**
      * Display the login view.
      */
     public function create(Request $request): Response
     {
         $requestedUnitId = (int) $request->query('l', 0);
-        $unitsQuery = Unidade::active()->orderBy('tb2_nome');
-
-        if ($requestedUnitId > 0) {
-            $unitsQuery->where('tb2_id', $requestedUnitId);
-        }
 
         return Inertia::render('Auth/Login', [
             'canResetPassword' => Route::has('password.request'),
             'status' => session('status'),
             'selectedUnitId' => $requestedUnitId > 0 ? $requestedUnitId : null,
-            'units' => $unitsQuery->get(['tb2_id', 'tb2_nome']),
+            'units' => [],
         ]);
+    }
+
+    public function units(Request $request): JsonResponse
+    {
+        $username = trim((string) $request->query('username', ''));
+
+        if ($username === '') {
+            return response()->json([]);
+        }
+
+        $email = Str::lower(Str::before($username, '@') . self::LOGIN_DOMAIN);
+        $user = User::query()
+            ->with(['units' => fn ($query) => $query
+                ->select('tb2_unidades.tb2_id', 'tb2_unidades.tb2_nome')
+                ->where('tb2_unidades.tb2_status', 1)
+                ->orderBy('tb2_unidades.tb2_nome')])
+            ->where('email', $email)
+            ->first();
+
+        if (! $user) {
+            return response()->json([]);
+        }
+
+        $units = $user->units;
+
+        if ((int) $user->tb2_id > 0 && ! $units->contains('tb2_id', (int) $user->tb2_id)) {
+            $primaryUnit = Unidade::active()
+                ->where('tb2_id', (int) $user->tb2_id)
+                ->first(['tb2_id', 'tb2_nome']);
+
+            if ($primaryUnit) {
+                $units->push($primaryUnit);
+            }
+        }
+
+        return response()->json(
+            $units
+                ->unique('tb2_id')
+                ->sortBy('tb2_nome')
+                ->values()
+                ->map(fn (Unidade $unit) => [
+                    'tb2_id' => $unit->tb2_id,
+                    'tb2_nome' => $unit->tb2_nome,
+                ])
+        );
     }
 
     /**
