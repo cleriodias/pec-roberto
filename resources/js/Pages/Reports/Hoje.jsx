@@ -27,12 +27,14 @@ const formatDateTime = (value) => {
     return formatBrazilDateTime(value);
 };
 
-export default function Hoje({ records = [], reportDate, unit, filters = {} }) {
+export default function Hoje({ records = [], reportDate, unit, filters = {}, canFilterDate = false }) {
     const { data, setData, get, processing } = useForm({
         cupom: filters.cupom ?? '',
         comanda: filters.comanda ?? '',
         valor: filters.valor ?? '',
         hora: filters.hora ?? '',
+        data_inicio: filters.data_inicio ?? '',
+        data_fim: filters.data_fim ?? '',
     });
     const [selectedReceipt, setSelectedReceipt] = useState(null);
     const [printError, setPrintError] = useState('');
@@ -59,6 +61,12 @@ export default function Hoje({ records = [], reportDate, unit, filters = {} }) {
         if (data.hora) {
             params.hora = data.hora;
         }
+        if (canFilterDate && data.data_inicio) {
+            params.data_inicio = data.data_inicio;
+        }
+        if (canFilterDate && data.data_fim) {
+            params.data_fim = data.data_fim;
+        }
 
         get(route('reports.hoje'), {
             preserveState: true,
@@ -74,6 +82,8 @@ export default function Hoje({ records = [], reportDate, unit, filters = {} }) {
             comanda: '',
             valor: '',
             hora: '',
+            data_inicio: '',
+            data_fim: '',
         });
 
         get(route('reports.hoje'), {
@@ -107,7 +117,9 @@ export default function Hoje({ records = [], reportDate, unit, filters = {} }) {
                     Hoje
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-300">
-                    Reimpressao de cupons do dia da loja atual.
+                    {canFilterDate
+                        ? 'Reimpressao de cupons por periodo da loja atual.'
+                        : 'Reimpressao de cupons do dia da loja atual.'}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-300">
                     Loja: {unit?.name ?? '---'}.
@@ -188,6 +200,32 @@ export default function Hoje({ records = [], reportDate, unit, filters = {} }) {
                                     className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                 />
                             </div>
+                            {canFilterDate && (
+                                <>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                            Data inicial
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={data.data_inicio}
+                                            onChange={(event) => setData('data_inicio', event.target.value)}
+                                            className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                            Data final
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={data.data_fim}
+                                            onChange={(event) => setData('data_fim', event.target.value)}
+                                            className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                        />
+                                    </div>
+                                </>
+                            )}
                             <button
                                 type="submit"
                                 disabled={processing}
@@ -205,7 +243,9 @@ export default function Hoje({ records = [], reportDate, unit, filters = {} }) {
                             </button>
                         </div>
                         <p className="mt-3 text-sm text-gray-500 dark:text-gray-300">
-                            A busca considera sempre os cupons de hoje da loja atual e retorna no maximo 10 registros.
+                            {canFilterDate
+                                ? 'A busca considera os cupons do periodo selecionado da loja atual e retorna no maximo 10 registros.'
+                                : 'A busca considera sempre os cupons de hoje da loja atual e retorna no maximo 10 registros.'}
                         </p>
                     </form>
 
@@ -230,7 +270,9 @@ export default function Hoje({ records = [], reportDate, unit, filters = {} }) {
                         <div className="mt-4 overflow-x-auto">
                             {records.length === 0 ? (
                                 <p className="rounded-xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-300">
-                                    Nenhum cupom encontrado com os filtros informados para hoje nesta loja.
+                                    {canFilterDate
+                                        ? 'Nenhum cupom encontrado com os filtros informados para este periodo nesta loja.'
+                                        : 'Nenhum cupom encontrado com os filtros informados para hoje nesta loja.'}
                                 </p>
                             ) : (
                                 <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">

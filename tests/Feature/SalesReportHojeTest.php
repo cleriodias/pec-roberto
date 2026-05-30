@@ -135,6 +135,61 @@ class SalesReportHojeTest extends TestCase
         );
     }
 
+    public function test_master_can_filter_hoje_report_by_any_period(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-04 12:00:00'));
+
+        $unit = $this->makeUnit('Loja A');
+        $master = $this->makeUser('Master', 0, $unit);
+        $product = $this->makeProduct();
+
+        $this->createReceipt($unit, $master, $product, 15.00, '2026-03-31 10:00:00', 7001);
+        $matchingPayment = $this->createReceipt($unit, $master, $product, 20.00, '2026-04-02 10:00:00', 7002);
+        $this->createReceipt($unit, $master, $product, 25.00, '2026-04-04 10:00:00', 7003);
+
+        $response = $this->actingAs($master)->get(route('reports.hoje', [
+            'data_inicio' => '2026-04-01',
+            'data_fim' => '2026-04-03',
+        ]));
+
+        $response->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Reports/Hoje')
+            ->where('canFilterDate', true)
+            ->where('reportDate', '01/04/2026 a 03/04/2026')
+            ->where('filters.data_inicio', '2026-04-01')
+            ->where('filters.data_fim', '2026-04-03')
+            ->has('records', 1)
+            ->where('records.0.id', $matchingPayment->tb4_id)
+        );
+    }
+
+    public function test_non_master_date_filter_is_ignored_on_hoje_report(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-04 12:00:00'));
+
+        $unit = $this->makeUnit('Loja A');
+        $cashier = $this->makeUser('Caixa A', 3, $unit);
+        $product = $this->makeProduct();
+
+        $this->createReceipt($unit, $cashier, $product, 20.00, '2026-04-02 10:00:00', 8001);
+        $todayPayment = $this->createReceipt($unit, $cashier, $product, 25.00, '2026-04-04 10:00:00', 8002);
+
+        $response = $this->actingAs($cashier)->get(route('reports.hoje', [
+            'data_inicio' => '2026-04-02',
+            'data_fim' => '2026-04-02',
+        ]));
+
+        $response->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Reports/Hoje')
+            ->where('canFilterDate', false)
+            ->where('reportDate', '04/04/2026')
+            ->where('filters.data_inicio', '')
+            ->where('filters.data_fim', '')
+            ->has('records', 1)
+            ->where('records.0.id', $todayPayment->tb4_id)
+        );
+    }
+
     private function createReceipt(
         Unidade $unit,
         User $cashier,

@@ -1586,10 +1586,10 @@ class SalesReportController extends Controller
     {
         $this->ensureHojeAccess($request);
 
+        $isMaster = ManagementScope::isMaster($request->user());
         $unitId = $this->resolveUnitId($request);
         $unit = Unidade::find($unitId, ['tb2_id', 'tb2_nome', 'tb2_endereco', 'tb2_cnpj']);
-        $start = Carbon::today()->startOfDay();
-        $end = Carbon::today()->endOfDay();
+        [$start, $end] = $this->resolveHojeDateRange($request, $isMaster);
         $receiptId = $this->parseReceiptIdFilter($request->query('cupom'));
         $comandaId = $this->parseReceiptIdFilter($request->query('comanda'));
         $valueFilter = $this->parseCurrencyFilter($request->query('valor'));
@@ -1712,7 +1712,10 @@ class SalesReportController extends Controller
 
         return Inertia::render('Reports/Hoje', [
             'records' => $records,
-            'reportDate' => $start->format('d/m/Y'),
+            'reportDate' => $start->isSameDay($end)
+                ? $start->format('d/m/Y')
+                : $start->format('d/m/Y') . ' a ' . $end->format('d/m/Y'),
+            'canFilterDate' => $isMaster,
             'unit' => [
                 'id' => $unit?->tb2_id ?? $unitId,
                 'name' => $unit?->tb2_nome ?? '---',
@@ -1722,6 +1725,8 @@ class SalesReportController extends Controller
                 'comanda' => $comandaId !== null ? (string) $comandaId : trim((string) $request->query('comanda', '')),
                 'valor' => trim((string) $request->query('valor', '')),
                 'hora' => $timeWindow['value'] ?? trim((string) $request->query('hora', '')),
+                'data_inicio' => $isMaster ? $start->toDateString() : '',
+                'data_fim' => $isMaster ? $end->toDateString() : '',
             ],
         ]);
     }
@@ -3117,6 +3122,24 @@ class SalesReportController extends Controller
             'end' => $baseTime->copy()->addMinutes(10)->min($end->copy()),
             'value' => sprintf('%02d:%02d', $hour, $minute),
         ];
+    }
+
+    private function resolveHojeDateRange(Request $request, bool $isMaster): array
+    {
+        $today = Carbon::today();
+
+        if (! $isMaster) {
+            return [$today->copy()->startOfDay(), $today->copy()->endOfDay()];
+        }
+
+        $start = $this->parseDate($request->query('data_inicio'), 'Y-m-d', $today)->startOfDay();
+        $end = $this->parseDate($request->query('data_fim'), 'Y-m-d', $start->copy())->endOfDay();
+
+        if ($end->lt($start)) {
+            $end = $start->copy()->endOfDay();
+        }
+
+        return [$start, $end];
     }
 
     private function resolveUnitId(Request $request): int
