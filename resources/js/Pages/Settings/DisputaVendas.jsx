@@ -109,7 +109,7 @@ export default function DisputaVendas({ auth, suppliers = [], disputes = [] }) {
                                     Fornecedores
                                 </p>
                                 {hasSuppliers ? (
-                                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                    <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                                         {suppliers.map((supplier) => (
                                             <label
                                                 key={supplier.id}
