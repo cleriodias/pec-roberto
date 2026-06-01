@@ -73,6 +73,18 @@ class SupplierController extends Controller
     {
         $this->ensureMaster($request->user());
 
+        if (! $request->session()->boolean($this->adminDisputesAccessKey($supplier))) {
+            return Inertia::render('Supplier/Access', [
+                'supplier' => [
+                    'id' => $supplier->id,
+                    'name' => $supplier->name,
+                ],
+                'mode' => 'admin',
+                'authenticationRoute' => route('settings.suppliers.disputes.authenticate', $supplier),
+                'backUrl' => route('settings.suppliers'),
+            ]);
+        }
+
         return Inertia::render('Supplier/Disputes', [
             'supplier' => [
                 'id' => $supplier->id,
@@ -84,11 +96,35 @@ class SupplierController extends Controller
         ]);
     }
 
+    public function authenticateDisputes(Request $request, Supplier $supplier): RedirectResponse
+    {
+        $this->ensureMaster($request->user());
+
+        $data = $request->validate([
+            'access_code' => ['required', 'digits:4'],
+        ]);
+
+        if (! hash_equals((string) $supplier->access_code, (string) $data['access_code'])) {
+            return back()->withErrors([
+                'access_code' => 'Senha do fornecedor invalida.',
+            ]);
+        }
+
+        $request->session()->put($this->adminDisputesAccessKey($supplier), true);
+
+        return redirect()->route('settings.suppliers.disputes', $supplier);
+    }
+
     private function ensureMaster($user): void
     {
         if (! $user || (int) $user->funcao !== 0) {
             abort(403);
         }
+    }
+
+    private function adminDisputesAccessKey(Supplier $supplier): string
+    {
+        return "admin_supplier_disputes_access_{$supplier->id}";
     }
 
     private function buildSupplierBids(Supplier $supplier)

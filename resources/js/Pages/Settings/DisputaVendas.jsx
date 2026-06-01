@@ -42,7 +42,7 @@ export default function DisputaVendas({ auth, suppliers = [], disputes = [] }) {
     const handleSubmit = (event) => {
         event.preventDefault();
         post(route('settings.sales-disputes.store'), {
-            onSuccess: () => reset('product_name', 'quantity', 'supplier_ids'),
+            onSuccess: () => reset('product_name', 'quantity'),
         });
     };
 

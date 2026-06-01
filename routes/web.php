@@ -244,6 +244,8 @@ Route::middleware('auth')->group(function () {
         ->name('settings.suppliers.toggle-dispute');
     Route::get('/settings/suppliers/{supplier}/disputes', [SupplierController::class, 'showDisputes'])
         ->name('settings.suppliers.disputes');
+    Route::post('/settings/suppliers/{supplier}/disputes/access', [SupplierController::class, 'authenticateDisputes'])
+        ->name('settings.suppliers.disputes.authenticate');
     Route::get('/settings/anydesck', [AnyDesckController::class, 'index'])
         ->name('settings.anydesck');
     Route::post('/settings/anydesck', [AnyDesckController::class, 'store'])
