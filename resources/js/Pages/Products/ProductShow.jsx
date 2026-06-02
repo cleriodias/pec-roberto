@@ -93,12 +93,10 @@ export default function ProductShow({ auth, product, fiscalData = {}, typeLabels
                                 </p>
                             </div>
                         </div>
-                        {Number(product.tb1_tipo) === 3 && (
-                            <div className="mb-4">
-                                <p className="text-md font-semibold text-gray-700 dark:text-gray-200">Estoque atual</p>
-                                <p className="text-gray-600 dark:text-gray-400">{Number(product.tb1_qtd ?? 0)}</p>
-                            </div>
-                        )}
+                        <div className="mb-4">
+                            <p className="text-md font-semibold text-gray-700 dark:text-gray-200">Estoque atual</p>
+                            <p className="text-gray-600 dark:text-gray-400">{Number(product.tb1_qtd ?? 0)}</p>
+                        </div>
                         <div className="mt-6 rounded-md border border-gray-200 bg-white p-4 dark:bg-gray-800">
                             <p className="text-md font-semibold text-gray-700 dark:text-gray-200">Dados fiscais herdados da categoria</p>
                             <div className="mt-3 grid gap-3 text-gray-600 sm:grid-cols-2 lg:grid-cols-4 dark:text-gray-300">

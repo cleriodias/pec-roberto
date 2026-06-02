@@ -286,7 +286,7 @@ class ProductController extends Controller
     {
         $data = $this->validateProduct($request);
 
-        if ((int) ($data['tb1_tipo'] ?? 0) !== 1) {
+        if ((int) ($data['tb1_tipo'] ?? 0) !== 1 || blank($data['tb1_id'] ?? null)) {
             $data['tb1_id'] = $this->nextSafeProductId($this->shouldUseOwnIdAsBarcode($data));
         }
 
@@ -536,35 +536,31 @@ class ProductController extends Controller
         $data = $request->validate(
             [
                 'tb1_id' => [
-                    Rule::requiredIf(fn () => (int) $request->input('tb1_tipo') === 1 && $product === null),
                     'nullable',
                     'integer',
                     'min:1',
                     'max:' . self::MAX_SAFE_PRODUCT_ID,
                 ],
-                'tb1_nome' => 'required|string|max:45',
-                'tb1_vlr_custo' => 'required|numeric|min:0',
-                'tb1_vlr_venda' => 'required|numeric|min:0|gte:tb1_vlr_custo',
+                'tb1_nome' => 'nullable|string|max:45',
+                'tb1_vlr_custo' => 'nullable|numeric|min:0',
+                'tb1_vlr_venda' => 'nullable|numeric|min:0',
                 'tb1_codbar' => [
-                    Rule::requiredIf(fn () => (int) $request->input('tb1_tipo') !== 1 && ! $request->boolean('sem_codigo_barras')),
                     'nullable',
                     'string',
                     'max:64',
                     Rule::unique('tb1_produto', 'tb1_codbar')->ignore($product?->tb1_id, 'tb1_id'),
                 ],
                 'tb1_tipo' => [
-                    'required',
+                    'nullable',
                     'integer',
                     Rule::in(array_keys(self::TYPE_LABELS)),
                 ],
                 'tb30_categoria_fiscal_id' => [
-                    Rule::requiredIf(fn () => (int) $request->input('tb1_status', 1) === 1),
                     'nullable',
                     'integer',
                     Rule::exists('tb30_categorias_fiscais', 'tb30_id'),
                 ],
                 'tb33_grupo_ncm_id' => [
-                    Rule::requiredIf(fn () => (int) $request->input('tb1_status', 1) === 1),
                     'nullable',
                     'integer',
                     Rule::exists('tb33_grupos_ncm', 'tb33_id'),
@@ -589,13 +585,12 @@ class ProductController extends Controller
                 'tb1_aliquota_cbs' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'tb1_aliquota_is' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'tb1_qtd' => [
-                    Rule::requiredIf(fn () => (int) $request->input('tb1_tipo') === 3),
                     'nullable',
                     'integer',
                     'min:0',
                 ],
                 'tb1_status' => [
-                    'required',
+                    'nullable',
                     'integer',
                     Rule::in(array_keys(self::STATUS_LABELS)),
                 ],
@@ -634,28 +629,19 @@ class ProductController extends Controller
                 ],
             ],
             [
-                'tb1_id.required' => 'Informe o ID do produto de balanca.',
                 'tb1_id.integer' => 'O ID do produto deve ser numerico.',
                 'tb1_id.min' => 'O ID do produto deve ser maior que zero.',
                 'tb1_id.max' => 'O ID do produto deve ser no maximo :max.',
-                'tb1_nome.required' => 'Informe o nome do produto.',
                 'tb1_nome.max' => 'O nome nao pode exceder :max caracteres.',
-                'tb1_vlr_custo.required' => 'Informe o valor de custo.',
                 'tb1_vlr_custo.numeric' => 'O valor de custo deve ser numerico.',
                 'tb1_vlr_custo.min' => 'O valor de custo deve ser maior ou igual a zero.',
-                'tb1_vlr_venda.required' => 'Informe o valor de venda.',
                 'tb1_vlr_venda.numeric' => 'O valor de venda deve ser numerico.',
                 'tb1_vlr_venda.min' => 'O valor de venda deve ser maior ou igual a zero.',
-                'tb1_vlr_venda.gte' => 'O valor de venda deve ser maior que o valor de custo.',
-                'tb1_codbar.required' => 'Informe o codigo de barras.',
                 'tb1_codbar.max' => 'O codigo de barras deve ter no maximo :max caracteres.',
                 'tb1_codbar.unique' => 'Este codigo de barras ja esta cadastrado.',
-                'tb1_tipo.required' => 'Selecione o tipo do produto.',
                 'tb1_tipo.integer' => 'Tipo de produto invalido.',
                 'tb1_tipo.in' => 'Tipo de produto nao reconhecido.',
-                'tb30_categoria_fiscal_id.required' => 'Produto ativo deve estar vinculado a uma categoria fiscal.',
                 'tb30_categoria_fiscal_id.exists' => 'Categoria fiscal nao encontrada.',
-                'tb33_grupo_ncm_id.required' => 'Produto ativo deve estar vinculado a um grupo NCM.',
                 'tb33_grupo_ncm_id.exists' => 'Grupo NCM nao encontrado.',
                 'tb1_ncm_proprio.size' => 'O NCM proprio deve ter exatamente 8 digitos.',
                 'tb1_ncm.size' => 'O NCM deve ter exatamente 8 digitos.',
@@ -685,10 +671,8 @@ class ProductController extends Controller
                 'tb1_aliquota_is.numeric' => 'A aliquota IS deve ser numerica.',
                 'tb1_aliquota_is.min' => 'A aliquota IS nao pode ser negativa.',
                 'tb1_aliquota_is.max' => 'A aliquota IS nao pode ultrapassar 100%.',
-                'tb1_qtd.required' => 'Informe a quantidade em estoque para o produto de Producao.',
                 'tb1_qtd.integer' => 'A quantidade em estoque deve ser numerica e inteira.',
                 'tb1_qtd.min' => 'A quantidade em estoque nao pode ser negativa.',
-                'tb1_status.required' => 'Selecione o status do produto.',
                 'tb1_status.integer' => 'Status invalido.',
                 'tb1_status.in' => 'Status nao reconhecido.',
                 'tb1_vr_credit.boolean' => 'Valor invalido para VR Credito.',
@@ -909,9 +893,16 @@ class ProductController extends Controller
     private function prepareProductData(array $data, ?Produto $product = null): array
     {
         $type = (int) ($data['tb1_tipo'] ?? $product?->tb1_tipo ?? 0);
+        $status = isset($data['tb1_status']) && $data['tb1_status'] !== ''
+            ? (int) $data['tb1_status']
+            : (int) ($product?->tb1_status ?? 1);
 
         $data['tb1_nome'] = $this->normalizeProductName($data['tb1_nome'] ?? $product?->tb1_nome ?? '');
+        $data['tb1_vlr_custo'] = round((float) ($data['tb1_vlr_custo'] ?? $product?->tb1_vlr_custo ?? 0), 2);
+        $data['tb1_vlr_venda'] = round((float) ($data['tb1_vlr_venda'] ?? $product?->tb1_vlr_venda ?? 0), 2);
         $data['tb1_codbar'] = $this->resolveProductBarcode($data, $product);
+        $data['tb1_tipo'] = $type;
+        $data['tb1_status'] = $status;
         $data['tb30_categoria_fiscal_id'] = isset($data['tb30_categoria_fiscal_id']) && $data['tb30_categoria_fiscal_id'] !== ''
             ? (int) $data['tb30_categoria_fiscal_id']
             : null;
@@ -941,9 +932,7 @@ class ProductController extends Controller
         $data['tb1_aliquota_cbs'] = $this->normalizeNullableDecimal($data['tb1_aliquota_cbs'] ?? $product?->tb1_aliquota_cbs ?? null, 4);
         $data['tb1_aliquota_is'] = $this->normalizeNullableDecimal($data['tb1_aliquota_is'] ?? $product?->tb1_aliquota_is ?? null, 4);
 
-        $data['tb1_qtd'] = $type === 3
-            ? (int) ($data['tb1_qtd'] ?? $product?->tb1_qtd ?? 0)
-            : 0;
+        $data['tb1_qtd'] = (int) ($data['tb1_qtd'] ?? $product?->tb1_qtd ?? 0);
 
         unset($data['sem_codigo_barras']);
         unset($data['excecao_fiscal']);
@@ -1046,7 +1035,17 @@ class ProductController extends Controller
             return $this->formatGeneratedBarcode($productId);
         }
 
-        return trim((string) ($data['tb1_codbar'] ?? $product?->tb1_codbar ?? ''));
+        $barcode = trim((string) ($data['tb1_codbar'] ?? $product?->tb1_codbar ?? ''));
+
+        if ($barcode !== '') {
+            return $barcode;
+        }
+
+        $productId = isset($data['tb1_id'])
+            ? (int) $data['tb1_id']
+            : (int) ($product?->tb1_id ?? 0);
+
+        return $this->formatGeneratedBarcode($productId);
     }
 
     private function nextSafeProductId(bool $reserveOwnIdBarcode = false): int

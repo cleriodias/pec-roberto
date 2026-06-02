@@ -413,7 +413,7 @@ export default function ProductIndex({
                                         {resolveLabel(typeLabels, product.tb1_tipo)}
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider text-right">
-                                        {Number(product.tb1_tipo) === 3 ? Number(product.tb1_qtd ?? 0) : '--'}
+                                        {Number(product.tb1_qtd ?? 0)}
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-500 tracking-wider">
                                         {resolveLabel(statusLabels, product.tb1_status)}

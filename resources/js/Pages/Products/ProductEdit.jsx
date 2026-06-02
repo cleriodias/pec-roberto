@@ -76,7 +76,6 @@ export default function ProductEdit({ auth, product, fiscalData = {}, typeOption
     });
 
     const isBalanceProduct = Number(data.tb1_tipo) === 1;
-    const isProductionProduct = Number(data.tb1_tipo) === 3;
     const canEditPrices = [0, 1, 2].includes(Number(auth?.user?.funcao ?? -1));
     const withoutBarcode = isBalanceProduct || Boolean(data.sem_codigo_barras);
     const selectedFiscalCategory = fiscalCategories.find(
@@ -220,26 +219,24 @@ export default function ProductEdit({ auth, product, fiscalData = {}, typeOption
                                     </select>
                                     {errors.tb1_tipo && <span className="text-red-600">{errors.tb1_tipo}</span>}
                                 </div>
-                                {isProductionProduct && (
-                                    <div>
-                                        <label htmlFor="tb1_qtd" className="block text-sm font-medium text-gray-700">
-                                            Quantidade atual
-                                        </label>
-                                        <input
-                                            id="tb1_qtd"
-                                            type="number"
-                                            min="0"
-                                            step="1"
-                                            value={data.tb1_qtd}
-                                            onChange={(e) => setData("tb1_qtd", e.target.value)}
-                                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                        />
-                                        <p className="mt-1 text-xs text-gray-500">
-                                            Para novas entradas e saidas, utilize a tela de estoque de Producao.
-                                        </p>
-                                        {errors.tb1_qtd && <span className="text-red-600">{errors.tb1_qtd}</span>}
-                                    </div>
-                                )}
+                                <div>
+                                    <label htmlFor="tb1_qtd" className="block text-sm font-medium text-gray-700">
+                                        Quantidade atual
+                                    </label>
+                                    <input
+                                        id="tb1_qtd"
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        value={data.tb1_qtd}
+                                        onChange={(e) => setData("tb1_qtd", e.target.value)}
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                    />
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        Para itens de Producao, novas entradas e saidas continuam pela tela de estoque.
+                                    </p>
+                                    {errors.tb1_qtd && <span className="text-red-600">{errors.tb1_qtd}</span>}
+                                </div>
                                 <div>
                                     <label htmlFor="tb1_status" className="block text-sm font-medium text-gray-700">
                                         Status
