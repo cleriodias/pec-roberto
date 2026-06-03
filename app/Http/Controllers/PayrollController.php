@@ -37,11 +37,13 @@ class PayrollController extends Controller
         'primeiro_domingo' => 'Primeiro Domingo',
         'feriado' => 'Feriado',
         'bonificacao' => 'Bonificacao',
+        'falta' => 'FALTA',
         'inss' => 'INSS',
         'outros' => 'Outros',
     ];
 
     private const EXTRA_DEDUCTION_TYPES = [
+        'falta',
         'inss',
     ];
 
@@ -77,11 +79,11 @@ class PayrollController extends Controller
         ], [
             'start_date.required' => 'Informe o inicio do periodo.',
             'end_date.required' => 'Informe o fim do periodo.',
-            'credit_type.required' => 'Selecione o tipo do credito.',
-            'credit_type.in' => 'O tipo do credito selecionado e invalido.',
-            'amount.required' => 'Informe o valor do credito.',
-            'amount.numeric' => 'O valor do credito deve ser numerico.',
-            'amount.min' => 'O valor do credito deve ser maior que zero.',
+            'credit_type.required' => 'Selecione o tipo do lancamento.',
+            'credit_type.in' => 'O tipo do lancamento selecionado e invalido.',
+            'amount.required' => 'Informe o valor do lancamento.',
+            'amount.numeric' => 'O valor do lancamento deve ser numerico.',
+            'amount.min' => 'O valor do lancamento deve ser maior que zero.',
             'other_description.max' => 'A descricao de Outros deve ter no maximo 255 caracteres.',
         ]);
 
@@ -109,12 +111,12 @@ class PayrollController extends Controller
             'tb28_periodo_fim' => $endDate->toDateString(),
             'tb28_tipo' => $creditType,
             'tb28_descricao' => $creditType === 'outros' ? $otherDescription : null,
-            'tb28_valor' => round(($creditType === 'inss' ? -1 : 1) * (float) $data['amount'], 2),
+            'tb28_valor' => round(abs((float) $data['amount']), 2),
         ]);
 
         return redirect()
             ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $startDate, $endDate))
-            ->with('success', 'Credito adicional do contra-cheque cadastrado com sucesso.');
+            ->with('success', 'Lancamento adicional do contra-cheque cadastrado com sucesso.');
     }
 
     public function updateContraChequeSalary(Request $request, User $user): RedirectResponse
@@ -130,12 +132,18 @@ class PayrollController extends Controller
             'user_id' => ['nullable', 'string'],
             'payment_status' => ['nullable', 'string'],
             'salary' => ['required', 'numeric', 'min:0'],
+            'pix_key' => ['nullable', 'string', 'max:255'],
+            'employment_unit_id' => ['required', 'integer', 'exists:tb2_unidades,tb2_id'],
         ], [
             'start_date.required' => 'Informe o inicio do periodo.',
             'end_date.required' => 'Informe o fim do periodo.',
             'salary.required' => 'Informe o salario.',
             'salary.numeric' => 'O salario deve ser numerico.',
             'salary.min' => 'O salario deve ser maior ou igual a zero.',
+            'pix_key.max' => 'A chave Pix deve ter no maximo 255 caracteres.',
+            'employment_unit_id.required' => 'Selecione a loja em que o funcionario esta fichado.',
+            'employment_unit_id.integer' => 'A loja selecionada e invalida.',
+            'employment_unit_id.exists' => 'A loja selecionada nao existe.',
         ]);
 
         $startDate = $this->parseRequiredDate((string) $data['start_date'], 'start_date');
@@ -147,9 +155,24 @@ class PayrollController extends Controller
             ]);
         }
 
+        $managedUnitIds = ManagementScope::managedUnitIds($request->user());
+        $employmentUnitId = (int) $data['employment_unit_id'];
+
+        if (! $managedUnitIds->contains($employmentUnitId)) {
+            abort(403);
+        }
+
         $user->update([
             'salario' => round((float) $data['salary'], 2),
+            'chave_pix' => filled($data['pix_key'] ?? null)
+                ? trim((string) $data['pix_key'])
+                : null,
+            'tb2_id' => $employmentUnitId,
         ]);
+
+        if (! $user->units()->where('tb2_unidades.tb2_id', $employmentUnitId)->exists()) {
+            $user->units()->syncWithoutDetaching([$employmentUnitId]);
+        }
 
         return redirect()
             ->route('settings.contra-cheque', $this->buildContraChequeRedirectFilters($data, $startDate, $endDate))
@@ -420,7 +443,7 @@ class PayrollController extends Controller
             $filterUsersQuery = User::query()
                 ->with([
                     'units:tb2_id,tb2_nome',
-                    'primaryUnit:tb2_id,tb2_nome',
+                    'primaryUnit:tb2_id,tb2_nome,tb2_endereco,tb2_fone,tb2_cnpj',
                 ])
                 ->where('funcao', '!=', 6)
                 ->orderBy('name');
@@ -565,29 +588,40 @@ class PayrollController extends Controller
                     ->sortBy('date_time')
                     ->values();
 
-                $extraCreditRecords = $extraCreditsByUser
+                $extraEntryRecords = $extraCreditsByUser
                     ->get($user->id, collect())
                     ->map(function (ContraChequeCredito $credit) {
                         $typeLabel = self::EXTRA_CREDIT_TYPE_LABELS[$credit->tb28_tipo] ?? 'Outros';
+                        $isDeduction = in_array($credit->tb28_tipo, self::EXTRA_DEDUCTION_TYPES, true);
                         $description = $credit->tb28_tipo === 'outros' && filled($credit->tb28_descricao)
                             ? sprintf('%s: %s', $typeLabel, trim((string) $credit->tb28_descricao))
                             : $typeLabel;
+                        $amount = round((float) $credit->tb28_valor, 2);
 
                         return [
                             'id' => (int) $credit->tb28_id,
                             'type' => $credit->tb28_tipo,
                             'type_label' => $typeLabel,
                             'description' => $description,
-                            'amount' => round((float) $credit->tb28_valor, 2),
+                            'amount' => $isDeduction ? abs($amount) : $amount,
+                            'kind' => $isDeduction ? 'deduction' : 'credit',
+                            'is_deduction' => $isDeduction,
                         ];
                     })
                     ->values();
 
+                $extraCreditRecords = $extraEntryRecords
+                    ->filter(fn (array $entry) => ! $entry['is_deduction'])
+                    ->values();
+                $extraDiscountRecords = $extraEntryRecords
+                    ->filter(fn (array $entry) => $entry['is_deduction'])
+                    ->values();
                 $advanceTotal = round((float) $advanceRecords->sum('amount'), 2);
                 $valeTotal = round((float) $valeRecords->sum('total'), 2);
                 $extraCreditTotal = round((float) $extraCreditRecords->sum('amount'), 2);
+                $extraDiscountTotal = round((float) $extraDiscountRecords->sum('amount'), 2);
                 $salary = round((float) ($user->salario ?? 0), 2);
-                $balance = round($salary + $extraCreditTotal - $advanceTotal - $valeTotal, 2);
+                $balance = round($salary + $extraCreditTotal - $extraDiscountTotal - $advanceTotal - $valeTotal, 2);
                 $unitNames = $this->resolveUserUnitNames($user);
                 /** @var ContraChequePagamento|null $paymentRecord */
                 $paymentRecord = $paymentsByUser->get($user->id);
@@ -598,11 +632,14 @@ class PayrollController extends Controller
                     'id' => (int) $user->id,
                     'name' => $user->name,
                     'phone' => $user->phone,
+                    'pix_key' => $user->chave_pix,
+                    'employment_unit_id' => $user->primaryUnit?->tb2_id ?? $user->tb2_id,
                     'role_label' => self::ROLE_LABELS[(int) $user->funcao] ?? '---',
                     'salary' => $salary,
                     'advances_total' => $advanceTotal,
                     'vales_total' => $valeTotal,
                     'extra_credits_total' => $extraCreditTotal,
+                    'extra_discounts_total' => $extraDiscountTotal,
                     'balance' => $balance,
                     'unit_names' => $unitNames->values()->all(),
                     'payment_status' => $isPaid ? 'paid' : 'pending',
@@ -611,23 +648,28 @@ class PayrollController extends Controller
                         'user_id' => (int) $user->id,
                         'user_name' => $user->name,
                         'phone' => $user->phone,
+                        'pix_key' => $user->chave_pix,
                         'role_label' => self::ROLE_LABELS[(int) $user->funcao] ?? '---',
                         'unit_names' => $unitNames->values()->all(),
+                        'company_unit' => $this->formatPrimaryUnitSummary($user),
                         'start_date' => $startDate,
                         'end_date' => $endDate,
                         'salary' => $salary,
                         'advances_total' => $advanceTotal,
                         'vales_total' => $valeTotal,
                         'extra_credits_total' => $extraCreditTotal,
+                        'extra_discounts_total' => $extraDiscountTotal,
                         'balance' => $balance,
                         'payment_status' => $isPaid ? 'paid' : 'pending',
                         'payment_date' => $paymentDate,
                         'advances_count' => $advanceRecords->count(),
                         'vales_count' => $valeRecords->count(),
                         'extra_credits_count' => $extraCreditRecords->count(),
+                        'extra_discounts_count' => $extraDiscountRecords->count(),
                         'advances' => $advanceRecords->all(),
                         'vales' => $valeRecords->all(),
                         'extra_credits' => $extraCreditRecords->all(),
+                        'extra_discounts' => $extraDiscountRecords->all(),
                     ],
                 ];
             })
@@ -641,6 +683,7 @@ class PayrollController extends Controller
             'advances_total' => round((float) $rows->sum('advances_total'), 2),
             'vales_total' => round((float) $rows->sum('vales_total'), 2),
             'extra_credits_total' => round((float) $rows->sum('extra_credits_total'), 2),
+            'extra_discounts_total' => round((float) $rows->sum('extra_discounts_total'), 2),
             'balance_total' => round((float) $rows->sum('balance'), 2),
         ];
 
@@ -743,7 +786,7 @@ class PayrollController extends Controller
             $filterUsersQuery = User::query()
                 ->with([
                     'units:tb2_id,tb2_nome',
-                    'primaryUnit:tb2_id,tb2_nome',
+                    'primaryUnit:tb2_id,tb2_nome,tb2_endereco,tb2_fone,tb2_cnpj',
                 ])
                 ->where('funcao', '!=', 6)
                 ->orderBy('name');
@@ -916,13 +959,14 @@ class PayrollController extends Controller
                         $description = $credit->tb28_tipo === 'outros' && filled($credit->tb28_descricao)
                             ? sprintf('%s: %s', $typeLabel, trim((string) $credit->tb28_descricao))
                             : $typeLabel;
+                        $amount = round((float) $credit->tb28_valor, 2);
 
                         return [
                             'id' => (int) $credit->tb28_id,
                             'type' => $credit->tb28_tipo,
                             'type_label' => $typeLabel,
                             'description' => $description,
-                            'amount' => round((float) $credit->tb28_valor, 2),
+                            'amount' => $isDeduction ? abs($amount) : $amount,
                             'kind' => $isDeduction ? 'deduction' : 'credit',
                             'is_deduction' => $isDeduction,
                         ];
@@ -947,6 +991,8 @@ class PayrollController extends Controller
                     'id' => (int) $user->id,
                     'name' => $user->name,
                     'phone' => $user->phone,
+                    'pix_key' => $user->chave_pix,
+                    'employment_unit_id' => $user->primaryUnit?->tb2_id ?? $user->tb2_id,
                     'role_label' => self::ROLE_LABELS[(int) $user->funcao] ?? '---',
                     'salary' => $salary,
                     'payment_day' => $period['payment_day'],
@@ -962,8 +1008,10 @@ class PayrollController extends Controller
                         'user_id' => (int) $user->id,
                         'user_name' => $user->name,
                         'phone' => $user->phone,
+                        'pix_key' => $user->chave_pix,
                         'role_label' => self::ROLE_LABELS[(int) $user->funcao] ?? '---',
                         'unit_names' => $unitNames->values()->all(),
+                        'company_unit' => $this->formatPrimaryUnitSummary($user),
                         'start_date' => $periodStartDate,
                         'end_date' => $periodEndDate,
                         'payment_day' => $period['payment_day'],
@@ -1346,12 +1394,25 @@ class PayrollController extends Controller
         return $uniqueUnits;
     }
 
+    private function formatPrimaryUnitSummary(User $user): array
+    {
+        $unit = $user->primaryUnit;
+
+        return [
+            'id' => $unit?->tb2_id ? (int) $unit->tb2_id : null,
+            'name' => $unit?->tb2_nome ?? null,
+            'address' => $unit?->tb2_endereco ?? null,
+            'phone' => $unit?->tb2_fone ?? null,
+            'cnpj' => $unit?->tb2_cnpj ?? null,
+        ];
+    }
+
     private function newPayrollUsersQuery(Request $request, bool $onlyActiveUsers)
     {
         $query = User::query()
             ->with([
                 'units:tb2_id,tb2_nome',
-                'primaryUnit:tb2_id,tb2_nome',
+                'primaryUnit:tb2_id,tb2_nome,tb2_endereco,tb2_fone,tb2_cnpj',
             ])
             ->where('funcao', '!=', 6)
             ->orderBy('name');

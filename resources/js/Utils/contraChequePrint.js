@@ -17,9 +17,38 @@ const escapeHtml = (value) =>
 export const buildContraChequeHtml = (detail, options = {}) => {
     const { showDetails = true, format = 'receipt' } = options;
     const printedAt = formatBrazilDateTime(new Date());
-    const unitLabel = (detail?.unit_names ?? []).join(' / ') || '---';
+    const companyUnit = detail?.company_unit ?? {};
+    const unitLabel = companyUnit?.name || (detail?.unit_names ?? []).join(' / ') || '---';
+    const companyAddress = companyUnit?.address || '---';
+    const companyPhone = companyUnit?.phone || '---';
+    const companyCnpj = companyUnit?.cnpj || '---';
     const periodLabel = `${formatBrazilShortDate(detail?.start_date)} a ${formatBrazilShortDate(detail?.end_date)}`;
-    const extraCredits = detail?.extra_credits ?? [];
+    const hasExplicitDiscounts = Array.isArray(detail?.extra_discounts)
+        || detail?.extra_discounts_total !== undefined;
+    const extraCredits = hasExplicitDiscounts
+        ? (detail?.extra_credits ?? []).map((credit) => ({
+            ...credit,
+            amount: Number(credit?.amount ?? 0),
+        }))
+        : (detail?.extra_credits ?? [])
+            .filter((credit) => Number(credit?.amount ?? 0) >= 0)
+            .map((credit) => ({
+                ...credit,
+                amount: Number(credit?.amount ?? 0),
+            }));
+    const extraDiscounts = hasExplicitDiscounts
+        ? (detail?.extra_discounts ?? []).map((credit) => ({
+            ...credit,
+            amount: Math.abs(Number(credit?.amount ?? 0)),
+        }))
+        : (detail?.extra_credits ?? [])
+            .filter((credit) => Number(credit?.amount ?? 0) < 0)
+            .map((credit) => ({
+                ...credit,
+                amount: Math.abs(Number(credit?.amount ?? 0)),
+            }));
+    const extraCreditsTotal = detail?.extra_credits_total ?? extraCredits.reduce((total, credit) => total + Number(credit?.amount ?? 0), 0);
+    const extraDiscountsTotal = detail?.extra_discounts_total ?? extraDiscounts.reduce((total, credit) => total + Number(credit?.amount ?? 0), 0);
     const advances = detail?.advances ?? [];
     const vales = detail?.vales ?? [];
 
@@ -67,11 +96,35 @@ export const buildContraChequeHtml = (detail, options = {}) => {
         )
         .join('');
 
+    const extraDiscountsHtml = extraDiscounts
+        .map(
+            (credit) => `
+                <div class="record">
+                    <div class="record-head">
+                        <span>${escapeHtml(credit.description || credit.type_label || 'Desconto extra')}</span>
+                        <span>${escapeHtml(formatCurrency(credit.amount))}</span>
+                    </div>
+                </div>
+            `,
+        )
+        .join('');
+
     const extraCreditsSummaryHtml = extraCredits
         .map(
             (credit) => `
                 <div class="summary-row">
                     <span>${escapeHtml(credit.description || credit.type_label || 'Credito extra')}</span>
+                    <span>${escapeHtml(formatCurrency(credit.amount))}</span>
+                </div>
+            `,
+        )
+        .join('');
+
+    const extraDiscountsSummaryHtml = extraDiscounts
+        .map(
+            (credit) => `
+                <div class="summary-row">
+                    <span>${escapeHtml(credit.description || credit.type_label || 'Desconto extra')}</span>
                     <span>${escapeHtml(formatCurrency(credit.amount))}</span>
                 </div>
             `,
@@ -93,16 +146,23 @@ export const buildContraChequeHtml = (detail, options = {}) => {
                     ${extraCreditsHtml}
                 `
                 : ''}
+            ${extraDiscountsHtml
+                ? `
+                    <div class="divider"></div>
+                    <div class="section-title">Descontos extras</div>
+                    ${extraDiscountsHtml}
+                `
+                : ''}
         `
         : '';
 
-    const unitHtml = (detail?.unit_names ?? []).length
-        ? `<p class="meta">Lojas: ${escapeHtml(unitLabel)}</p>`
-        : '';
+    const unitHtml = `
+        <p class="meta">Empresa: ${escapeHtml(unitLabel)}</p>
+        <p class="meta">CNPJ: ${escapeHtml(companyCnpj)}</p>
+        <p class="meta">Fone: ${escapeHtml(companyPhone)}</p>
+    `;
 
     if (format === 'traditional') {
-        const positiveExtraCredits = extraCredits.filter((credit) => Number(credit.amount ?? 0) >= 0);
-        const negativeExtraCredits = extraCredits.filter((credit) => Number(credit.amount ?? 0) < 0);
         const earningRows = [
             {
                 code: '001',
@@ -110,7 +170,7 @@ export const buildContraChequeHtml = (detail, options = {}) => {
                 reference: '1,00',
                 amount: Number(detail?.salary ?? 0),
             },
-            ...positiveExtraCredits.map((credit, index) => ({
+            ...extraCredits.map((credit, index) => ({
                 code: String(100 + index + 1),
                 description: credit.description || credit.type_label || 'Credito extra',
                 reference: '1,00',
@@ -131,11 +191,11 @@ export const buildContraChequeHtml = (detail, options = {}) => {
                 reference: String(Number(vale.items_count ?? 0) || 1),
                 amount: Number(vale.total ?? 0),
             })),
-            ...negativeExtraCredits.map((credit, index) => ({
+            ...extraDiscounts.map((credit, index) => ({
                 code: String(400 + index + 1),
                 description: credit.description || credit.type_label || 'Desconto',
                 reference: '1,00',
-                amount: Math.abs(Number(credit.amount ?? 0)),
+                amount: Number(credit.amount ?? 0),
             })),
         ];
 
@@ -159,10 +219,10 @@ export const buildContraChequeHtml = (detail, options = {}) => {
         }).join('');
 
         const totalEarnings = Number(detail?.salary ?? 0)
-            + positiveExtraCredits.reduce((total, credit) => total + Number(credit.amount ?? 0), 0);
+            + extraCredits.reduce((total, credit) => total + Number(credit.amount ?? 0), 0);
         const totalDeductions = Number(detail?.advances_total ?? 0)
             + Number(detail?.vales_total ?? 0)
-            + negativeExtraCredits.reduce((total, credit) => total + Math.abs(Number(credit.amount ?? 0)), 0);
+            + extraDiscounts.reduce((total, credit) => total + Number(credit.amount ?? 0), 0);
 
         return `
             <!DOCTYPE html>
@@ -221,14 +281,17 @@ export const buildContraChequeHtml = (detail, options = {}) => {
                                 <div class="cell">
                                     <span class="label">Empresa / Loja</span>
                                     <span class="value">${escapeHtml(unitLabel)}</span>
+                                    <span>${escapeHtml(`CNPJ: ${companyCnpj}`)}</span>
                                 </div>
                                 <div class="cell">
-                                    <span class="label">Competencia</span>
+                                    <span class="label">Endereco / Fone</span>
+                                    <span class="value">${escapeHtml(companyAddress)}</span>
+                                    <span>${escapeHtml(companyPhone)}</span>
+                                </div>
+                                <div class="cell">
+                                    <span class="label">Competencia / Emissao</span>
                                     <span class="value">${escapeHtml(periodLabel)}</span>
-                                </div>
-                                <div class="cell">
-                                    <span class="label">Emitido em</span>
-                                    <span class="value">${escapeHtml(printedAt)}</span>
+                                    <span>${escapeHtml(printedAt)}</span>
                                 </div>
                             </div>
                         </div>
@@ -336,9 +399,12 @@ export const buildContraChequeHtml = (detail, options = {}) => {
                 <p class="meta">Impresso em: ${escapeHtml(printedAt)}</p>
                 <div class="divider"></div>
                 <div class="summary-row"><span>Salario</span><span>${escapeHtml(formatCurrency(detail?.salary))}</span></div>
+                <div class="summary-row"><span>Creditos extras</span><span>${escapeHtml(formatCurrency(extraCreditsTotal))}</span></div>
+                ${extraCreditsSummaryHtml}
+                <div class="summary-row"><span>Descontos extras</span><span>${escapeHtml(formatCurrency(extraDiscountsTotal))}</span></div>
+                ${extraDiscountsSummaryHtml}
                 <div class="summary-row"><span>Adiantamento</span><span>${escapeHtml(formatCurrency(detail?.advances_total))}</span></div>
                 <div class="summary-row"><span>Vale em compras</span><span>${escapeHtml(formatCurrency(detail?.vales_total))}</span></div>
-                ${extraCreditsSummaryHtml}
                 <div class="summary-row"><span>Saldo a receber</span><span>${escapeHtml(formatCurrency(detail?.balance))}</span></div>
                 ${detailsHtml}
             </body>

@@ -27,6 +27,7 @@ const EXTRA_CREDIT_TYPE_OPTIONS = [
     { value: 'primeiro_domingo', label: 'Primeiro Domingo' },
     { value: 'feriado', label: 'Feriado' },
     { value: 'bonificacao', label: 'Bonificacao' },
+    { value: 'falta', label: 'FALTA' },
     { value: 'inss', label: 'INSS' },
     { value: 'outros', label: 'Outros' },
 ];
@@ -64,7 +65,11 @@ const normalizeWhatsappPhone = (value) => {
 
 const buildWhatsappSummaryMessage = (detail) => {
     const extraCredits = detail?.extra_credits_total ?? 0;
+    const extraDiscounts = detail?.extra_discounts_total ?? 0;
     const extraCreditLines = (detail?.extra_credits ?? [])
+        .map((credit) => `- ${credit.description || credit.type_label}: ${formatCurrency(credit.amount)}`)
+        .join('\n');
+    const extraDiscountLines = (detail?.extra_discounts ?? [])
         .map((credit) => `- ${credit.description || credit.type_label}: ${formatCurrency(credit.amount)}`)
         .join('\n');
 
@@ -73,8 +78,10 @@ const buildWhatsappSummaryMessage = (detail) => {
         `Funcionario: ${detail?.user_name ?? '---'}`,
         `Periodo: ${formatBrazilShortDate(detail?.start_date)} a ${formatBrazilShortDate(detail?.end_date)}`,
         `Salario base: ${formatCurrency(detail?.salary)}`,
-        `Lancamentos extras: ${formatCurrency(extraCredits)}`,
-        extraCreditLines ? `Lancamentos:\n${extraCreditLines}` : null,
+        `Creditos extras: ${formatCurrency(extraCredits)}`,
+        extraCreditLines ? `Creditos:\n${extraCreditLines}` : null,
+        `Descontos extras: ${formatCurrency(extraDiscounts)}`,
+        extraDiscountLines ? `Descontos:\n${extraDiscountLines}` : null,
         `Adiantamentos: ${formatCurrency(detail?.advances_total)}`,
         `Vales: ${formatCurrency(detail?.vales_total)}`,
         `Liquido a receber: ${formatCurrency(detail?.balance)}`,
@@ -236,6 +243,8 @@ export default function ContraCheque({
                 : 'all',
         payment_status: selectedPaymentStatus ?? 'pending',
         salary: '',
+        pix_key: '',
+        employment_unit_id: '',
     });
 
     const startDateIso = shortBrazilDateInputToIso(data.start_date);
@@ -278,8 +287,13 @@ export default function ContraCheque({
             },
             {
                 key: 'credits',
-                label: 'Lancamentos extras',
+                label: 'Creditos extras',
                 value: formatCurrency(summary.extra_credits_total),
+            },
+            {
+                key: 'discounts',
+                label: 'Descontos extras',
+                value: formatCurrency(summary.extra_discounts_total),
             },
             {
                 key: 'balance',
@@ -420,6 +434,8 @@ export default function ContraCheque({
         salaryForm.setData({
             ...buildRowFilterPayload(row),
             salary: Number(row?.salary ?? 0).toFixed(2),
+            pix_key: row?.pix_key ?? '',
+            employment_unit_id: row?.employment_unit_id ? String(row.employment_unit_id) : '',
         });
     };
 
@@ -690,7 +706,7 @@ export default function ContraCheque({
                             </span>
                         </div>
 
-                        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+                        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-7">
                             {summaryCards.map((card) => (
                                 <div
                                     key={card.key}
@@ -800,61 +816,69 @@ export default function ContraCheque({
                                         </div>
                                     </div>
 
-                                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                                        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
-                                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+                                    <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-3">
+                                        <div className="min-w-0 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
+                                            <p className="break-words text-[11px] font-semibold uppercase leading-4 tracking-[0.18em] text-gray-400">
                                                 Salario
                                             </p>
-                                            <p className="mt-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+                                            <p className="mt-2 break-words text-base font-semibold leading-6 text-gray-900 dark:text-gray-100">
                                                 {formatCurrency(row.salary)}
                                             </p>
                                         </div>
-                                        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
-                                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+                                        <div className="min-w-0 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
+                                            <p className="break-words text-[11px] font-semibold uppercase leading-4 tracking-[0.18em] text-gray-400">
                                                 Vale em compras
                                             </p>
-                                            <p className="mt-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+                                            <p className="mt-2 break-words text-base font-semibold leading-6 text-gray-900 dark:text-gray-100">
                                                 {formatCurrency(row.vales_total)}
                                             </p>
                                         </div>
-                                        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
-                                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+                                        <div className="min-w-0 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
+                                            <p className="break-words text-[11px] font-semibold uppercase leading-4 tracking-[0.18em] text-gray-400">
                                                 Adiantamento
                                             </p>
-                                            <p className="mt-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+                                            <p className="mt-2 break-words text-base font-semibold leading-6 text-gray-900 dark:text-gray-100">
                                                 {formatCurrency(row.advances_total)}
                                             </p>
                                         </div>
-                                        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
-                                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
-                                                Lancamentos extras
+                                        <div className="min-w-0 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
+                                            <p className="break-words text-[11px] font-semibold uppercase leading-4 tracking-[0.18em] text-gray-400">
+                                                Creditos extras
                                             </p>
-                                            <p className={`mt-2 text-base font-semibold ${row.extra_credits_total < 0 ? 'text-red-600 dark:text-red-300' : 'text-blue-600 dark:text-blue-300'}`}>
+                                            <p className="mt-2 break-words text-base font-semibold leading-6 text-blue-600 dark:text-blue-300">
                                                 {formatCurrency(row.extra_credits_total)}
                                             </p>
                                         </div>
-                                        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:col-span-2 dark:border-gray-700 dark:bg-gray-900">
-                                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+                                        <div className="min-w-0 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
+                                            <p className="break-words text-[11px] font-semibold uppercase leading-4 tracking-[0.18em] text-gray-400">
+                                                Descontos extras
+                                            </p>
+                                            <p className={`mt-2 break-words text-base font-semibold leading-6 ${row.extra_discounts_total > 0 ? 'text-red-600 dark:text-red-300' : 'text-gray-900 dark:text-gray-100'}`}>
+                                                {formatCurrency(row.extra_discounts_total)}
+                                            </p>
+                                        </div>
+                                        <div className="min-w-0 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
+                                            <p className="break-words text-[11px] font-semibold uppercase leading-4 tracking-[0.18em] text-gray-400">
                                                 Saldo
                                             </p>
-                                            <p className={`mt-2 text-base font-semibold ${row.balance < 0 ? 'text-red-600 dark:text-red-300' : 'text-green-600 dark:text-green-300'}`}>
+                                            <p className={`mt-2 break-words text-base font-semibold leading-6 ${row.balance < 0 ? 'text-red-600 dark:text-red-300' : 'text-green-600 dark:text-green-300'}`}>
                                                 {formatCurrency(row.balance)}
                                             </p>
                                         </div>
                                     </div>
 
-                                    <div className="mt-5 flex gap-3">
+                                    <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
                                         <PrimaryButton
                                             type="button"
                                             onClick={() => handlePrint(row.detail)}
-                                            className="flex-1 justify-center rounded-2xl px-4 py-3 text-sm font-semibold normal-case tracking-normal"
+                                            className="min-w-0 justify-center rounded-2xl px-3 py-3 text-center text-sm font-semibold leading-5 normal-case tracking-normal"
                                         >
                                             Imprimir 80mm
                                         </PrimaryButton>
                                         <PrimaryButton
                                             type="button"
                                             onClick={() => handlePrintPdf(row.detail)}
-                                            className="flex-1 justify-center rounded-2xl px-4 py-3 text-sm font-semibold normal-case tracking-normal"
+                                            className="min-w-0 justify-center rounded-2xl px-3 py-3 text-center text-sm font-semibold leading-5 normal-case tracking-normal"
                                         >
                                             PDF
                                         </PrimaryButton>
@@ -862,7 +886,7 @@ export default function ContraCheque({
                                             type="button"
                                             onClick={() => handleOpenWhatsapp(row.detail)}
                                             disabled={!normalizeWhatsappPhone(row.phone)}
-                                            className="justify-center rounded-2xl px-4 py-3 text-sm font-semibold normal-case tracking-normal"
+                                            className="min-w-0 justify-center rounded-2xl px-3 py-3 text-center text-sm font-semibold leading-5 normal-case tracking-normal"
                                             aria-label={`Enviar resumo do contra-cheque de ${row.name} por WhatsApp`}
                                             title={normalizeWhatsappPhone(row.phone) ? 'Enviar resumo por WhatsApp' : 'Telefone nao cadastrado'}
                                         >
@@ -871,9 +895,9 @@ export default function ContraCheque({
                                         <PrimaryButton
                                             type="button"
                                             onClick={() => openCreditModal(row)}
-                                            className="justify-center rounded-2xl px-4 py-3 text-lg font-semibold normal-case tracking-normal"
-                                            aria-label={`Adicionar credito ao contra-cheque de ${row.name}`}
-                                            title={`Adicionar credito ao contra-cheque de ${row.name}`}
+                                            className="min-w-0 justify-center rounded-2xl px-3 py-3 text-center text-lg font-semibold leading-5 normal-case tracking-normal"
+                                            aria-label={`Adicionar lancamento ao contra-cheque de ${row.name}`}
+                                            title={`Adicionar lancamento ao contra-cheque de ${row.name}`}
                                         >
                                             +
                                         </PrimaryButton>
@@ -910,6 +934,39 @@ export default function ContraCheque({
                                 placeholder="0,00"
                             />
                             <InputError message={salaryForm.errors.salary} className="mt-2" />
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-medium text-gray-700">
+                                Chave Pix
+                            </label>
+                            <input
+                                type="text"
+                                value={salaryForm.data.pix_key}
+                                onChange={(event) => salaryForm.setData('pix_key', event.target.value)}
+                                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                placeholder="CPF, telefone, email ou chave aleatoria"
+                            />
+                            <InputError message={salaryForm.errors.pix_key} className="mt-2" />
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-medium text-gray-700">
+                                Loja em que esta fichado
+                            </label>
+                            <select
+                                value={salaryForm.data.employment_unit_id}
+                                onChange={(event) => salaryForm.setData('employment_unit_id', event.target.value)}
+                                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                            >
+                                <option value="">Selecione</option>
+                                {filterUnits.map((filterUnit) => (
+                                    <option key={`employment-unit-${filterUnit.id}`} value={filterUnit.id}>
+                                        {filterUnit.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <InputError message={salaryForm.errors.employment_unit_id} className="mt-2" />
                         </div>
                     </div>
 
@@ -1053,14 +1110,20 @@ export default function ContraCheque({
                     </div>
 
                     <div className="max-h-[28rem] space-y-4 overflow-y-auto px-6 py-5">
-                        {(selectedExtraCreditRow?.detail?.extra_credits ?? []).length === 0 ? (
+                        {[
+                            ...(selectedExtraCreditRow?.detail?.extra_credits ?? []),
+                            ...(selectedExtraCreditRow?.detail?.extra_discounts ?? []),
+                        ].length === 0 ? (
                             <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500">
                                 Nenhum lancamento extra encontrado para exclusao neste periodo.
                             </div>
                         ) : (
-                            (selectedExtraCreditRow?.detail?.extra_credits ?? []).map((credit) => (
+                            [
+                                ...(selectedExtraCreditRow?.detail?.extra_credits ?? []),
+                                ...(selectedExtraCreditRow?.detail?.extra_discounts ?? []),
+                            ].map((credit) => (
                                 <div
-                                    key={`credit-${credit.id}`}
+                                    key={`credit-${credit.id}-${credit.type}`}
                                     className="rounded-2xl border border-gray-200 p-4"
                                 >
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1099,7 +1162,7 @@ export default function ContraCheque({
                 <form onSubmit={handleCreditSubmit}>
                     <div className="border-b border-gray-200 px-6 py-5">
                         <h3 className="text-lg font-semibold text-gray-900">
-                            Adicionar valor ao contra-cheque
+                            Adicionar lancamento ao contra-cheque
                         </h3>
                         <p className="mt-1 text-sm text-gray-600">
                             {selectedCreditRow?.name ?? '---'} - Periodo {creditForm.data.start_date || 'DD/MM/AA'} a {creditForm.data.end_date || 'DD/MM/AA'}
@@ -1135,7 +1198,7 @@ export default function ContraCheque({
                                     value={creditForm.data.other_description}
                                     onChange={(event) => creditForm.setData('other_description', event.target.value)}
                                     className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                                    placeholder="Descreva o credito"
+                                    placeholder="Descreva o lancamento"
                                 />
                                 <InputError message={creditForm.errors.other_description} className="mt-2" />
                             </div>

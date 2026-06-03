@@ -243,7 +243,7 @@ class PayrollReportTest extends TestCase
         );
     }
 
-    public function test_admin_can_view_contra_cheque_with_extra_credits_and_extra_discounts_hidden_multi_unit_badges_and_phone(): void
+    public function test_admin_can_view_contra_cheque_with_extra_credits_and_falta_extra_discounts_hidden_multi_unit_badges_and_phone(): void
     {
         $unitA = $this->makeUnit('Loja A');
         $unitB = $this->makeUnit('Loja B');
@@ -259,6 +259,7 @@ class PayrollReportTest extends TestCase
             'name' => 'Bruno',
             'email' => 'bruno@example.com',
             'phone' => '62999998888',
+            'chave_pix' => 'bruno.pix@example.com',
             'funcao' => 5,
             'funcao_original' => 5,
             'salario' => 2000,
@@ -284,6 +285,15 @@ class PayrollReportTest extends TestCase
             'tb28_valor' => 220.25,
         ]);
 
+        ContraChequeCredito::create([
+            'user_id' => $employee->id,
+            'tb28_periodo_inicio' => '2026-04-01',
+            'tb28_periodo_fim' => '2026-04-30',
+            'tb28_tipo' => 'falta',
+            'tb28_descricao' => null,
+            'tb28_valor' => 80.75,
+        ]);
+
         $response = $this
             ->actingAs($admin)
             ->get(route('settings.contra-cheque', [
@@ -296,22 +306,80 @@ class PayrollReportTest extends TestCase
             ->component('Settings/ContraCheque')
             ->where('summary.employees_count', 1)
             ->where('summary.extra_credits_total', 120.5)
-            ->where('summary.extra_discounts_total', 220.25)
+            ->where('summary.extra_discounts_total', 301.0)
             ->where('rows.0.name', 'Bruno')
             ->where('rows.0.phone', '62999998888')
+            ->where('rows.0.pix_key', 'bruno.pix@example.com')
+            ->where('rows.0.employment_unit_id', $unitA->tb2_id)
             ->where('rows.0.unit_names', [])
             ->where('rows.0.extra_credits_total', 120.5)
-            ->where('rows.0.extra_discounts_total', 220.25)
-            ->where('rows.0.balance', 1900.25)
+            ->where('rows.0.extra_discounts_total', 301.0)
+            ->where('rows.0.balance', 1819.5)
             ->where('rows.0.detail.extra_credits_count', 1)
-            ->where('rows.0.detail.extra_discounts_count', 1)
+            ->where('rows.0.detail.extra_discounts_count', 2)
             ->where('rows.0.detail.extra_credits.0.type', 'feriado')
             ->where('rows.0.detail.extra_credits.0.type_label', 'Feriado')
             ->where('rows.0.detail.extra_credits.0.description', 'Feriado')
             ->where('rows.0.detail.extra_discounts.0.type', 'inss')
             ->where('rows.0.detail.extra_discounts.0.type_label', 'INSS')
             ->where('rows.0.detail.extra_discounts.0.description', 'INSS')
+            ->where('rows.0.detail.extra_discounts.1.type', 'falta')
+            ->where('rows.0.detail.extra_discounts.1.type_label', 'FALTA')
+            ->where('rows.0.detail.extra_discounts.1.description', 'FALTA')
+            ->where('rows.0.detail.company_unit.id', $unitA->tb2_id)
+            ->where('rows.0.detail.company_unit.name', 'Loja A')
+            ->where('rows.0.detail.pix_key', 'bruno.pix@example.com')
         );
+    }
+
+    public function test_admin_can_update_salary_pix_key_and_employment_unit_from_contra_cheque(): void
+    {
+        $unitA = $this->makeUnit('Loja A');
+        $unitB = $this->makeUnit('Loja B');
+
+        $admin = User::factory()->create([
+            'funcao' => 1,
+            'funcao_original' => 1,
+            'tb2_id' => $unitA->tb2_id,
+        ]);
+        $admin->units()->sync([$unitA->tb2_id, $unitB->tb2_id]);
+
+        $employee = User::factory()->create([
+            'name' => 'Carlos',
+            'email' => 'carlos@example.com',
+            'funcao' => 5,
+            'funcao_original' => 5,
+            'salario' => 1600,
+            'tb2_id' => $unitA->tb2_id,
+        ]);
+        $employee->units()->sync([$unitA->tb2_id]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->patch(route('settings.contra-cheque.salary.update', ['user' => $employee->id]), [
+                'start_date' => '2026-04-01',
+                'end_date' => '2026-04-30',
+                'unit_id' => 'all',
+                'role' => 'all',
+                'user_id' => 'all',
+                'payment_status' => 'pending',
+                'salary' => '2450.90',
+                'pix_key' => 'carlos@pix.com',
+                'employment_unit_id' => $unitB->tb2_id,
+            ]);
+
+        $response->assertRedirect(route('settings.contra-cheque', [
+            'start_date' => '2026-04-01',
+            'end_date' => '2026-04-30',
+            'payment_status' => 'pending',
+        ]));
+
+        $employee->refresh();
+
+        $this->assertSame(2450.90, round((float) $employee->salario, 2));
+        $this->assertSame('carlos@pix.com', $employee->chave_pix);
+        $this->assertSame($unitB->tb2_id, (int) $employee->tb2_id);
+        $this->assertTrue($employee->units()->where('tb2_unidades.tb2_id', $unitB->tb2_id)->exists());
     }
 
     private function makeUnit(string $name): Unidade
