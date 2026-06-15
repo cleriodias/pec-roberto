@@ -38,6 +38,20 @@ const STATUS_LEGEND = [
     },
 ];
 
+const INVOICE_ITEM_UNIT_TYPES = [
+    { value: 'caixa', label: 'Caixa' },
+    { value: 'quilo', label: 'Quilo' },
+    { value: 'unidade', label: 'Unidade' },
+    { value: 'litro', label: 'Litro' },
+];
+
+const buildEmptyInvoiceItem = () => ({
+    description: '',
+    quantity: '1',
+    unit_type: 'unidade',
+    unit_price: '',
+});
+
 const formatCurrency = (value) =>
     Number(value ?? 0).toLocaleString('pt-BR', {
         style: 'currency',
@@ -402,6 +416,7 @@ export default function BoletoIndex({
     activeUnit = null,
     filters = {},
     boletos = null,
+    suppliers = [],
     canManageList = false,
     filterUnits = [],
     listTotalAmount = 0,
@@ -418,6 +433,7 @@ export default function BoletoIndex({
             : createUnits[0]?.id
               ? String(createUnits[0].id)
               : '';
+    const defaultSupplierId = suppliers[0]?.id ? String(suppliers[0].id) : '';
     const hasActiveUnit = Boolean(activeUnit?.id);
 
     const {
@@ -452,11 +468,28 @@ export default function BoletoIndex({
         unit_id: filters.unit_id ?? 'all',
     });
 
+    const {
+        data: invoiceData,
+        setData: setInvoiceData,
+        post: postInvoice,
+        processing: invoiceProcessing,
+        errors: invoiceErrors,
+        reset: resetInvoice,
+        clearErrors: clearInvoiceErrors,
+    } = useForm({
+        unit_id: defaultCreateUnitId,
+        supplier_id: defaultSupplierId,
+        expense_date: resolveIsoDate(filters.end_date ?? '') || todayIso,
+        notes: '',
+        items: [buildEmptyInvoiceItem()],
+    });
+
     const [selectedBoleto, setSelectedBoleto] = useState(null);
     const [showDetails, setShowDetails] = useState(false);
     const [showBarcodeModal, setShowBarcodeModal] = useState(false);
     const [showBatchBarcodeModal, setShowBatchBarcodeModal] = useState(false);
     const [editingBoleto, setEditingBoleto] = useState(null);
+    const [createMode, setCreateMode] = useState('boleto');
 
     const buildFilterParams = () => ({
         start_date: resolveIsoDate(filterData.start_date) || undefined,
@@ -478,6 +511,70 @@ export default function BoletoIndex({
             digitable_line: '',
         });
     };
+
+    const resetInvoiceForm = (preservedUnitId = invoiceData.unit_id) => {
+        clearInvoiceErrors();
+        resetInvoice();
+        setInvoiceData({
+            unit_id: preservedUnitId,
+            supplier_id: defaultSupplierId,
+            expense_date: todayIso,
+            notes: '',
+            items: [buildEmptyInvoiceItem()],
+        });
+    };
+
+    const switchToInvoiceForm = () => {
+        clearErrors();
+        setEditingBoleto(null);
+        clearInvoiceErrors();
+        setCreateMode('invoice');
+    };
+
+    const switchToBoletoForm = () => {
+        clearInvoiceErrors();
+        setCreateMode('boleto');
+    };
+
+    const updateInvoiceItem = (index, field, value) => {
+        const nextItems = invoiceData.items.map((item, itemIndex) =>
+            itemIndex === index
+                ? {
+                    ...item,
+                    [field]: value,
+                }
+                : item
+        );
+
+        setInvoiceData('items', nextItems);
+    };
+
+    const addInvoiceItem = () => {
+        setInvoiceData('items', [...invoiceData.items, buildEmptyInvoiceItem()]);
+    };
+
+    const removeInvoiceItem = (index) => {
+        if (invoiceData.items.length <= 1) {
+            return;
+        }
+
+        setInvoiceData(
+            'items',
+            invoiceData.items.filter((_, itemIndex) => itemIndex !== index)
+        );
+    };
+
+    const getInvoiceItemSubtotal = (item) => {
+        const quantity = Number(item?.quantity ?? 0);
+        const unitPrice = Number(item?.unit_price ?? 0);
+
+        return quantity > 0 && unitPrice >= 0 ? quantity * unitPrice : 0;
+    };
+
+    const invoiceTotalAmount = invoiceData.items.reduce(
+        (sum, item) => sum + getInvoiceItemSubtotal(item),
+        0
+    );
 
     const handleSubmit = (event) => {
         event.preventDefault();
@@ -511,6 +608,18 @@ export default function BoletoIndex({
         });
     };
 
+    const handleInvoiceSubmit = (event) => {
+        event.preventDefault();
+
+        postInvoice(route('expenses.invoices.store'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                const preservedUnitId = invoiceData.unit_id || defaultCreateUnitId;
+                resetInvoiceForm(preservedUnitId);
+            },
+        });
+    };
+
     const handleFilterSubmit = (event) => {
         event.preventDefault();
         get(route('boletos.index'), {
@@ -532,6 +641,7 @@ export default function BoletoIndex({
     };
 
     const handleEdit = (boleto) => {
+        setCreateMode('boleto');
         setEditingBoleto(boleto);
         clearErrors();
         setData({
@@ -600,6 +710,7 @@ export default function BoletoIndex({
     };
 
     const canSubmitForm = canChooseCreateUnit ? Boolean(data.unit_id) : hasActiveUnit;
+    const canSubmitInvoice = canChooseCreateUnit ? Boolean(invoiceData.unit_id) : hasActiveUnit;
 
     const headerContent = (
         <div>
@@ -635,173 +746,449 @@ export default function BoletoIndex({
                         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                             <div>
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                    {editingBoleto ? 'Editar boleto' : 'Cadastrar boleto'}
+                                    {createMode === 'invoice'
+                                        ? 'Cadastrar nota fiscal'
+                                        : editingBoleto
+                                          ? 'Editar boleto'
+                                          : 'Cadastrar boleto'}
                                 </h3>
                                 <p className="text-sm text-gray-500 dark:text-gray-300">
-                                    {editingBoleto
-                                        ? `Atualizando o boleto #${editingBoleto.id}.`
-                                        : 'Preencha os dados do boleto no formato DD/MM/AA e com os codigos apenas numericos.'}
+                                    {createMode === 'invoice'
+                                        ? 'Alterne entre boleto e nota fiscal sem sair deste card.'
+                                        : editingBoleto
+                                          ? `Atualizando o boleto #${editingBoleto.id}.`
+                                          : 'Preencha os dados do boleto no formato DD/MM/AA e com os codigos apenas numericos.'}
                                 </p>
                             </div>
-                            {editingBoleto && (
+                            <div className="flex flex-wrap items-center justify-end gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => resetCreateForm(data.unit_id)}
-                                    className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                                    onClick={switchToBoletoForm}
+                                    className={`rounded-xl px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-200 ${
+                                        createMode === 'boleto'
+                                            ? 'border border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-500/60 dark:bg-indigo-900/30 dark:text-indigo-200'
+                                            : 'border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700'
+                                    }`}
                                 >
-                                    Cancelar edicao
+                                    Formulario boleto
                                 </button>
-                            )}
-                        </div>
-
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div
-                                className={`grid gap-4 ${
-                                    canChooseCreateUnit
-                                        ? 'lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]'
-                                        : 'lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]'
-                                }`}
-                            >
-                                {canChooseCreateUnit && (
-                                    <div>
-                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                            Loja
-                                        </label>
-                                        <select
-                                            value={data.unit_id}
-                                            onChange={(event) => setData('unit_id', event.target.value)}
-                                            className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                            disabled={!createUnits.length}
-                                        >
-                                            {!createUnits.length ? (
-                                                <option value="">Nenhuma loja disponivel</option>
-                                            ) : (
-                                                createUnits.map((unit) => (
-                                                    <option key={unit.id} value={unit.id}>
-                                                        {unit.name}
-                                                    </option>
-                                                ))
-                                            )}
-                                        </select>
-                                    </div>
-                                )}
-
-                                <div>
-                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                        Descricao
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={data.description}
-                                        onChange={(event) => setData('description', event.target.value)}
-                                        className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                        disabled={!canSubmitForm}
-                                    />
-                                    {errors.description && (
-                                        <p className="mt-1 text-sm text-red-600">{errors.description}</p>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                        Vencimento
-                                    </label>
-                                    <input
-                                        type="text"
-                                        inputMode="numeric"
-                                        value={data.due_date}
-                                        onChange={(event) => setData('due_date', normalizeBrazilShortDateInput(event.target.value))}
-                                        placeholder="DD/MM/AA"
-                                        className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                        disabled={!canSubmitForm}
-                                    />
-                                    {errors.due_date && (
-                                        <p className="mt-1 text-sm text-red-600">{errors.due_date}</p>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                        Valor (R$)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        min="0.01"
-                                        step="0.01"
-                                        value={data.amount}
-                                        onChange={(event) => setData('amount', event.target.value)}
-                                        className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                        disabled={!canSubmitForm}
-                                    />
-                                    {errors.amount && (
-                                        <p className="mt-1 text-sm text-red-600">{errors.amount}</p>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="grid gap-4 lg:grid-cols-2">
-                                <div>
-                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                        Codigo de barras
-                                    </label>
-                                    <input
-                                        type="text"
-                                        inputMode="numeric"
-                                        value={data.barcode}
-                                        onChange={(event) => setData('barcode', onlyDigits(event.target.value))}
-                                        placeholder="44 digitos"
-                                        className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                        disabled={!canSubmitForm}
-                                    />
-                                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                        O sistema valida exatamente 44 digitos.
-                                    </p>
-                                    {errors.barcode && (
-                                        <p className="mt-1 text-sm text-red-600">{errors.barcode}</p>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                        Linha digitavel
-                                    </label>
-                                    <input
-                                        type="text"
-                                        inputMode="numeric"
-                                        value={data.digitable_line}
-                                        onChange={(event) => setData('digitable_line', onlyDigits(event.target.value))}
-                                        placeholder="47 ou 48 digitos"
-                                        className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-                                        disabled={!canSubmitForm}
-                                    />
-                                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                        O sistema valida 47 ou 48 digitos.
-                                    </p>
-                                    {errors.digitable_line && (
-                                        <p className="mt-1 text-sm text-red-600">{errors.digitable_line}</p>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="flex flex-wrap justify-end gap-3">
-                                {editingBoleto && (
+                                <button
+                                    type="button"
+                                    onClick={switchToInvoiceForm}
+                                    className={`rounded-xl px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-emerald-200 ${
+                                        createMode === 'invoice'
+                                            ? 'border border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/60 dark:bg-emerald-900/30 dark:text-emerald-200'
+                                            : 'border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700'
+                                    }`}
+                                >
+                                    Formulario nota fiscal
+                                </button>
+                                {editingBoleto && createMode === 'boleto' && (
                                     <button
                                         type="button"
                                         onClick={() => resetCreateForm(data.unit_id)}
                                         className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
                                     >
-                                        Cancelar
+                                        Cancelar edicao
                                     </button>
                                 )}
-                                <PrimaryButton
-                                    type="submit"
-                                    disabled={processing || !canSubmitForm}
-                                    className="justify-center rounded-xl px-4 py-2 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed"
-                                >
-                                    {editingBoleto ? 'Atualizar boleto' : 'Salvar boleto'}
-                                </PrimaryButton>
                             </div>
-                        </form>
+                        </div>
+
+                        {createMode === 'boleto' ? (
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                <div
+                                    className={`grid gap-4 ${
+                                        canChooseCreateUnit
+                                            ? 'lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]'
+                                            : 'lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]'
+                                    }`}
+                                >
+                                    {canChooseCreateUnit && (
+                                        <div>
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                                Loja
+                                            </label>
+                                            <select
+                                                value={data.unit_id}
+                                                onChange={(event) => setData('unit_id', event.target.value)}
+                                                className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                disabled={!createUnits.length}
+                                            >
+                                                {!createUnits.length ? (
+                                                    <option value="">Nenhuma loja disponivel</option>
+                                                ) : (
+                                                    createUnits.map((unit) => (
+                                                        <option key={unit.id} value={unit.id}>
+                                                            {unit.name}
+                                                        </option>
+                                                    ))
+                                                )}
+                                            </select>
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                            Descricao
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={data.description}
+                                            onChange={(event) => setData('description', event.target.value)}
+                                            className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                            disabled={!canSubmitForm}
+                                        />
+                                        {errors.description && (
+                                            <p className="mt-1 text-sm text-red-600">{errors.description}</p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                            Vencimento
+                                        </label>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            value={data.due_date}
+                                            onChange={(event) => setData('due_date', normalizeBrazilShortDateInput(event.target.value))}
+                                            placeholder="DD/MM/AA"
+                                            className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                            disabled={!canSubmitForm}
+                                        />
+                                        {errors.due_date && (
+                                            <p className="mt-1 text-sm text-red-600">{errors.due_date}</p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                            Valor (R$)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="0.01"
+                                            step="0.01"
+                                            value={data.amount}
+                                            onChange={(event) => setData('amount', event.target.value)}
+                                            className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                            disabled={!canSubmitForm}
+                                        />
+                                        {errors.amount && (
+                                            <p className="mt-1 text-sm text-red-600">{errors.amount}</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-4 lg:grid-cols-2">
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                            Codigo de barras
+                                        </label>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            value={data.barcode}
+                                            onChange={(event) => setData('barcode', onlyDigits(event.target.value))}
+                                            placeholder="44 digitos"
+                                            className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                            disabled={!canSubmitForm}
+                                        />
+                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                            O sistema valida exatamente 44 digitos.
+                                        </p>
+                                        {errors.barcode && (
+                                            <p className="mt-1 text-sm text-red-600">{errors.barcode}</p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                            Linha digitavel
+                                        </label>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            value={data.digitable_line}
+                                            onChange={(event) => setData('digitable_line', onlyDigits(event.target.value))}
+                                            placeholder="47 ou 48 digitos"
+                                            className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                            disabled={!canSubmitForm}
+                                        />
+                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                            O sistema valida 47 ou 48 digitos.
+                                        </p>
+                                        {errors.digitable_line && (
+                                            <p className="mt-1 text-sm text-red-600">{errors.digitable_line}</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-wrap justify-end gap-3">
+                                    {editingBoleto && (
+                                        <button
+                                            type="button"
+                                            onClick={() => resetCreateForm(data.unit_id)}
+                                            className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                                        >
+                                            Cancelar
+                                        </button>
+                                    )}
+                                    <PrimaryButton
+                                        type="submit"
+                                        disabled={processing || !canSubmitForm}
+                                        className="justify-center rounded-xl px-4 py-2 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed"
+                                    >
+                                        {editingBoleto ? 'Atualizar boleto' : 'Salvar boleto'}
+                                    </PrimaryButton>
+                                </div>
+                            </form>
+                        ) : (
+                            <form onSubmit={handleInvoiceSubmit} className="space-y-5">
+                                {!suppliers.length && (
+                                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+                                        Cadastre pelo menos um fornecedor para vincular a empresa da nota fiscal.
+                                    </div>
+                                )}
+
+                                {invoiceErrors.items && (
+                                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+                                        {invoiceErrors.items}
+                                    </div>
+                                )}
+
+                                <div className={`grid gap-4 ${canChooseCreateUnit ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+                                    {canChooseCreateUnit && (
+                                        <div>
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                                Loja
+                                            </label>
+                                            <select
+                                                value={invoiceData.unit_id}
+                                                onChange={(event) => setInvoiceData('unit_id', event.target.value)}
+                                                className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                disabled={!createUnits.length}
+                                            >
+                                                {!createUnits.length ? (
+                                                    <option value="">Nenhuma loja disponivel</option>
+                                                ) : (
+                                                    createUnits.map((unit) => (
+                                                        <option key={unit.id} value={unit.id}>
+                                                            {unit.name}
+                                                        </option>
+                                                    ))
+                                                )}
+                                            </select>
+                                            {invoiceErrors.unit_id && (
+                                                <p className="mt-1 text-sm text-red-600">{invoiceErrors.unit_id}</p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    <div className="md:col-span-2">
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                            Empresa
+                                        </label>
+                                        <select
+                                            value={invoiceData.supplier_id}
+                                            onChange={(event) => setInvoiceData('supplier_id', event.target.value)}
+                                            className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                            disabled={!suppliers.length}
+                                        >
+                                            {!suppliers.length ? (
+                                                <option value="">Nenhuma empresa cadastrada</option>
+                                            ) : (
+                                                suppliers.map((supplier) => (
+                                                    <option key={supplier.id} value={supplier.id}>
+                                                        {supplier.name}
+                                                    </option>
+                                                ))
+                                            )}
+                                        </select>
+                                        {invoiceErrors.supplier_id && (
+                                            <p className="mt-1 text-sm text-red-600">{invoiceErrors.supplier_id}</p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                            Data
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={invoiceData.expense_date}
+                                            onChange={(event) => setInvoiceData('expense_date', event.target.value)}
+                                            className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                        />
+                                        {invoiceErrors.expense_date && (
+                                            <p className="mt-1 text-sm text-red-600">{invoiceErrors.expense_date}</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-800/40">
+                                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                                Itens da nota
+                                            </h4>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                Informe quantidade, tipo, valor unitario e subtotal calculado automaticamente.
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={addInvoiceItem}
+                                            className="rounded-xl border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:border-emerald-500/60 dark:text-emerald-200 dark:hover:bg-emerald-900/30"
+                                        >
+                                            Adicionar item
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {invoiceData.items.map((item, index) => {
+                                            const subtotal = getInvoiceItemSubtotal(item);
+
+                                            return (
+                                                <div
+                                                    key={`invoice-item-${index}`}
+                                                    className="rounded-2xl border border-white bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/70"
+                                                >
+                                                    <div className="mb-3 flex items-center justify-between gap-3">
+                                                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                                            Item {index + 1}
+                                                        </p>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeInvoiceItem(index)}
+                                                            disabled={invoiceData.items.length <= 1}
+                                                            className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-500/60 dark:text-red-300 dark:hover:bg-red-500/10"
+                                                        >
+                                                            Remover
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="grid gap-4 md:grid-cols-6">
+                                                        <div className="md:col-span-2">
+                                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                                                Item
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={item.description}
+                                                                onChange={(event) => updateInvoiceItem(index, 'description', event.target.value)}
+                                                                className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                            />
+                                                            {invoiceErrors[`items.${index}.description`] && (
+                                                                <p className="mt-1 text-sm text-red-600">{invoiceErrors[`items.${index}.description`]}</p>
+                                                            )}
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                                                Quantidade
+                                                            </label>
+                                                            <input
+                                                                type="number"
+                                                                min="0.001"
+                                                                step="0.001"
+                                                                value={item.quantity}
+                                                                onChange={(event) => updateInvoiceItem(index, 'quantity', event.target.value)}
+                                                                className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                            />
+                                                            {invoiceErrors[`items.${index}.quantity`] && (
+                                                                <p className="mt-1 text-sm text-red-600">{invoiceErrors[`items.${index}.quantity`]}</p>
+                                                            )}
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                                                Tipo
+                                                            </label>
+                                                            <select
+                                                                value={item.unit_type}
+                                                                onChange={(event) => updateInvoiceItem(index, 'unit_type', event.target.value)}
+                                                                className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                            >
+                                                                {INVOICE_ITEM_UNIT_TYPES.map((option) => (
+                                                                    <option key={option.value} value={option.value}>
+                                                                        {option.label}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                            {invoiceErrors[`items.${index}.unit_type`] && (
+                                                                <p className="mt-1 text-sm text-red-600">{invoiceErrors[`items.${index}.unit_type`]}</p>
+                                                            )}
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                                                Valor unitario
+                                                            </label>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                value={item.unit_price}
+                                                                onChange={(event) => updateInvoiceItem(index, 'unit_price', event.target.value)}
+                                                                className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                                            />
+                                                            {invoiceErrors[`items.${index}.unit_price`] && (
+                                                                <p className="mt-1 text-sm text-red-600">{invoiceErrors[`items.${index}.unit_price`]}</p>
+                                                            )}
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                                                Subtotal
+                                                            </label>
+                                                            <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
+                                                                {formatCurrency(subtotal)}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                        Observacao
+                                    </label>
+                                    <textarea
+                                        rows={3}
+                                        value={invoiceData.notes}
+                                        onChange={(event) => setInvoiceData('notes', event.target.value)}
+                                        className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-800 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                        placeholder="Observacoes adicionais da nota fiscal"
+                                    />
+                                    {invoiceErrors.notes && (
+                                        <p className="mt-1 text-sm text-red-600">{invoiceErrors.notes}</p>
+                                    )}
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+                                    <div>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-200">
+                                            Total da nota
+                                        </p>
+                                        <p className="text-lg font-bold text-emerald-900 dark:text-emerald-50">
+                                            {formatCurrency(invoiceTotalAmount)}
+                                        </p>
+                                    </div>
+                                    <PrimaryButton
+                                        type="submit"
+                                        disabled={invoiceProcessing || !canSubmitInvoice || !suppliers.length}
+                                        className="justify-center rounded-xl px-4 py-2 text-sm font-semibold normal-case tracking-normal disabled:cursor-not-allowed"
+                                    >
+                                        Salvar nota fiscal
+                                    </PrimaryButton>
+                                </div>
+                            </form>
+                        )}
                     </div>
 
                     {canManageList ? (
