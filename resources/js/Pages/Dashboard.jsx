@@ -425,6 +425,7 @@ export default function Dashboard({
     const [receiptData, setReceiptData] = useState(null);
     const [showReceipt, setShowReceipt] = useState(false);
     const [transmittingFiscal, setTransmittingFiscal] = useState(false);
+    const saleSubmissionLockRef = useRef(false);
     const [showConsumerFiscalModal, setShowConsumerFiscalModal] = useState(false);
     const [consumerFiscalLoading, setConsumerFiscalLoading] = useState(false);
     const [consumerFiscalErrors, setConsumerFiscalErrors] = useState({});
@@ -1488,6 +1489,10 @@ export default function Dashboard({
         type,
         { valeUserId = null, valeType = null, cashAmount = null, cardType = null } = {},
     ) => {
+        if (saleSubmissionLockRef.current || saleLoading) {
+            return;
+        }
+
         if (isSalesBlocked) {
             if (blockedSaleMessage) {
                 setSaleError(blockedSaleMessage);
@@ -1499,6 +1504,7 @@ export default function Dashboard({
             return;
         }
 
+        saleSubmissionLockRef.current = true;
         setSaleLoading(true);
         setSaleError('');
         const payload = {
@@ -1581,6 +1587,7 @@ export default function Dashboard({
                 setSaleError(message);
             })
             .finally(() => {
+                saleSubmissionLockRef.current = false;
                 setSaleLoading(false);
             });
     };
@@ -1721,6 +1728,10 @@ export default function Dashboard({
     };
 
     const handleSelectValeUser = (user) => {
+        if (saleSubmissionLockRef.current || saleLoading) {
+            return;
+        }
+
         if (selectedValeType === 'refeicao' && !canUseRefeicao) {
             setSaleError('Há itens que não podem ser pagos com VR Crédito.');
             return;
@@ -2890,6 +2901,11 @@ export default function Dashboard({
 
                                 {valePickerVisible && (
                                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow dark:border-amber-400/40 dark:bg-amber-900/20">
+                                        {(saleLoading || saleSubmissionLockRef.current) && (
+                                            <div className="mb-3 rounded-xl border border-amber-300 bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+                                                Registrando venda. Aguarde o processamento antes de tentar outro clique.
+                                            </div>
+                                        )}
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <h3 className="text-lg font-semibold text-amber-800 dark:text-amber-100">
@@ -2994,7 +3010,8 @@ export default function Dashboard({
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => handleSelectValeUser(user)}
-                                                                    className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-gray-800 hover:bg-indigo-50 dark:text-gray-100 dark:hover:bg-indigo-900/30"
+                                                                    disabled={saleLoading || saleSubmissionLockRef.current}
+                                                                    className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-gray-800 hover:bg-indigo-50 disabled:cursor-wait disabled:opacity-60 dark:text-gray-100 dark:hover:bg-indigo-900/30"
                                                                 >
                                                                     <div>
                                                                         <p className="font-semibold">{user.name}</p>
@@ -3012,7 +3029,9 @@ export default function Dashboard({
                                                                             )}
                                                                     </div>
                                                                     <span className="text-xs text-gray-500 dark:text-gray-300">
-                                                                        Selecionar
+                                                                        {saleLoading || saleSubmissionLockRef.current
+                                                                            ? 'Aguardando...'
+                                                                            : 'Selecionar'}
                                                                     </span>
                                                                 </button>
                                                             </li>
