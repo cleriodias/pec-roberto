@@ -19,6 +19,7 @@ use Carbon\Carbon;
 use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -229,6 +230,7 @@ class SalesReportController extends Controller
     public function vale(Request $request): Response
     {
         $this->ensureManager($request);
+        $isMaster = ManagementScope::isMaster($request->user());
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
         $allowedUnitIds = $this->reportUnitIds($filterUnits);
         [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
@@ -381,7 +383,30 @@ class SalesReportController extends Controller
             'filterUsers' => $filterUsers,
             'selectedUnitId' => $filterUnitId,
             'selectedUserId' => $selectedUserId,
+            'canDeleteVales' => $isMaster,
         ]);
+    }
+
+    public function destroyValeReceipt(Request $request, VendaPagamento $payment): RedirectResponse
+    {
+        if (! ManagementScope::isMaster($request->user())) {
+            abort(403);
+        }
+
+        $hasValeSales = $payment->vendas()
+            ->whereIn('tipo_pago', ['vale'])
+            ->exists();
+
+        if (! $hasValeSales) {
+            abort(404);
+        }
+
+        DB::transaction(function () use ($payment) {
+            Venda::query()->where('tb4_id', $payment->tb4_id)->delete();
+            $payment->delete();
+        });
+
+        return back()->with('success', 'Vale excluido com sucesso.');
     }
 
     public function comandasEmAberto(Request $request): Response

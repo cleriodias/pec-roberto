@@ -1,7 +1,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { formatBrazilDateTime } from '@/Utils/date';
 import { buildReceiptHtml } from '@/Utils/receipt';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 
 const PAYMENT_LABELS = {
@@ -107,6 +107,7 @@ export default function ValeReport({
     filterUsers = [],
     selectedUnitId = null,
     selectedUserId = null,
+    canDeleteVales = false,
 }) {
     const { data, setData, get, processing } = useForm({
         start_date: startDate ?? '',
@@ -122,6 +123,7 @@ export default function ValeReport({
     });
     const [selectedReceipt, setSelectedReceipt] = useState(null);
     const [printError, setPrintError] = useState('');
+    const [deletingReceiptId, setDeletingReceiptId] = useState(null);
 
     const handleSubmit = (event) => {
         event.preventDefault();
@@ -165,6 +167,37 @@ export default function ValeReport({
         printWindow.focus();
         printWindow.print();
         printWindow.close();
+    };
+
+    const handleDeleteVale = (row) => {
+        if (!canDeleteVales || deletingReceiptId === row.id) {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Excluir o vale #${row.id} de ${row.vale_user ?? '---'} no valor de ${formatCurrency(row.total)}?`,
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setPrintError('');
+        setDeletingReceiptId(row.id);
+
+        router.delete(route('reports.vale.destroy', { payment: row.id }), {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                setSelectedReceipt(null);
+            },
+            onError: () => {
+                setPrintError('Nao foi possivel excluir o vale.');
+            },
+            onFinish: () => {
+                setDeletingReceiptId(null);
+            },
+        });
     };
 
     const totalAmount = rows.reduce((sum, row) => sum + (Number(row.total) || 0), 0);
@@ -327,6 +360,11 @@ export default function ValeReport({
                                             <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
                                                 Cupom
                                             </th>
+                                            {canDeleteVales && (
+                                                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                    Acoes
+                                                </th>
+                                            )}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -365,6 +403,18 @@ export default function ValeReport({
                                                         Abrir cupom
                                                     </button>
                                                 </td>
+                                                {canDeleteVales && (
+                                                    <td className="px-3 py-2 text-right">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteVale(row)}
+                                                            disabled={deletingReceiptId === row.id}
+                                                            className="rounded-xl bg-red-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                        >
+                                                            {deletingReceiptId === row.id ? 'Excluindo...' : 'Excluir'}
+                                                        </button>
+                                                    </td>
+                                                )}
                                             </tr>
                                         ))}
                                     </tbody>
