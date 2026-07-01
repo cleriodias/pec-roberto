@@ -229,7 +229,7 @@ class SalesReportController extends Controller
 
     public function vale(Request $request): Response
     {
-        $this->ensureManager($request);
+        $this->ensureManagementReportAccess($request);
         $isMaster = ManagementScope::isMaster($request->user());
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
         $allowedUnitIds = $this->reportUnitIds($filterUnits);
@@ -411,7 +411,7 @@ class SalesReportController extends Controller
 
     public function comandasEmAberto(Request $request): Response
     {
-        $this->ensureManager($request);
+        $this->ensureManagementReportAccess($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
         $allowedUnitIds = $this->reportUnitIds($filterUnits);
         [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
@@ -569,7 +569,7 @@ class SalesReportController extends Controller
 
     public function refeicao(Request $request): Response
     {
-        $this->ensureManager($request);
+        $this->ensureManagementReportAccess($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
         $allowedUnitIds = $this->reportUnitIds($filterUnits);
         [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
@@ -840,7 +840,7 @@ class SalesReportController extends Controller
 
     public function adiantamentos(Request $request): Response
     {
-        $this->ensureManager($request);
+        $this->ensureManagementReportAccess($request);
         [$filterUnitId, $filterUnits, $selectedUnit] = $this->resolveReportUnit($request);
         $allowedUnitIds = $this->reportUnitIds($filterUnits);
         [$start, $end, $startDate, $endDate] = $this->resolveDateRange($request);
@@ -2841,6 +2841,15 @@ class SalesReportController extends Controller
         $user = $request->user();
 
         if (!$user || !in_array((int) $user->funcao, [0, 1], true)) {
+            abort(403);
+        }
+    }
+
+    private function ensureManagementReportAccess(Request $request): void
+    {
+        $user = $request->user();
+
+        if (! $user || ! in_array((int) $user->funcao, [0, 1, 2], true)) {
             abort(403);
         }
     }

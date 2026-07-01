@@ -56,7 +56,7 @@ class PayrollController extends Controller
 
     public function contraCheque(Request $request): Response
     {
-        $this->ensureAdmin($request->user());
+        $this->ensureContraChequeAccess($request->user());
 
         return Inertia::render('Settings/ContraCheque', $this->buildContraChequePayload($request));
     }
@@ -1176,6 +1176,13 @@ class PayrollController extends Controller
     private function ensureAdmin($user): void
     {
         if (! $user || ! in_array((int) $user->funcao, [0, 1], true)) {
+            abort(403);
+        }
+    }
+
+    private function ensureContraChequeAccess($user): void
+    {
+        if (! $user || ! in_array((int) $user->funcao, [0, 1, 2], true)) {
             abort(403);
         }
     }

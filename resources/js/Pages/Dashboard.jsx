@@ -791,6 +791,57 @@ export default function Dashboard({
             ].filter((item) => item.href),
         [contraChequeShortcutSummary],
     );
+    const subManagerShortcutItems = useMemo(
+        () =>
+            [
+                {
+                    key: 'vale',
+                    label: 'Vale',
+                    icon: 'bi-ticket-perforated',
+                    href: routeExists('reports.vale') ? route('reports.vale') : null,
+                },
+                {
+                    key: 'adiantamento',
+                    label: 'Adiantamento',
+                    icon: 'bi-wallet2',
+                    href: routeExists('salary-advances.index') ? route('salary-advances.index') : null,
+                },
+                {
+                    key: 'contra-cheque',
+                    label: 'Contra-Cheque',
+                    icon: 'bi-receipt-cutoff',
+                    href: routeExists('settings.contra-cheque') ? route('settings.contra-cheque') : null,
+                    subtitle: contraChequeShortcutSummary
+                        ? `${contraChequeShortcutSummary.isToday ? 'Hoje' : `Dia ${String(contraChequeShortcutSummary.paymentDay).padStart(2, '0')}`}: ${formatCurrency(contraChequeShortcutSummary.salaryTotal)}`
+                        : 'Abrir',
+                },
+                {
+                    key: 'boletos',
+                    label: 'Boleto',
+                    icon: 'bi-card-text',
+                    href: routeExists('boletos.index') ? route('boletos.index') : null,
+                },
+                {
+                    key: 'users',
+                    label: 'Usuario',
+                    icon: 'bi-people-fill',
+                    href: routeExists('users.index') ? route('users.index') : null,
+                },
+                {
+                    key: 'refeicao',
+                    label: 'Refeição',
+                    icon: 'bi-cup-straw',
+                    href: routeExists('reports.refeicao') ? route('reports.refeicao') : null,
+                },
+                {
+                    key: 'comandas-aberto',
+                    label: 'Comandas em Aberto',
+                    icon: 'bi-journal-bookmark',
+                    href: routeExists('reports.comandas-aberto') ? route('reports.comandas-aberto') : null,
+                },
+            ].filter((item) => item.href),
+        [contraChequeShortcutSummary],
+    );
 
     const hasVrRestrictions = useMemo(
         () => items.some((item) => !item.vrEligible),
@@ -2529,6 +2580,42 @@ export default function Dashboard({
                                 {saleError && (
                                     <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/50 dark:bg-red-950/30 dark:text-red-200">
                                         {saleError}
+                                    </div>
+                                )}
+
+                                {effectiveRole === 2 && (
+                                    <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 shadow-sm dark:border-indigo-500/30 dark:bg-indigo-900/20">
+                                        <div className="flex flex-col gap-1">
+                                            <h3 className="text-lg font-semibold text-slate-900 dark:text-gray-100">
+                                                Atalhos do SUB-GERENTE
+                                            </h3>
+                                            <p className="text-xs text-slate-500 dark:text-gray-300">
+                                                Acesso rapido as rotinas liberadas para o perfil sub-gerente.
+                                            </p>
+                                        </div>
+                                        <div className="mt-3 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                                            {subManagerShortcutItems.map((shortcut) => (
+                                                <Link
+                                                    key={shortcut.key}
+                                                    href={shortcut.href}
+                                                    className="flex items-center justify-between rounded-lg border border-indigo-200 bg-white/90 px-2.5 py-2.5 shadow-sm transition hover:border-indigo-300 hover:bg-white dark:border-indigo-500/30 dark:bg-gray-900/60 dark:hover:bg-gray-900"
+                                                >
+                                                    <div className="flex items-center gap-2.5">
+                                                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-white shadow-sm">
+                                                            <i className={`bi ${shortcut.icon} text-sm`} aria-hidden="true"></i>
+                                                        </span>
+                                                        <div>
+                                                            <p className="text-[13px] font-semibold text-slate-900 dark:text-gray-100">
+                                                                {shortcut.label}
+                                                            </p>
+                                                            <p className="text-[11px] text-indigo-600 dark:text-indigo-300">
+                                                                {shortcut.subtitle ?? 'Abrir'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </Link>
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
 
