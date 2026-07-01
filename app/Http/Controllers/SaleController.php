@@ -47,6 +47,11 @@ class SaleController extends Controller
     public function store(Request $request, FiscalInvoicePreparationService $fiscalInvoicePreparationService): JsonResponse
     {
         $user = $request->user();
+
+        if (! $user || (int) $user->funcao !== 3) {
+            abort(403);
+        }
+
         $unit = $request->session()->get('active_unit');
 
         if (!$unit) {

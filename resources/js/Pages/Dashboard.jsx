@@ -612,6 +612,7 @@ export default function Dashboard({
         [items],
     );
     const isCashier = effectiveRole === 3;
+    const canLaunchSales = isCashier;
     const pendingComandas = useMemo(() => {
         const list = cashierRestrictions?.pending_comandas;
         if (!Array.isArray(list)) {
@@ -628,9 +629,10 @@ export default function Dashboard({
     const isPendingComandaSelected =
         selectedComandaCode !== null && pendingComandas.includes(selectedComandaCode);
     const isSalesBlocked =
-        isCashier &&
+        !canLaunchSales ||
+        (isCashier &&
         ((hasPendingComandas && !isPendingComandaSelected) ||
-            (requiresClosure && selectedComandaCode === null));
+            (requiresClosure && selectedComandaCode === null)));
     const pendingComandasLabel = pendingComandas.join(', ');
     const closureBlockMessage = requiresClosure
         ? `Fechamento pendente${
@@ -2580,6 +2582,12 @@ export default function Dashboard({
                                 {saleError && (
                                     <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/50 dark:bg-red-950/30 dark:text-red-200">
                                         {saleError}
+                                    </div>
+                                )}
+
+                                {!canLaunchSales && (
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/40 dark:bg-amber-900/20 dark:text-amber-100">
+                                        Apenas caixas podem fazer lancamentos.
                                     </div>
                                 )}
 
