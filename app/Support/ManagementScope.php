@@ -118,7 +118,7 @@ class ManagementScope
         $targetUnitIds = self::targetUserUnitIds($targetUser);
 
         return $targetUnitIds->isNotEmpty()
-            && $targetUnitIds->every(fn (int $unitId) => $allowedUnitIds->contains($unitId));
+            && $targetUnitIds->contains(fn (int $unitId) => $allowedUnitIds->contains($unitId));
     }
 
     public static function discardUnitIds(ProductDiscard $discard): Collection
@@ -177,14 +177,6 @@ class ManagementScope
                     ->orWhereHas('units', function (Builder $unitQuery) use ($allowedUnitIds) {
                         $unitQuery->whereIn('tb2_unidades.tb2_id', $allowedUnitIds);
                     });
-            })
-            ->where(function (Builder $subQuery) use ($allowedUnitIds) {
-                $subQuery
-                    ->whereNull('users.tb2_id')
-                    ->orWhereIn('users.tb2_id', $allowedUnitIds);
-            })
-            ->whereDoesntHave('units', function (Builder $unitQuery) use ($allowedUnitIds) {
-                $unitQuery->whereNotIn('tb2_unidades.tb2_id', $allowedUnitIds);
             });
     }
 }
