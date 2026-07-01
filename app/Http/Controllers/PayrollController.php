@@ -63,7 +63,7 @@ class PayrollController extends Controller
 
     public function storeContraChequeCredit(Request $request, User $user): RedirectResponse
     {
-        $this->ensureAdmin($request->user());
+        $this->ensureContraChequeAccess($request->user());
         $this->ensureManagedPayrollUser($request->user(), $user);
 
         $data = $request->validate([

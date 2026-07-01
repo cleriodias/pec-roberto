@@ -2579,7 +2579,7 @@ export default function Dashboard({
                                         Verificando restricoes do caixa...
                                     </p>
                                 )}
-                                {saleError && (
+                                {canLaunchSales && saleError && (
                                     <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/50 dark:bg-red-950/30 dark:text-red-200">
                                         {saleError}
                                     </div>
@@ -2627,6 +2627,8 @@ export default function Dashboard({
                                     </div>
                                 )}
 
+                                {canLaunchSales && (
+                                <>
                                 {(saleLoading || addingItem) && (
                                     <p className="text-sm text-indigo-600 dark:text-indigo-300">
                                         {saleLoading ? 'Registrando pagamento...' : 'Adicionando produto...'}
@@ -3137,12 +3139,14 @@ export default function Dashboard({
                                         </div>
                                     </div>
                                 )}
+                                </>
+                                )}
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            {showFaturarWarning && (
+            {canLaunchSales && showFaturarWarning && (
                 <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4 py-6">
                     <div className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900">
                         <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
@@ -3198,7 +3202,7 @@ export default function Dashboard({
                     </div>
                 </div>
             )}
-            {showReceipt && receiptData && (
+            {canLaunchSales && showReceipt && receiptData && (
                 <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4 py-6">
                     <div className="flex max-h-[calc(100vh-3rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-900">
                         <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
@@ -3362,6 +3366,7 @@ export default function Dashboard({
                     </div>
                 </div>
             )}
+            {canLaunchSales && (
             <Modal show={showConsumerFiscalModal} onClose={closeConsumerFiscalModal} maxWidth="2xl" tone="light">
                 <form onSubmit={handleSubmitConsumerFiscal}>
                     <div className="border-b border-gray-200 px-6 py-4">
@@ -3597,6 +3602,7 @@ export default function Dashboard({
                     </div>
                 </form>
             </Modal>
+            )}
         </AuthenticatedLayout>
     );
 }
